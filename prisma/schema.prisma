@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ACCESS
+  ADMIN
+  RECEIVER
+  INSPECTOR
+  CLAIMS_SPECIALIST
+}
+
+enum Marketplace {
+  AMAZON
+  SHOPIFY
+}
+
+enum PackageState {
+  EXPECTED
+  LOST_IN_TRANSIT
+  AT_DOCK
+  INSPECTED
+  CLAIMS_STAGING
+  CLAIM_RESOLVED
+  RECOVERED_TO_INVENTORY
+}
+
+enum ItemCondition {
+  GOOD_SELLABLE
+  PACKAGING_DAMAGED
+  PRODUCT_DAMAGED
+  WRONG_ITEM
+  MISSING
+  BAD_FAKE_PRODUCT
+}
+
+enum HandshakeType {
+  COURIER_TO_RECEIVER
+  RECEIVER_TO_INSPECTOR
+}
+
+model User {
+  id               String       @id @default(uuid())
+  email            String       @unique
+  role             Role
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  handshakesSent   Handshake[]  @relation("Sender")
+  handshakesRecv   Handshake[]  @relation("Receiver")
+  inspections      Inspection[]
+}
+
+model Manifest {
+  id               String       @id @default(uuid())
+  trackingAwb      String       @unique
+  status           PackageState
+  courierName      String?
+  expectedDate     DateTime?
+  receivedAt       DateTime?
+  createdAt        DateTime     @default(now())
+
+  handshakes       Handshake[]
+  inspection       Inspection?
+  returnItems      ReturnItem[]
+  disputes         Dispute[]
+}
+
+model Handshake {
+  id               String        @id @default(uuid())
+  manifestId       String
+  senderId         String?
+  receiverId       String
+  type             HandshakeType
+  timestamp        DateTime
+
+  manifest         Manifest      @relation(fields: [manifestId], references: [id])
+  sender           User?         @relation("Sender", fields: [senderId], references: [id])
+  receiver         User          @relation("Receiver", fields: [receiverId], references: [id])
+}
+
+model Inspection {
+  id                 String    @id @default(uuid())
+  manifestId         String    @unique
+  inspectorId        String
+  totalItemsExpected Int
+  totalItemsScanned  Int
+  isMissingItems     Boolean
+  evidenceUrl        String?
+  completedAt        DateTime
+
+  manifest           Manifest  @relation(fields: [manifestId], references: [id])
+  inspector          User      @relation(fields: [inspectorId], references: [id])
+}
+
+model Order {
+  id               String       @id @default(uuid())
+  marketplace      Marketplace
+  platformOrderId  String       @unique
+  purchaseDate     DateTime
+  customerName     String?
+  totalAmount      Float?
+
+  returnItems      ReturnItem[]
+}
+
+model ReturnItem {
+  id               String         @id @default(uuid())
+  orderId          String
+  manifestId       String?
+  sku              String
+  lpn              String?
+  quantity         Int
+  returnReason     String
+  customerComments String?
+  condition        ItemCondition?
+
+  order            Order          @relation(fields: [orderId], references: [id])
+  manifest         Manifest?      @relation(fields: [manifestId], references: [id])
+  reimbursement    Reimbursement?
+}
+
+model Reimbursement {
+  id                      String     @id @default(uuid())
+  returnItemId            String     @unique
+  platformReimbursementId String?    @unique
+  amountReimbursed        Float
+  currency                String
+  reimbursementReason     String?
+  status                  String
+  filedAt                 DateTime?
+  resolvedAt              DateTime?
+
+  returnItem              ReturnItem @relation(fields: [returnItemId], references: [id])
+}
+
+model Dispute {
+  id            String    @id @default(uuid())
+  manifestId    String
+  type          String    // e.g. "L1_DOCK_ALERT", "L3_MISSING_ITEM"
+  evidenceUrl   String?
+  resolved      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  manifest      Manifest  @relation(fields: [manifestId], references: [id])
+}
+
+model RemovalShipment {
+  id               String   @id @default(uuid())
+  removalOrderId   String
+  trackingNumber   String   @unique
+  shipmentDate     DateTime
+  sku              String
+  shippedQuantity  Int
+  disposition      String
+}
