@@ -1,6 +1,6 @@
 {
-  "name": "Warehouse Management System",
-  "version": "1.0.0",
+  "name": "ai-studio-applet",
+  "version": "0.1.0",
   "private": true,
   "prisma": {
     "seed": "node prisma/seed.js"
