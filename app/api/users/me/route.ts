@@ -14,6 +14,8 @@ export async function GET(req: Request) {
         id: true,
         email: true,
         role: true,
+        itemsProcessed: true,
+        accuracyRate: true,
       }
     });
 

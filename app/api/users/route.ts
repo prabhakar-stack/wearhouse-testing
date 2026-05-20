@@ -4,7 +4,15 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request) {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { email: 'asc' }
+      orderBy: { email: 'asc' },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        itemsProcessed: true,
+        accuracyRate: true,
+        createdAt: true,
+      }
     });
     return NextResponse.json({ users });
   } catch (error) {

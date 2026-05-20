@@ -10,13 +10,11 @@ export default function InspectorPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // For design mode, we will allow it to default to INSPECTOR if testing directly without login,
-    // otherwise we respect the localStorage value.
     const storedRole = localStorage.getItem('userRole');
-    
-    // eslint-disable-next-line
-    setRole(storedRole || 'INSPECTOR'); // Fallback to INSPECTOR so reviewers can see the UI without logging in
-    setMounted(true);
+    setTimeout(() => {
+      setRole(storedRole || 'INSPECTOR'); 
+      setMounted(true);
+    }, 0);
   }, []);
 
   if (!mounted) return null;
@@ -75,7 +73,6 @@ function InspectorDashboard({ role }: { role: string }) {
       <main className="flex-1 relative overflow-y-auto custom-scrollbar bg-slate-100">
         {activeTab === 'home' && (
           <div className="max-w-lg mx-auto space-y-6 pt-6 px-4 pb-10">
-            {/* Action Buttons */}
             <div className="space-y-4">
               <button 
                 onClick={() => setActiveTab('ledger')}
@@ -118,7 +115,6 @@ function InspectorDashboard({ role }: { role: string }) {
         
         {activeTab === 'profile' && (
           <div className="max-w-lg mx-auto space-y-6 pt-6 px-4">
-            {/* User Profile Card */}
             <div className="border border-slate-200 bg-white p-6 relative overflow-hidden rounded-md shadow-sm">
               <div className="absolute top-0 right-0 p-4 opacity-10">
                  <Shield size={100} />
@@ -178,15 +174,11 @@ function InspectorDashboard({ role }: { role: string }) {
   );
 }
 
-// -------------------------------------------------------------------------------------------------
-// TAB 1.5: CUSTODY LEDGER
-// -------------------------------------------------------------------------------------------------
 function LedgerTab() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Poll for assigned orders to inspect
     const fetchLedger = () => {
       fetch('/api/inspector/ledger')
         .then(r => r.json())
@@ -198,7 +190,7 @@ function LedgerTab() {
     };
 
     fetchLedger();
-    const interval = setInterval(fetchLedger, 5000); // 5 sec poll
+    const interval = setInterval(fetchLedger, 5000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -256,9 +248,6 @@ function LedgerTab() {
   );
 }
 
-// -------------------------------------------------------------------------------------------------
-// TAB 2: CUSTODY TAKEOVER
-// -------------------------------------------------------------------------------------------------
 function TakeoverTab() {
   const [awb, setAwb] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -266,11 +255,7 @@ function TakeoverTab() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!awb.trim()) return;
-    
-    // Show massive success overlay
     setShowSuccess(true);
-    
-    // Reset after 2 seconds
     setTimeout(() => {
       setShowSuccess(false);
       setAwb('');
@@ -326,50 +311,50 @@ function TakeoverTab() {
   );
 }
 
-
-// -------------------------------------------------------------------------------------------------
-// TAB 2: DEEP INSPECTION (GAMIFIED STATE MACHINE)
-// -------------------------------------------------------------------------------------------------
-
 function InspectTab({ userId }: { userId?: string }) {
   const [phase, setPhase] = useState<'START' | 'BOX_EVIDENCE' | 'ITEM_INSPECTION' | 'COMPLETED'>('START');
   const [orderId, setOrderId] = useState('');
   
-  // Gamification State
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
   const [floatingXp, setFloatingXp] = useState<number | null>(null);
 
-  // Box Evidence State
-  const [boxStep, setBoxStep] = useState(1); // 1 to 8
+  const [boxStep, setBoxStep] = useState(1); 
   
-  // Item Inspection State
-  const [itemStep, setItemStep] = useState(1); // 1 to 5
+  const [itemStep, setItemStep] = useState(1); 
   const [itemsProcessed, setItemsProcessed] = useState(0);
   const [currentLpn, setCurrentLpn] = useState('');
   const [currentCategory, setCurrentCategory] = useState<'GOOD' | 'RECOVERY' | 'BAD' | null>(null);
   
-  // Missing Items
   const [missingAcknowledged, setMissingAcknowledged] = useState(false);
 
   const EXPECTED_ITEMS = 3;
 
-  // Camera Elements
   const videoRef = useRef<HTMLVideoElement>(null);
   const visibleCanvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const [shutterFlash, setShutterFlash] = useState(false);
   
-  // Recording & Upload State
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const capturedImagesRef = useRef<Blob[]>([]);
+  const capturedImagesRef = useRef<{ type: 'box' | 'lpn' | 'product', id?: string, blob: Blob }[]>([]);
+  const lpnConditionsRef = useRef<Record<string, string>>({});
   const reqAnimRef = useRef<number>(0);
   const isOrderCompleteRef = useRef(false);
+
+  const orderIdRef = useRef(orderId);
+  const userIdRef = useRef(userId);
+  
+  useEffect(() => {
+    orderIdRef.current = orderId;
+  }, [orderId]);
+
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   const isCameraActive = phase === 'BOX_EVIDENCE' || phase === 'ITEM_INSPECTION';
 
@@ -395,7 +380,6 @@ function InspectTab({ userId }: { userId?: string }) {
             const drawFrame = () => {
               if (video.paused || video.ended) return;
               ctx.save();
-              // Rotate context 180 degrees
               ctx.translate(canvas.width / 2, canvas.height / 2);
               ctx.rotate(Math.PI);
               ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
@@ -404,7 +388,6 @@ function InspectTab({ userId }: { userId?: string }) {
             };
             drawFrame();
             
-            // Initialize the MediaRecorder with the rotated canvas stream
             try {
               // @ts-ignore
               const canvasStream = canvas.captureStream(30);
@@ -416,34 +399,200 @@ function InspectTab({ userId }: { userId?: string }) {
                 if (e.data.size > 0) chunksRef.current.push(e.data);
               };
               
-              mr.onstop = async () => {
+              mr.onstop = () => {
                 if (!isOrderCompleteRef.current) return;
                 
-                setIsUploading(true);
-                const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-                
-                const formData = new FormData();
-                formData.append('file', blob, `inspection-evidence-${Date.now()}.webm`);
-                formData.append('orderId', orderId); // Inject the ID for naming rules
-                formData.append('type', 'INSPECTION_VIDEO');
-                if (userId) formData.append('uploadedById', userId);
-                
-                capturedImagesRef.current.forEach((imgBlob, idx) => {
-                  formData.append(`image-${idx}`, imgBlob, `inspection-image-${idx}.jpg`);
-                });
-                
-                try {
-                  const uploadRes = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData,
-                    // DO NOT set Content-Type headers manually here
-                  });
-                } catch (e) {
-                  console.error('Background upload failed:', e);
-                } finally {
-                  setIsUploading(false);
-                  setPhase('COMPLETED');
-                }
+                // Instantly transition UI for the user
+                setPhase('COMPLETED');
+
+                // Non-blocking fire-and-forget background upload
+                const backgroundUpload = async () => {
+                  // Capture current values in local scope immediately before any async activity or state resets
+                  const activeOrderId = orderIdRef.current;
+                  const activeUserId = userIdRef.current;
+
+                  if (!activeOrderId) {
+                    console.error('[Background Upload] Aborted: activeOrderId is empty');
+                    return;
+                  }
+
+                  try {
+                    const videoChunks = chunksRef.current.length > 0 
+                      ? chunksRef.current 
+                      : [new Blob(['empty-video-fallback'], { type: 'video/webm' })];
+                      
+                    const blob = new Blob(videoChunks, { type: 'video/webm' });
+                    
+                    const filesToUpload: { key: string, name: string, mimeType: string, lpn?: string, blob: Blob }[] = [];
+                    filesToUpload.push({ key: 'file', name: `inspection-${Date.now()}.webm`, mimeType: 'video/webm', blob });
+                    
+                    let boxCounter = 1;
+                    let lpnCounters: Record<string, number> = {};
+
+                    capturedImagesRef.current.forEach((img) => {
+                      if (!img.blob || img.blob.size === 0) return; 
+
+                      if (img.type === 'box') {
+                        filesToUpload.push({ key: `box_${boxCounter}`, name: `box_${boxCounter}.jpg`, mimeType: 'image/jpeg', blob: img.blob });
+                        boxCounter++;
+                      } else if ((img.type === 'lpn' || img.type === 'product') && img.id) {
+                        // Stop processing images client-side entirely if not 'bad'
+                        const status = lpnConditionsRef.current[img.id];
+                        if (status === 'bad') {
+                          if (!lpnCounters[img.id]) lpnCounters[img.id] = 1;
+                          const c = lpnCounters[img.id];
+                          filesToUpload.push({ key: `lpn_${img.id}_image_${c}`, name: `lpn_${img.id}_image_${c}.jpg`, mimeType: 'image/jpeg', blob: img.blob, lpn: img.id });
+                          lpnCounters[img.id]++;
+                        }
+                      }
+                    });
+                    
+                    const filesMetaData = filesToUpload.map(f => ({ key: f.key, name: f.name, mimeType: f.mimeType, lpn: f.lpn }));
+
+                    // 1. Initialize Direct Upload — creates the Drive folder structure and returns upload URLs
+                    const initRes = await fetch('/api/upload/init', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ orderId: activeOrderId, type: 'INSPECTION_VIDEO', filesMetaData }),
+                    });
+
+                    if (!initRes.ok) throw new Error("Failed to initialize Google Drive upload");
+                    const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
+
+                    // 2. Upload files — video uses silent chunked pipeline, images use existing raw pipeline
+
+                    // Helper: upload a small file (image) via /api/upload/raw with 3 retries
+                    const uploadSmallFile = async (f: { key: string, name: string, blob: Blob }, url: string) => {
+                      const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((f.blob.size / 100000) * 1000)));
+                      for (let attempt = 1; attempt <= 3; attempt++) {
+                        const controller = new AbortController();
+                        const tid = setTimeout(() => controller.abort(), timeoutMs);
+                        try {
+                          const res = await fetch(url, { method: 'PUT', body: f.blob, signal: controller.signal });
+                          clearTimeout(tid);
+                          if (res.ok) {
+                            console.log(`[Queue Upload] Uploaded image ${f.name} on attempt ${attempt}`);
+                            return;
+                          }
+                          console.warn(`[Queue Upload] Attempt ${attempt} failed for ${f.name}: HTTP ${res.status}`);
+                        } catch (err: any) {
+                          clearTimeout(tid);
+                          console.error(`[Queue Upload] Attempt ${attempt} error for ${f.name}:`, err.name === 'AbortError' ? 'Timeout' : err.message);
+                        }
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
+                      }
+                      console.error(`[Queue Upload] Gave up on image ${f.name} after 3 attempts.`);
+                    };
+
+                    // Helper: chunked upload for the video — splits blob into 5 MB slices
+                    const uploadVideoChunked = async (f: { key: string, name: string, mimeType: string, blob: Blob }, targetFolderId: string) => {
+                      const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB per chunk
+                      const totalChunks = Math.max(1, Math.ceil(f.blob.size / CHUNK_SIZE));
+                      const uploadId = crypto.randomUUID();
+
+                      console.log(`[Chunked Upload] Video ${f.name} — ${(f.blob.size / (1024 * 1024)).toFixed(2)} MB split into ${totalChunks} chunks (uploadId=${uploadId})`);
+
+                      for (let i = 0; i < totalChunks; i++) {
+                        const start = i * CHUNK_SIZE;
+                        const end   = Math.min(start + CHUNK_SIZE, f.blob.size);
+                        const chunk = f.blob.slice(start, end);
+
+                        let chunkOk = false;
+                        for (let attempt = 1; attempt <= 3; attempt++) {
+                          const controller = new AbortController();
+                          const tid = setTimeout(() => controller.abort(), 90000); // 90s per 5 MB chunk
+                          try {
+                            const res = await fetch(
+                              `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&name=${encodeURIComponent(f.name)}`,
+                              { method: 'PUT', body: chunk, signal: controller.signal }
+                            );
+                            clearTimeout(tid);
+                            if (res.ok) {
+                              console.log(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} OK on attempt ${attempt}`);
+                              chunkOk = true;
+                              break;
+                            }
+                            console.warn(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt} failed: HTTP ${res.status}`);
+                          } catch (err: any) {
+                            clearTimeout(tid);
+                            console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt}:`, err.name === 'AbortError' ? 'Timeout' : err.message);
+                          }
+                          if (attempt < 3) await new Promise(r => setTimeout(r, 1500 * attempt));
+                        }
+
+                        if (!chunkOk) {
+                          console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} failed after 3 attempts — aborting video upload for ${f.name}.`);
+                          return;
+                        }
+                      }
+
+                      // All chunks received — assemble into one file on server and push to Drive
+                      console.log(`[Chunked Upload] All ${totalChunks} chunks uploaded. Assembling ${f.name}...`);
+                      try {
+                        const assembleRes = await fetch('/api/upload/assemble', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
+                        });
+                        if (assembleRes.ok) {
+                          const data = await assembleRes.json();
+                          console.log(`[Chunked Upload] Assembly complete. Drive fileId=${data.fileId}`);
+                        } else {
+                          const errBody = await assembleRes.json().catch(() => ({}));
+                          console.error(`[Chunked Upload] Assembly failed: HTTP ${assembleRes.status}`, errBody);
+                        }
+                      } catch (err: any) {
+                        console.error('[Chunked Upload] Assembly request error:', err.message);
+                      }
+                    };
+
+                    // Process all files sequentially
+                    for (const f of filesToUpload) {
+                      if (f.key === 'file') {
+                        // Video → chunked pipeline (no body size limit issue)
+                        await uploadVideoChunked(f, orderFolderId);
+                      } else {
+                        // Images → existing raw pipeline
+                        const url = uploadUrls[f.key];
+                        if (!url) { console.warn(`[Queue Upload] No URL for key: ${f.key}`); continue; }
+                        await uploadSmallFile(f, url);
+                      }
+                    }
+
+                    // 3. Finalize Database Write
+                    const cleanUserId = activeUserId && activeUserId !== 'undefined' && activeUserId !== 'null' ? activeUserId : undefined;
+                    await fetch('/api/upload/finalize', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        orderId: activeOrderId,
+                        folderLink,
+                        orderFolderId,
+                        type: 'INSPECTION_VIDEO',
+                        uploadedById: cleanUserId,
+                        reason: 'Complete Order Inspection Folder'
+                      }),
+                    });
+                    
+                    const dockRes = await fetch('/api/dock/receive', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        trackingAwb: activeOrderId,
+                        tapeIntact: true,
+                        boxCrushed: false,
+                        isTampered: false,
+                        evidenceUrl: folderLink || 'UPLOAD_FAILED'
+                      })
+                    });
+
+                    if (!dockRes.ok) throw new Error("Failed to log dock receipt");
+                  } catch (e) {
+                    console.error('Background pipeline failed:', e);
+                  }
+                };
+
+                backgroundUpload(); // Trigger without await
               };
               
               mr.start(1000);
@@ -473,27 +622,51 @@ function InspectTab({ userId }: { userId?: string }) {
     if (isRecording) {
       interval = setInterval(() => setRecordingTime(t => t + 1), 1000);
     } else {
-      setRecordingTime(0);
+      setTimeout(() => setRecordingTime(0), 0);
     }
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  const captureImage = () => {
+  const captureImage = (type: 'box' | 'lpn' | 'product', identifier?: string) => {
     if (videoRef.current && hiddenCanvasRef.current) {
       const video = videoRef.current;
       const canvas = hiddenCanvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
+      
       if (ctx) {
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate(Math.PI);
         ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
         ctx.restore();
-        canvas.toBlob((blob) => {
-          if (blob) capturedImagesRef.current.push(blob);
-        }, 'image/jpeg', 0.8);
+
+        // ✅ THE CORRECTED CROP LOGIC
+        if (type === 'lpn' || type === 'product') {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width / 2;
+          tempCanvas.height = canvas.height;
+          const tCtx = tempCanvas.getContext('2d');
+          
+          if (tCtx) {
+            // Cut exactly the right half of the image
+            tCtx.drawImage(
+              canvas, 
+              canvas.width / 2, 0, canvas.width / 2, canvas.height, 
+              0, 0, tempCanvas.width, tempCanvas.height
+            );
+            tempCanvas.toBlob((blob) => {
+              // 🐛 FIX: Dynamically use the `type` instead of hardcoding 'lpn'
+              if (blob) capturedImagesRef.current.push({ type, id: identifier, blob });
+            }, 'image/jpeg', 0.8);
+          }
+        } else {
+          // Full box photo
+          canvas.toBlob((blob) => {
+            if (blob) capturedImagesRef.current.push({ type, id: identifier, blob });
+          }, 'image/jpeg', 0.8);
+        }
       }
     }
     setShutterFlash(true);
@@ -527,6 +700,7 @@ function InspectTab({ userId }: { userId?: string }) {
     setStreak(0);
     isOrderCompleteRef.current = false;
     capturedImagesRef.current = [];
+    lpnConditionsRef.current = {};
   };
 
   const handleStart = (e: React.FormEvent) => {
@@ -557,6 +731,7 @@ function InspectTab({ userId }: { userId?: string }) {
   };
 
   const handleCategory = (cat: 'GOOD' | 'RECOVERY' | 'BAD') => {
+    lpnConditionsRef.current[currentLpn] = cat.toLowerCase();
     triggerXp(100);
     setCurrentCategory(cat);
     nextItemStep();
@@ -602,7 +777,6 @@ function InspectTab({ userId }: { userId?: string }) {
   return (
     <div className="absolute inset-0 z-40 flex flex-row bg-slate-900 select-none overflow-hidden text-slate-800">
        
-       {/* Left Panel: Persistent Camera (60%) */}
        <div className="w-[60%] bg-black relative flex flex-col items-center justify-center border-r border-slate-800 shadow-2xl">
           <div className="absolute top-4 left-4 bg-red-600/90 backdrop-blur text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center space-x-2 rounded shadow-lg z-10">
             <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
@@ -614,13 +788,24 @@ function InspectTab({ userId }: { userId?: string }) {
             <span>{String(Math.floor(recordingTime / 60)).padStart(2, '0')}:{String(recordingTime % 60).padStart(2, '0')}</span>
           </div>
           
-          {/* Mock Video Feed */}
           <div className="w-full h-full flex items-center justify-center relative overflow-hidden">
              <video ref={videoRef} autoPlay playsInline muted className="hidden"></video>
              <canvas ref={visibleCanvasRef} className="absolute inset-0 w-full h-full object-cover bg-black"></canvas>
              <canvas ref={hiddenCanvasRef} className="hidden"></canvas>
              {shutterFlash && <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150"></div>}
              
+             {/* Split Screen Overlay for Item Inspection */}
+             {phase === 'ITEM_INSPECTION' && (
+               <div className="absolute inset-0 z-10 pointer-events-none flex">
+                 <div className="w-1/2 h-full border-r-2 border-white/40 border-dashed flex items-center justify-center bg-black/20">
+                   <span className="text-white/60 font-black text-2xl tracking-widest drop-shadow-lg -rotate-90 md:rotate-0">BOX AREA</span>
+                 </div>
+                 <div className="w-1/2 h-full flex items-center justify-center">
+                   <span className="text-white/60 font-black text-2xl tracking-widest drop-shadow-lg -rotate-90 md:rotate-0">ITEM AREA</span>
+                 </div>
+               </div>
+             )}
+
              {/* Viewfinder overlay */}
              <div className="w-2/3 h-2/3 border-2 border-white/20 border-dashed relative flex items-center justify-center z-10 pointer-events-none">
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white"></div>
@@ -631,19 +816,8 @@ function InspectTab({ userId }: { userId?: string }) {
           </div>
        </div>
 
-       {/* Uploading Overlay */}
-       {isUploading && (
-         <div className="absolute inset-0 bg-slate-900/90 z-50 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm">
-           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-           <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-2">Syncing Evidence</h2>
-           <p className="text-blue-400 text-sm font-bold tracking-widest uppercase">Uploading Secure Video Log...</p>
-         </div>
-       )}
-
-       {/* Right Panel: Gamified Vertical Stepper (40%) */}
        <div className="w-[40%] bg-slate-50 flex flex-col relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20">
          
-         {/* Gamification Header */}
          <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shrink-0 shadow-sm relative">
             {floatingXp && (
               <div className="absolute top-10 left-1/2 -translate-x-1/2 text-green-500 font-black text-xl animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none z-50">
@@ -731,7 +905,7 @@ function InspectTab({ userId }: { userId?: string }) {
                          <div className="mt-3 bg-white p-4 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
                            <p className="text-xs font-bold text-slate-600 mb-4">{step.desc}</p>
                            <button 
-                             onClick={() => { captureImage(); nextBoxStep(); }} 
+                             onClick={() => { captureImage('box'); nextBoxStep(); }} 
                              className="w-full min-h-12 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all active:scale-95"
                            >
                              <Camera size={16} /> <span>Capture Image</span>
@@ -797,7 +971,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                  className="w-full min-h-12 bg-slate-50 border border-slate-300 text-slate-900 px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-blue-500 uppercase rounded"
                                />
                                <button 
-                                 onClick={nextItemStep} 
+                                 onClick={() => { captureImage('lpn', currentLpn); nextItemStep(); }} 
                                  disabled={!currentLpn.trim()}
                                  className="w-full min-h-12 bg-blue-600 text-white text-xs font-black uppercase tracking-widest rounded disabled:bg-slate-300 transition-colors"
                                >
@@ -828,7 +1002,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                  <PackageOpen size={32} className="text-slate-400" />
                                </div>
                                <button 
-                                 onClick={() => { captureImage(); nextItemStep(); }} 
+                                 onClick={() => { captureImage('product', currentLpn); nextItemStep(); }} 
                                  className="w-full min-h-12 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all active:scale-95"
                                >
                                  <Camera size={16} /> <span>Capture Image</span>

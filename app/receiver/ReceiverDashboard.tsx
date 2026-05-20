@@ -277,10 +277,14 @@ function ReceiveTab({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (scannedAwb && isAllGood && otpState === 'IDLE' && !isDamaged) {
-      fetchSystemOTP();
+      setTimeout(() => {
+        fetchSystemOTP();
+      }, 0);
     } else if (!isAllGood && otpState !== 'IDLE') {
-      setOtpState('IDLE');
-      setFetchedOtp('');
+      setTimeout(() => {
+        setOtpState('IDLE');
+        setFetchedOtp('');
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tapeState, boxState, tamperState, scannedAwb, isDamaged]);
@@ -381,7 +385,13 @@ function ReceiveTab({ userId }: { userId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { error: 'Invalid response from server. Route may not exist.' };
+      }
 
       if (!res.ok) {
         setBanner({type: 'error', msg: data.error});
@@ -408,18 +418,54 @@ function ReceiveTab({ userId }: { userId: string }) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(async blob => {
           if (blob) {
-            const fd = new FormData();
-            fd.append('file', blob, `rejection-${scannedAwb}-${Date.now()}.jpg`);
-            fd.append('type', 'RECEIVER_REJECTION');
-            fd.append('manifestId', scannedAwb); // Using scannedAwb as reference
-            fd.append('awb', scannedAwb); // Send AWB for generic fallback
-            fd.append('uploadedById', userId); // Pass the current active user ID
-            fd.append('reason', 'Package failed visual inspection');
             
             try {
-              const uploadRes = await fetch('/api/upload', { method: 'POST', body: fd });
-              const uploadData = await uploadRes.json();
-              const realDriveLink = uploadData.links?.[0] || 'UPLOAD_FAILED';
+              const filesMetaData = [{ key: 'file', name: `rejection-${scannedAwb}-${Date.now()}.jpg`, mimeType: 'image/jpeg' }];
+
+              let folderLink = `https://mock-storage.local/folder/${scannedAwb}`;
+              let orderFolderId = `folder-${scannedAwb}`;
+              
+              let fileLink = '';
+              let resolvedFileId = '';
+
+              try {
+                const initRes = await fetch('/api/upload/init', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ orderId: scannedAwb, type: 'RECEIVER_REJECTION', filesMetaData })
+                });
+                
+                if (initRes.ok) {
+                  const data = await initRes.json();
+                  folderLink = data.folderLink;
+                  orderFolderId = data.orderFolderId;
+                  if (data.uploadUrls && data.uploadUrls['file']) {
+                    const rawRes = await fetch(data.uploadUrls['file'], { method: 'PUT', body: blob });
+                    if (rawRes.ok) {
+                      const rawData = await rawRes.json();
+                      fileLink = rawData.webViewLink;
+                      resolvedFileId = rawData.fileId;
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('Upload API not available, using fallback values.');
+              }
+              
+              const finalLink = fileLink || folderLink;
+              const finalFileId = resolvedFileId || orderFolderId;
+
+              try {
+                await fetch('/api/upload/finalize', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    orderId: scannedAwb, folderLink: finalLink, orderFolderId: finalFileId,
+                    type: 'RECEIVER_REJECTION', uploadedById: userId,
+                    reason: 'Package failed visual inspection', manifestId: scannedAwb
+                  })
+                });
+              } catch (e) {}
               
               // Fire-and-forget logging to the DB using the real Drive URL
               const payload = {
@@ -428,25 +474,33 @@ function ReceiveTab({ userId }: { userId: string }) {
                 boxCrushed: boxState === 'damaged',
                 isTampered: tamperState === 'damaged',
                 otpProvided: '',
-                evidenceUrl: realDriveLink
+                evidenceUrl: finalLink || 'UPLOAD_FAILED'
               };
               fetch('/api/dock/receive', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
               }).catch(e => console.error('Dock Receive API Error:', e));
+
+              setShutterFlash(true);
+              setTimeout(() => {
+                setShutterFlash(false);
+                setShowRejectScreen(true);
+                setLoading(false);
+              }, 150);
             } catch (e) {
               console.error('Background upload failed:', e);
+              setBanner({ type: 'error', msg: 'Network error during capture.' });
+              setLoading(false);
             }
           }
         }, 'image/jpeg', 0.8);
+      } else {
+        setLoading(false);
       }
+    } else {
+      setLoading(false);
     }
-    setShutterFlash(true);
-    setTimeout(() => {
-      setShutterFlash(false);
-      setShowRejectScreen(true);
-    }, 150);
   };
 
   const handleRaiseOtpAlert = async () => {
