@@ -1,0 +1,46 @@
+name: Prisma Migrate & Seed
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  migrate-and-seed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run Prisma migrations
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run seed script
+        run: node prisma/seed.js
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPER_ADMIN_EMAIL: ${{ secrets.SUPER_ADMIN_EMAIL || 'prabhakar16032004@gmail.com' }}
+
+      - name: Notify on success
+        if: success()
+        run: echo "✅ Migrations and seed completed successfully!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Migrations or seed failed. Check logs above."
