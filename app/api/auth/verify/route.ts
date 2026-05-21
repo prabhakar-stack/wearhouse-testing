@@ -29,12 +29,12 @@ export async function POST(req: Request) {
     }
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role, name: user.name || null },
       JWT_SECRET,
       { expiresIn: "12h" },
     );
 
-    const response = NextResponse.json({ success: true, role: user.role });
+    const response = NextResponse.json({ success: true, role: user.role, name: user.name || null });
     response.cookies.set("session", token, {
       httpOnly: true,
       secure: isProduction,

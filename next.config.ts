@@ -19,12 +19,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  output: 'standalone',
   transpilePackages: ['motion'],
-  serverActions: {
-    bodySizeLimit: '500mb',
-  },
   experimental: {
+    serverActions: {
+      bodySizeLimit: '500mb',
+    },
     // Adding a comment here to force the Next.js dev server to restart.
     // This ensures it detects the newly created /api/upload API routes.
   },

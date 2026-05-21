@@ -21,16 +21,12 @@ export async function GET(req: Request) {
       },
       select: {
         id: true,
-        trackingAwb: true,
+        trackingId: true,
         receivedAt: true,
-        returnItems: {
+        orders: {
           select: {
-            order: {
-              select: {
-                marketplace: true,
-                platformOrderId: true
-              }
-            }
+            marketplace: true,
+            platformOrderId: true
           }
         }
       },
@@ -39,7 +35,23 @@ export async function GET(req: Request) {
       }
     });
 
-    return NextResponse.json({ ledger });
+    const formattedLedger = ledger.map(m => {
+      const returnItems = (m.orders || []).map(o => ({
+        order: {
+          marketplace: o.marketplace,
+          platformOrderId: o.platformOrderId
+        }
+      }));
+
+      return {
+        id: m.id,
+        trackingId: m.trackingId,
+        receivedAt: m.receivedAt,
+        returnItems
+      };
+    });
+
+    return NextResponse.json({ ledger: formattedLedger });
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal error' }, { status: 500 });

@@ -1,1 +1,16 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@theme {
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #000000;
+  --color-brand-accent: #FF6700;
+  --color-brand-highlight: #FFF700;
+  --color-text-main: #313079;
+}
+
+body {
+  @apply bg-white text-[#313079] font-sans antialiased;
+}

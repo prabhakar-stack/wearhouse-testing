@@ -21,17 +21,33 @@ export async function POST(req: Request) {
     }
 
     const manifest = await prisma.manifest.findUnique({
-      where: { id: manifestId }
+      where: { id: manifestId },
+      include: {
+        orders: {
+          include: {
+            returnItems: {
+              select: { lpn: true, condition: true }
+            }
+          }
+        }
+      }
     });
 
     if (!manifest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
+    // Status validation: only IN_INSPECTION manifests can be evaluated
+    // Also allow AT_DOCK for backwards compatibility during transition
+    if (!['IN_INSPECTION', 'AT_DOCK'].includes(manifest.status)) {
+      return NextResponse.json({ 
+        error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.` 
+      }, { status: 400 });
+    }
+
     // Rule - Missing Item (L3 Alert)
     if (isMissingItemFlagged) {
       await prisma.$transaction(async (tx) => {
-        // Upsert inspection to ensure it exists
         await tx.inspection.upsert({
           where: { manifestId: manifest.id },
           update: {
@@ -59,11 +75,30 @@ export async function POST(req: Request) {
           }
         });
         
+        // Missing items always go to CLAIMS_STAGING
         await tx.manifest.update({
           where: { id: manifest.id },
+          data: { status: 'CLAIMS_STAGING' }
+        });
+
+        // Create a generic evidence entry for the missing items (no URLs)
+        const placeholderLpn = `MISSING-${manifest.trackingId}-${Date.now()}`;
+        const firstOrderId = manifest.orders?.[0]?.platformOrderId || null;
+        await tx.evidence.create({
           data: {
-            status: 'CLAIMS_STAGING' // Usually it goes to CLAIMS_STAGING if it's an L3 alert
+            lpn: placeholderLpn,
+            orderId: firstOrderId,
+            reason: 'missing',
+            type: 'RECEIVER_REJECTION',
+            manifestId: manifest.id,
+            // other optional fields remain null
           }
+        });
+
+        // Increment inspector's itemsProcessed
+        await tx.user.update({
+          where: { id: userId },
+          data: { itemsProcessed: { increment: itemsScanned || 1 } }
         });
       });
 
@@ -71,7 +106,7 @@ export async function POST(req: Request) {
         success: true, 
         message: 'L3 Alert raised for missing items.', 
         l3Alert: true 
-      }, { status: 200 }); // Return special alert payload
+      }, { status: 200 });
     }
 
     // Default Success Path
@@ -95,12 +130,35 @@ export async function POST(req: Request) {
         }
       });
 
+      // Determine target status based on return item conditions
+      // If ANY item is BAD (PRODUCT_DAMAGED, WRONG_ITEM, BAD_FAKE_PRODUCT) → CLAIMS_STAGING
+      // Otherwise → INSPECTED (can go to RECOVERED_TO_INVENTORY)
+      const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING'];
+      
+      // Re-fetch return items to get the latest conditions (may have been updated during inspection)
+      const latestItems = await tx.returnItem.findMany({
+        where: { order: { manifestId: manifest.id } },
+        select: { condition: true }
+      });
+
+      const hasClaimableItems = latestItems.some(
+        item => item.condition && claimableConditions.includes(item.condition)
+      );
+
+      const targetStatus = hasClaimableItems ? 'CLAIMS_STAGING' : 'INSPECTED';
+
       await tx.manifest.update({
         where: { id: manifest.id },
-        data: {
-          status: 'INSPECTED'
-        }
+        data: { status: targetStatus }
       });
+
+      // Increment inspector's itemsProcessed
+      await tx.user.update({
+        where: { id: userId },
+        data: { itemsProcessed: { increment: itemsScanned || 1 } }
+      });
+
+      console.log(`[Inspector Evaluate] Manifest ${manifest.trackingId} → ${targetStatus}. ${hasClaimableItems ? 'BAD items found, routing to claims.' : 'All items OK.'}`);
     });
 
     return NextResponse.json({ success: true, message: 'Inspection completed successfully' });

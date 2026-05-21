@@ -4,10 +4,10 @@ import path from 'path';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
-    const { filename } = params;
+    const { filename } = await params;
     const filePath = path.join(process.cwd(), 'uploads', filename);
 
     if (!fs.existsSync(filePath)) {

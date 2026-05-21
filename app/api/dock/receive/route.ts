@@ -4,31 +4,33 @@ import { prisma } from '@/lib/prisma';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { trackingAwb, tapeIntact, boxCrushed, isTampered, otpProvided, evidenceUrl } = body;
+    const { trackingId, tapeIntact, boxCrushed, isTampered, otpProvided, evidenceUrl } = body;
 
-    if (!trackingAwb) {
-      return NextResponse.json({ error: 'Tracking AWB is required' }, { status: 400 });
+    if (!trackingId) {
+      return NextResponse.json({ error: 'Tracking ID is required' }, { status: 400 });
     }
 
-    console.log(`[Dock Receive] Intake recorded for AWB: ${trackingAwb}`, body);
+    const userId = req.headers.get('x-user-id');
+
+    console.log(`[Dock Receive] Intake recorded for Tracking ID: ${trackingId}`, body);
 
     const isDamaged = !tapeIntact || boxCrushed || isTampered;
 
     // Resolve Manifest
     let manifest = await prisma.manifest.findUnique({
-      where: { trackingAwb }
+      where: { trackingId }
     });
 
     if (!manifest) {
       manifest = await prisma.manifest.create({
         data: {
-          trackingAwb,
+          trackingId,
           status: 'EXPECTED',
           courierName: 'Unknown',
           expectedDate: new Date(),
         }
       });
-      console.log(`[Dock Receive Dynamic Create] Created missing Manifest for AWB: ${trackingAwb}`);
+      console.log(`[Dock Receive Dynamic Create] Created missing Manifest for Tracking ID: ${trackingId}`);
     }
 
     await prisma.$transaction(async (tx) => {
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
       await tx.manifest.update({
         where: { id: manifest.id },
         data: {
-          status: isDamaged ? 'EXPECTED' : 'AT_DOCK', // Remains expected if rejected, otherwise dock intake complete
+          status: isDamaged ? 'EXPECTED' : 'AT_DOCK',
           receivedAt: isDamaged ? null : new Date()
         }
       });
@@ -51,6 +53,38 @@ export async function POST(req: NextRequest) {
           }
         });
         console.log(`[Dock Receive Dispute Alert] Created L1 Dispute for manifest: ${manifest.id}`);
+      }
+
+      // Create COURIER_TO_RECEIVER handshake when package is accepted (not damaged)
+      if (!isDamaged && userId) {
+        // Check if handshake already exists to avoid duplicates
+        const existingHandshake = await tx.handshake.findFirst({
+          where: {
+            manifestId: manifest.id,
+            type: 'COURIER_TO_RECEIVER',
+          }
+        });
+
+        if (!existingHandshake) {
+          await tx.handshake.create({
+            data: {
+              manifestId: manifest.id,
+              receiverId: userId,
+              type: 'COURIER_TO_RECEIVER',
+              timestamp: new Date(),
+            }
+          });
+          console.log(`[Dock Receive Handshake] Created COURIER_TO_RECEIVER handshake for Tracking ID: ${trackingId}, receiver: ${userId}`);
+        }
+
+        // Increment receiver's itemsProcessed
+        await tx.user.update({
+          where: { id: userId },
+          data: { itemsProcessed: { increment: 1 } }
+        }).catch(() => {
+          // Silently fail if user doesn't exist (edge case)
+          console.warn(`[Dock Receive] Could not increment itemsProcessed for user ${userId}`);
+        });
       }
     });
 

@@ -5,16 +5,7 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding Cubelelo Returns Management Support Data...');
 
-  // 1. Create a SUPER_ACCESS user and other required users
-  const superAdmin = await prisma.user.upsert({
-    where: { email: 'admin@cubelelo.com' },
-    update: {},
-    create: {
-      email: 'admin@cubelelo.com',
-      role: 'SUPER_ACCESS',
-    },
-  });
-
+  // 1. Create required baseline users (SUPER_ACCESS and ADMIN are managed manually, not auto-seeded)
   const receiver = await prisma.user.upsert({
     where: { email: 'receiver@cubelelo.com' },
     update: {},
@@ -34,88 +25,111 @@ async function main() {
   });
 
   // 2. Clear old data that might conflict
+  await prisma.evidence.deleteMany();
   await prisma.reimbursement.deleteMany();
   await prisma.returnItem.deleteMany();
   await prisma.inspection.deleteMany();
   await prisma.handshake.deleteMany();
   await prisma.manifest.deleteMany();
   await prisma.order.deleteMany();
-  await prisma.removalShipment.deleteMany();
 
-  // 3. Create dummy data for 2 Orders (1 Amazon, 1 Shopify)
-  const orderAmazon = await prisma.order.create({
+  // 3. Create Multi-Item expected Manifest for receiver and inspector evaluation
+  const multiTrackingId = 'AWB-MULTI-ITEM-777';
+  const manifestMulti = await prisma.manifest.create({
+    data: {
+      trackingId: multiTrackingId,
+      status: 'EXPECTED',
+      marketplace: 'AMAZON',
+      courierName: 'Delhivery',
+      expectedDate: new Date(),
+    }
+  });
+
+  // Create 1 single order representing the compressed platformOrderId
+  const order = await prisma.order.create({
     data: {
       marketplace: 'AMAZON',
-      platformOrderId: '407-1234567-8901234',
-      purchaseDate: new Date(Date.now() - 10 * 24 * 3600 * 1000), // 10 days ago
-      customerName: 'Rahul Kumar',
-      totalAmount: 2599.00,
+      platformOrderId: multiTrackingId,
+      purchaseDate: new Date(),
+      customerName: 'Aarav Mehta',
+      totalAmount: 13894.00, // Sum of 499 + 399 + (4599*2) + (1899*2)
+      fulfillmentChannel: 'FBA',
+      manifestId: manifestMulti.id,
     }
   });
 
-  const orderShopify = await prisma.order.create({
-    data: {
-      marketplace: 'SHOPIFY',
-      platformOrderId: 'CUB-98765',
-      purchaseDate: new Date(Date.now() - 5 * 24 * 3600 * 1000), // 5 days ago
-      customerName: 'Priya Sharma',
-      totalAmount: 899.00,
-    }
-  });
-
-  // 4. Create a Manifest and link it to ReturnItem using real Cubelelo speedcube SKUs
-  const manifestAmazon = await prisma.manifest.create({
-    data: {
-      trackingAwb: 'AWB-AMZ-001',
-      status: 'AT_DOCK',
-      courierName: 'Delhivery',
-      expectedDate: new Date(Date.now() - 1 * 24 * 3600 * 1000),
-      receivedAt: new Date(),
-    }
-  });
-
-  const manifestShopify = await prisma.manifest.create({
-    data: {
-      trackingAwb: 'AWB-SHP-002',
-      status: 'EXPECTED',
-      courierName: 'BlueDart',
-      expectedDate: new Date(Date.now() + 1 * 24 * 3600 * 1000),
-    }
-  });
-
-  // ReturnItem for Amazon Order linked to ManifestAmazon
+  // Create 6 ReturnItems (LPNs) associated with this Order
   await prisma.returnItem.create({
     data: {
-      orderId: orderAmazon.id,
-      manifestId: manifestAmazon.id,
-      sku: 'GAN-13-MAGLEV-UV',
-      lpn: 'LPN-AMZ-9991',
+      orderId: order.platformOrderId,
+      sku: 'CUBE-PRO-LITE',
+      lpn: 'LPN-MULTI-001',
       quantity: 1,
-      returnReason: 'Defective/Does not work properly',
-      customerComments: 'Magnets are loose inside the pieces',
-      condition: 'PRODUCT_DAMAGED'
+      returnReason: 'Quality not as expected',
+      itemPrice: 499.00,
+      productName: 'Cubelelo Pro Lite 3x3 Speed Cube',
     }
   });
 
-  // ReturnItem for Shopify Order linked to ManifestShopify
   await prisma.returnItem.create({
     data: {
-      orderId: orderShopify.id,
-      manifestId: manifestShopify.id,
-      sku: 'MOYU-RS3M-2020',
-      quantity: 2,
-      returnReason: 'No longer needed',
-      customerComments: 'Ordered by mistake',
+      orderId: order.platformOrderId,
+      sku: 'CUBE-DRIFT-3X3',
+      lpn: 'LPN-MULTI-002',
+      quantity: 1,
+      returnReason: 'Performance issue',
+      itemPrice: 399.00,
+      productName: 'Cubelelo Drift 3x3 Magnetic Cube',
     }
   });
 
-  // 5. Create a Handshake for the AT_DOCK manifest
-  await prisma.handshake.create({
+  // GAN-11-PRO (2 units -> 2 distinct LPNs)
+  await prisma.returnItem.create({
     data: {
-      manifestId: manifestAmazon.id,
-      receiverId: receiver.id,
-      type: 'COURIER_TO_RECEIVER',
-      timestamp: new Date()
+      orderId: order.platformOrderId,
+      sku: 'GAN-11-PRO',
+      lpn: 'LPN-MULTI-003',
+      quantity: 1,
+      returnReason: 'Scratched exterior',
+      itemPrice: 4599.00,
+      productName: 'GAN 11 M Pro UV 3x3',
+    }
+  });
+
+  await prisma.returnItem.create({
+    data: {
+      orderId: order.platformOrderId,
+      sku: 'GAN-11-PRO',
+      lpn: 'LPN-MULTI-004',
+      quantity: 1,
+      returnReason: 'Scratched exterior',
+      itemPrice: 4599.00,
+      productName: 'GAN 11 M Pro UV 3x3',
+    }
+  });
+
+  // MOYU-SUPER-RS3M (2 units -> 2 distinct LPNs)
+  await prisma.returnItem.create({
+    data: {
+      orderId: order.platformOrderId,
+      sku: 'MOYU-SUPER-RS3M',
+      lpn: 'LPN-MULTI-005',
+      quantity: 1,
+      returnReason: 'Missing accessories',
+      itemPrice: 1899.00,
+      productName: 'MoYu Super RS3M Ball-Core',
+    }
+  });
+
+  await prisma.returnItem.create({
+    data: {
+      orderId: order.platformOrderId,
+      sku: 'MOYU-SUPER-RS3M',
+      lpn: 'LPN-MULTI-006',
+      quantity: 1,
+      returnReason: 'Defective tensioning system',
+      itemPrice: 1899.00,
+      productName: 'MoYu Super RS3M Ball-Core',
     }
   });
 

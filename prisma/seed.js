@@ -1,50 +1,64 @@
 const { PrismaClient } = require('@prisma/client');
+
 const prisma = new PrismaClient();
 
 async function main() {
-  const superAccessEmail = process.env.SUPER_ADMIN_EMAIL || 'prabhakar16032004@gmail.com';
-  
-  console.log(`Checking setup for users`);
+  // Clean up existing data
+  await prisma.evidence.deleteMany();
+  await prisma.returnItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.manifest.deleteMany();
 
-  const user = await prisma.user.upsert({
-    where: { email: superAccessEmail },
-    update: {
-      role: 'SUPER_ACCESS',
-    },
-    create: {
-      email: superAccessEmail,
-      role: 'SUPER_ACCESS',
+  // Create Manifest
+  const manifest = await prisma.manifest.create({
+    data: {
+      trackingId: 'TRK123',
+      status: 'IN_INSPECTION',
+      marketplace: 'AMAZON',
+      handshakes: { create: [] },
     },
   });
 
-  const superAdmin2 = await prisma.user.upsert({
-    where: { email: 'admin@cubelelo.com' },
-    update: {
-      role: 'SUPER_ACCESS',
-    },
-    create: {
-      email: 'admin@cubelelo.com',
-      role: 'SUPER_ACCESS',
-    },
-  });
-
-  const warehouseAdmin = await prisma.user.upsert({
-    where: { email: 'warehouse@cubelelo.com' },
-    update: {
-      role: 'ADMIN',
-    },
-    create: {
-      email: 'warehouse@cubelelo.com',
-      role: 'ADMIN',
+  // Create Order linked to Manifest
+  const order = await prisma.order.create({
+    data: {
+      platformOrderId: 'ORD001',
+      purchaseDate: new Date('2024-01-01'),
+      marketplace: 'AMAZON',
+      // Connect to manifest via relation field
+      manifest: { connect: { id: manifest.id } },
+      returnItems: { create: [] },
     },
   });
 
-  console.log('Seed completed successfully. Users created/updated!');
+  // Create ReturnItems (LPN wise)
+  await prisma.returnItem.createMany({
+    data: [
+      {
+        lpn: 'LPN001',
+        sku: 'SKU-A',
+        orderId: order.platformOrderId,
+        quantity: 1,
+        returnReason: 'Damaged',
+        condition: null,
+      },
+      {
+        lpn: 'LPN002',
+        sku: 'SKU-B',
+        orderId: order.platformOrderId,
+        quantity: 2,
+        returnReason: 'Wrong Item',
+        condition: null,
+      },
+    ],
+  });
+
+  console.log('Seed data inserted');
 }
 
 main()
   .catch((e) => {
-    console.error('Error during seeding:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {

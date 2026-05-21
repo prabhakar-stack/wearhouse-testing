@@ -8,6 +8,7 @@ export async function GET(req: Request) {
       select: {
         id: true,
         email: true,
+        name: true,
         role: true,
         itemsProcessed: true,
         accuracyRate: true,
@@ -50,6 +51,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Failed to delete user.' }, { status: 500 });
   }
 }
+
 export async function POST(req: Request) {
   try {
     const role = req.headers.get('x-user-role');
@@ -66,13 +68,13 @@ export async function POST(req: Request) {
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
+        name: name?.trim() || null,
         role: targetRole
       }
     });
 
     return NextResponse.json({ user });
   } catch (error: any) {
-    // Handle Prisma unique constraint violation or others
     return NextResponse.json({ error: error.message || 'Failed to create user' }, { status: 500 });
   }
 }

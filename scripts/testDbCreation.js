@@ -8,16 +8,16 @@ async function test() {
   const testAwb = "AWB-TEST-" + Date.now();
   console.log("👉 Generated Test AWB:", testAwb);
 
-  // 1. Simulate Dock Receive logic for a non-existent AWB
+  // 1. Simulate Dock Receive logic for a non-existent tracking ID
   let manifest = await prisma.manifest.findUnique({
-    where: { trackingAwb: testAwb }
+    where: { trackingId: testAwb }
   });
   console.log("🔍 Manifest pre-check (should be null):", manifest ? "Found" : "Null");
 
   if (!manifest) {
     manifest = await prisma.manifest.create({
       data: {
-        trackingAwb: testAwb,
+        trackingId: testAwb,
         status: 'EXPECTED',
         courierName: 'Unknown',
         expectedDate: new Date(),
@@ -30,10 +30,9 @@ async function test() {
   const testLpn = "LPN-TEST-" + Math.floor(Math.random() * 10000);
   console.log("👉 Generated Test LPN:", testLpn);
 
-  let returnItem = await prisma.returnItem.findFirst({
+  let returnItem = await prisma.returnItem.findUnique({
     where: {
       lpn: testLpn,
-      manifestId: manifest.id,
     }
   });
   console.log("🔍 ReturnItem pre-check (should be null):", returnItem ? "Found" : "Null");
@@ -50,6 +49,7 @@ async function test() {
           platformOrderId: platformOrderId,
           marketplace: 'AMAZON',
           purchaseDate: new Date(),
+          manifestId: manifest.id,
         },
       });
       console.log("✅ Dynamically created Order:", order);
@@ -57,8 +57,7 @@ async function test() {
 
     returnItem = await prisma.returnItem.create({
       data: {
-        orderId: order.id,
-        manifestId: manifest.id,
+        orderId: order.platformOrderId,
         sku: testLpn,
         lpn: testLpn,
         quantity: 1,
@@ -72,12 +71,14 @@ async function test() {
   // 3. Simulate Evidence record creation
   const ev = await prisma.evidence.create({
     data: {
-      driveFileId: "file-mock-id-" + Date.now(),
-      driveLink: "https://drive.google.com/mock-file-link",
+      lpn: testLpn,
+      orderId: testAwb,
+      orderDriveLink: "https://drive.google.com/mock-folder-link",
+      lpnDriveLink: "https://drive.google.com/mock-file-link",
       type: "PRODUCT_DAMAGE_PHOTO",
       reason: "Verified upload flow",
       manifestId: manifest.id,
-      returnItemId: returnItem.id,
+      returnItemId: returnItem.lpn,
     }
   });
   console.log("✅ Dynamically created Evidence:", ev);

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get('authorization');
-    const expectedToken = `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`; // Ensure CRON_SECRET is set
+    const expectedToken = `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`;
 
     if (authHeader !== expectedToken) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,82 +20,132 @@ export async function GET(req: Request) {
       l4Alerts: 0
     };
 
+    // Helper: create alert only if one doesn't already exist (unresolved) for same manifest + type
+    const createAlertIfNew = async (data: {
+      level: 'L1' | 'L2' | 'L3' | 'L4';
+      type: string;
+      title: string;
+      description: string;
+      manifestId?: string;
+      targetUserId?: string;
+    }) => {
+      const existing = await prisma.alert.findFirst({
+        where: {
+          type: data.type,
+          manifestId: data.manifestId || undefined,
+          resolved: false,
+        }
+      });
+      if (existing) return null; // Already exists, skip
+
+      return prisma.alert.create({ data });
+    };
+
     // 1. The 10:30 AM SLA Breach (L2 Alert)
-    // Query for any Manifest where status is AT_DOCK, receivedAt is less than today's date
-    // AND there is no RECEIVER_TO_INSPECTOR handshake.
     const l2Manifests = await prisma.manifest.findMany({
       where: {
         status: 'AT_DOCK',
-        receivedAt: {
-          lt: today
-        },
+        receivedAt: { lt: today },
         handshakes: {
-          none: {
-            type: 'RECEIVER_TO_INSPECTOR'
-          }
+          none: { type: 'RECEIVER_TO_INSPECTOR' }
         }
       }
     });
 
     for (const manifest of l2Manifests) {
-      console.warn(`L2 ALERT: SLA Breach on AWB ${manifest.trackingAwb}. Emailing Admin.`);
-      mockEmailAdmin(manifest.trackingAwb, 'L2 SLA Breach');
-      results.l2Alerts++;
+      const alert = await createAlertIfNew({
+        level: 'L2',
+        type: 'SLA_BREACH',
+        title: `10:30 AM Handover SLA Breach`,
+        description: `Package ${manifest.trackingId} received yesterday has not been handed over to an inspector. Received at: ${manifest.receivedAt ? new Date(manifest.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : 'Unknown'}.`,
+        manifestId: manifest.id,
+      });
+      if (alert) results.l2Alerts++;
     }
 
-    // 2. Claims Nudges
+    // 2. Claims Nudges & Escalations
     const claimsManifests = await prisma.manifest.findMany({
-      where: {
-        status: 'CLAIMS_STAGING',
-      },
-      include: {
-        inspection: true
-      }
+      where: { status: 'CLAIMS_STAGING' },
+      include: { inspection: true }
     });
 
     const hours48 = 48 * 60 * 60 * 1000;
     const hours72 = 72 * 60 * 60 * 1000;
 
     for (const manifest of claimsManifests) {
-      const startTime = manifest.inspection?.completedAt || manifest.receivedAt || manifest.createdAt; // rough proxy
-      if(!startTime) continue;
+      const startTime = manifest.inspection?.completedAt || manifest.receivedAt || manifest.createdAt;
+      if (!startTime) continue;
       const timeStaged = now.getTime() - new Date(startTime).getTime();
 
       if (timeStaged > hours72) {
-        console.warn(`ESCALATION: Alerting Warehouse Admin - Claim Stalled. AWB: ${manifest.trackingAwb}`);
-        results.escalations++;
+        const alert = await createAlertIfNew({
+          level: 'L3',
+          type: 'CLAIM_STALLED',
+          title: `Claim Stalled Over 72 Hours`,
+          description: `Claim for tracking ID ${manifest.trackingId} has been in staging for over 72 hours without action. Inspection completed at: ${new Date(startTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
+          manifestId: manifest.id,
+        });
+        if (alert) results.escalations++;
       } else if (timeStaged > hours48) {
-        console.warn(`NUDGE: Reminding Claims Specialist. AWB: ${manifest.trackingAwb}`);
-        results.nudges++;
+        const alert = await createAlertIfNew({
+          level: 'L1',
+          type: 'CLAIM_NUDGE',
+          title: `Claim Pending — 48 Hour Nudge`,
+          description: `Claim for tracking ID ${manifest.trackingId} has been pending for 48+ hours. Claims specialist should begin filing.`,
+          manifestId: manifest.id,
+        });
+        if (alert) results.nudges++;
       }
     }
 
     // 3. Ghost Delivery (L4 Alert)
-    // EXPECTED, expectedDate > 48 hours ago
     const hours48Ago = new Date(now.getTime() - hours48);
-    
+
     const ghostDeliveries = await prisma.manifest.findMany({
       where: {
         status: 'EXPECTED',
-        expectedDate: {
-          lt: hours48Ago
-        }
+        expectedDate: { lt: hours48Ago }
       }
     });
 
     for (const ghost of ghostDeliveries) {
-      console.error(`L4 CRITICAL: Ghost Delivery detected for AWB ${ghost.trackingAwb}. Initiating leadership WhatsApp protocol.`);
-      results.l4Alerts++;
+      const alert = await createAlertIfNew({
+        level: 'L4',
+        type: 'GHOST_DELIVERY',
+        title: `Ghost Delivery — Courier Says Delivered`,
+        description: `Package ${ghost.trackingId} expected ${ghost.expectedDate ? new Date(ghost.expectedDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : 'Unknown'} has not been scanned at the warehouse after 48+ hours. Possible missing delivery.`,
+        manifestId: ghost.id,
+      });
+      if (alert) results.l4Alerts++;
     }
 
+    // 4. Missing Items from Inspection (L3 Alert)
+    const missingInspections = await prisma.inspection.findMany({
+      where: {
+        isMissingItems: true,
+        manifest: {
+          alerts: {
+            none: { type: 'MISSING_ITEMS', resolved: false }
+          }
+        }
+      },
+      include: { manifest: true }
+    });
+
+    for (const insp of missingInspections) {
+      await createAlertIfNew({
+        level: 'L3',
+        type: 'MISSING_ITEMS',
+        title: `Missing Items Detected in Inspection`,
+        description: `Inspection of tracking ID ${insp.manifest.trackingId} found missing items. Expected: ${insp.totalItemsExpected}, Scanned: ${insp.totalItemsScanned}.`,
+        manifestId: insp.manifestId,
+      });
+    }
+
+    console.log(`[Cron Escalations] Results:`, results);
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
     console.error('Cron job error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
-}
-
-function mockEmailAdmin(awb: string, type: string) {
-  // Placeholder for email function
-  // e.g. await sendEmail('admin@cubelelo.com', `Alert: ${type}`, `Please check AWB: ${awb}`);
 }

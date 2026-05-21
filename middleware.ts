@@ -34,6 +34,9 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set('x-user-id', payload.userId as string);
     requestHeaders.set('x-user-role', payload.role as string);
     requestHeaders.set('x-user-email', payload.email as string);
+    if (payload.name) {
+      requestHeaders.set('x-user-name', payload.name as string);
+    }
 
     return NextResponse.next({
       request: {

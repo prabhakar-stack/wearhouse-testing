@@ -5,6 +5,9 @@ import { AlertOctagon } from 'lucide-react';
 export default async function AdminPage() {
   const headersList = await headers();
   const role = headersList.get('x-user-role') || '';
+  const name = headersList.get('x-user-name') || '';
+  const email = headersList.get('x-user-email') || '';
+  const userId = headersList.get('x-user-id') || '';
   
   if (role !== 'SUPER_ACCESS' && role !== 'ADMIN') {
     return (
@@ -16,5 +19,5 @@ export default async function AdminPage() {
     );
   }
 
-  return <AdminDashboard role={role} />;
+  return <AdminDashboard role={role} name={name} email={email} userId={userId} />;
 }

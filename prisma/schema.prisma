@@ -24,6 +24,7 @@ enum PackageState {
   EXPECTED
   LOST_IN_TRANSIT
   AT_DOCK
+  IN_INSPECTION
   INSPECTED
   CLAIMS_STAGING
   CLAIM_RESOLVED
@@ -39,9 +40,29 @@ enum ItemCondition {
   BAD_FAKE_PRODUCT
 }
 
+// Mirrors Amazon IDR portal defect types — inspector selects when marking BAD
+enum InspectorDefectType {
+  WAREHOUSE_DAMAGE
+  CARRIER_DAMAGE
+  CUSTOMER_DAMAGE
+  DEFECTIVE
+  EXPIRED
+  WRONG_ITEM_RECEIVED
+  MISSING_PARTS_ACCESSORIES
+  NOT_AS_DESCRIBED
+  FAKE_COUNTERFEIT
+}
+
 enum HandshakeType {
   COURIER_TO_RECEIVER
   RECEIVER_TO_INSPECTOR
+}
+
+enum AlertLevel {
+  L1
+  L2
+  L3
+  L4
 }
 
 enum EvidenceType {
@@ -53,6 +74,7 @@ enum EvidenceType {
 model User {
   id               String       @id @default(uuid())
   email            String       @unique
+  name             String?
   role             Role
   itemsProcessed   Int          @default(0)
   accuracyRate     Float        @default(100.0)
@@ -63,22 +85,28 @@ model User {
   handshakesRecv   Handshake[]  @relation("Receiver")
   inspections      Inspection[]
   evidences        Evidence[]
+  alertsTargeted   Alert[]      @relation("AlertTarget")
+  alertsResolved   Alert[]      @relation("AlertResolver")
 }
 
 model Manifest {
   id               String       @id @default(uuid())
-  trackingAwb      String       @unique
+  trackingId       String       @unique
   status           PackageState
+  marketplace      Marketplace?
   courierName      String?
+  removalOrderId   String?        // Amazon removal order ID linking to RemovalShipment
   expectedDate     DateTime?
   receivedAt       DateTime?
   createdAt        DateTime     @default(now())
 
   handshakes       Handshake[]
   inspection       Inspection?
-  returnItems      ReturnItem[]
+  orders           Order[]
   disputes         Dispute[]
   evidences        Evidence[]
+  alerts           Alert[]
+  removalShipments RemovalShipment[]
 }
 
 model Handshake {
@@ -109,31 +137,40 @@ model Inspection {
 }
 
 model Order {
-  id               String       @id @default(uuid())
-  marketplace      Marketplace
-  platformOrderId  String       @unique
-  purchaseDate     DateTime
-  customerName     String?
-  totalAmount      Float?
+  marketplace        Marketplace
+  platformOrderId    String       @id // Amazon order-id or Shopify order_id
+  purchaseDate       DateTime
+  customerName       String?
+  totalAmount        Float?
+  fulfillmentChannel String?      // FBA / FBM / Shopify
+  imageUrl           String?      // Product image URL
+  manifestId         String?
+  manifest           Manifest?   @relation(fields: [manifestId], references: [id])
+  claimId               String?   // claim identifier after claim processing
 
-  returnItems      ReturnItem[]
+  returnItems        ReturnItem[]
 }
 
 model ReturnItem {
-  id               String         @id @default(uuid())
-  orderId          String
-  manifestId       String?
-  sku              String
-  lpn              String?
-  quantity         Int
-  returnReason     String
-  customerComments String?
-  condition        ItemCondition?
+  orderId              String
+  sku                  String
+  lpn                  String              @id // From AMZ_customer_returns.license-plate-number
+  asin                 String?             // From AMZ_customer_returns.asin
+  fnsku                String?             // From AMZ_customer_returns.fnsku
+  productName          String?             // Added to support product name per LPN
+  quantity             Int
+  returnReason         String              // From AMZ_customer_returns.reason
+  customerComments     String?             // From AMZ_customer_returns.customer-comments
+  amazonDisposition    String?             // From AMZ_customer_returns.detailed-disposition (SELLABLE, DAMAGED, etc.)
+  condition            ItemCondition?      // Inspector's grade (GOOD_SELLABLE, PRODUCT_DAMAGED, etc.)
+  inspectorDefectType  InspectorDefectType? // Amazon claim defect type dropdown — set when marking BAD
+  claimReason          String?
+  claimSubReason       String?
+  itemPrice            Float?              // Per-unit price for reimbursement calculation
 
-  order            Order          @relation(fields: [orderId], references: [id])
-  manifest         Manifest?      @relation(fields: [manifestId], references: [id])
-  reimbursement    Reimbursement?
-  evidences        Evidence[]
+  order                Order               @relation(fields: [orderId], references: [platformOrderId])
+  reimbursement        Reimbursement?
+  evidences            Evidence[]
 }
 
 model Reimbursement {
@@ -147,7 +184,7 @@ model Reimbursement {
   filedAt                 DateTime?
   resolvedAt              DateTime?
 
-  returnItem              ReturnItem @relation(fields: [returnItemId], references: [id])
+  returnItem              ReturnItem @relation(fields: [returnItemId], references: [lpn])
 }
 
 model Dispute {
@@ -162,35 +199,63 @@ model Dispute {
 }
 
 model RemovalShipment {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   removalOrderId   String
-  trackingNumber   String   @unique
+  trackingNumber   String    @unique
   shipmentDate     DateTime
   sku              String
   shippedQuantity  Int
   disposition      String
+  manifestId       String?   // Link to Manifest via tracking number match
+
+  manifest         Manifest? @relation(fields: [manifestId], references: [id])
 }
 
 model Evidence {
-  id           String      @id @default(uuid())
-  driveFileId  String
-  driveLink    String
-  type         EvidenceType
-  reason       String?
-  rawReference String?
-  uploadedById String?
-  manifestId   String?
-  returnItemId String?
-  createdAt    DateTime    @default(now())
+  id             String       @id @default(uuid())
+  lpn            String       @unique
+  orderId        String?
+  orderDriveLink String?
+  lpnDriveLink   String?
+  type           EvidenceType
+  reason         String?
+  rawReference   String?
+  uploadedById   String?
+  manifestId     String?
+  returnItemId   String?
+  claimReason    String?
+  claimSubReason String?
+  createdAt      DateTime     @default(now())
 
   manifest     Manifest?   @relation(fields: [manifestId], references: [id])
-  returnItem   ReturnItem? @relation(fields: [returnItemId], references: [id])
+  returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
   user         User?       @relation(fields: [uploadedById], references: [id])
 }
 
-model Video {
-  id        String   @id @default(uuid())
-  name      String
-  url       String
-  createdAt DateTime @default(now())
+model Alert {
+  id           String     @id @default(uuid())
+  level        AlertLevel
+  type         String     // e.g. "SLA_BREACH", "GHOST_DELIVERY", "CLAIM_STALLED", "MISSING_ITEMS"
+  title        String
+  description  String
+  manifestId   String?
+  targetUserId String?
+  resolved     Boolean    @default(false)
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolution   String?
+  createdAt    DateTime   @default(now())
+
+  manifest     Manifest?  @relation(fields: [manifestId], references: [id])
+  targetUser   User?      @relation("AlertTarget", fields: [targetUserId], references: [id])
+  resolvedBy   User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
+}
+
+model AlertSopStep {
+  id          String   @id @default(uuid())
+  alertType   String   // matches Alert.type, e.g. "SLA_BREACH"
+  stepOrder   Int
+  instruction String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

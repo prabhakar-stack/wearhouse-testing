@@ -6,6 +6,8 @@ export default async function ReceiverPage() {
   const headersList = await headers();
   const userId = headersList.get('x-user-id') || '';
   const role = headersList.get('x-user-role') || '';
+  const name = headersList.get('x-user-name') || '';
+  const email = headersList.get('x-user-email') || '';
   
   if (role !== 'RECEIVER' && role !== 'ADMIN' && role !== 'SUPER_ACCESS') {
     return (
@@ -17,5 +19,5 @@ export default async function ReceiverPage() {
     );
   }
 
-  return <ReceiverDashboard userId={userId} role={role} />;
+  return <ReceiverDashboard userId={userId} role={role} name={name} email={email} />;
 }

@@ -21,7 +21,7 @@ async function main() {
 
     const returnItems = await prisma.returnItem.findMany({
       take: 5,
-      select: { id: true, manifestId: true, sku: true, lpn: true }
+      select: { lpn: true, orderId: true, sku: true }
     });
     console.log('Recent return items:', JSON.stringify(returnItems, null, 2));
 
