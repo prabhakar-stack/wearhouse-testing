@@ -10,7 +10,8 @@
     "build": "cross-env NODE_ENV=production next build",
     "start": "next start",
     "lint": "eslint .",
-    "clean": "next clean"
+    "clean": "next clean",
+    "postbuild": "prisma migrate deploy"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
