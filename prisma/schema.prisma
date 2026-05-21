@@ -71,6 +71,13 @@ enum EvidenceType {
   PRODUCT_DAMAGE_PHOTO
 }
 
+model ProductStatus {
+  id         String       @id @default("current")
+  lpn        String
+  condition  ItemCondition
+  updatedAt  DateTime     @updatedAt
+}
+
 model User {
   id               String       @id @default(uuid())
   email            String       @unique

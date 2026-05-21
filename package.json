@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
-    "postbuild": "prisma migrate deploy"
+    "postbuild": "prisma migrate deploy",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
