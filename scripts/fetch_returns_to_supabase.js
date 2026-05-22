@@ -236,14 +236,13 @@ function getTotalAmount(row) {
 
 function getRemovalShipmentKey(row) {
   const tracking = pick(row.tracking_number, row.tracking);
-  const sku = pick(row.sku, "unknown_sku");
   if (tracking) {
-    return `${tracking}__${sku}`;
+    return tracking;
   }
 
   return pick(
-    row.removal_order_id && row.sku ? `removal_${row.removal_order_id}_${row.sku}` : null,
-    row.order_id && row.sku ? `removal_${row.order_id}_${row.sku}` : null,
+    row.removal_order_id ? `removal_${row.removal_order_id}` : null,
+    row.order_id ? `removal_${row.order_id}` : null,
   );
 }
 
@@ -553,10 +552,12 @@ async function upsertRemovalShipments(rows) {
         return null;
       }
 
-      const existing = await prisma.removalShipment.findFirst({
+      const existing = await prisma.removalShipment.findUnique({
         where: {
-          removalOrderId: mapped.removalOrderId,
-          sku: mapped.sku,
+          trackingNumber_sku: {
+            trackingNumber: mapped.trackingNumber,
+            sku: mapped.sku,
+          },
         },
       });
 
@@ -582,6 +583,43 @@ async function upsertRemovalShipments(rows) {
     saved.push(...groupSaved.filter(Boolean));
   }
 
+  return saved;
+}
+
+async function upsertCoreRemovalOrdersToOrders(rows) {
+  if (!rows || rows.length === 0) return [];
+
+  const saved = [];
+  for (const rawRow of rows) {
+    const row = normalizeRow(rawRow);
+    const orderId = getOrderId(row);
+    if (!orderId) continue;
+
+    const requestDate = toDate(pick(row.request_date), new Date());
+    const removalFee = toFloat(pick(row.removal_fee));
+
+    try {
+      const order = await prisma.order.upsert({
+        where: { platformOrderId: orderId },
+        update: {
+          marketplace: "AMAZON",
+          purchaseDate: requestDate,
+          totalAmount: removalFee,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+        create: {
+          marketplace: "AMAZON",
+          platformOrderId: orderId,
+          purchaseDate: requestDate,
+          totalAmount: removalFee,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+      });
+      saved.push(order);
+    } catch (e) {
+      console.error(`[ERROR] Failed to sync operational Order for Removal Order ${orderId}:`, e.message);
+    }
+  }
   return saved;
 }
 
@@ -629,6 +667,7 @@ async function fetchAndStoreRemovalOrders() {
   if (!reportData) return [];
   const rows = parseTSV(reportData.toString());
   console.log(`Parsed ${rows.length} removal order rows`);
+  await upsertCoreRemovalOrdersToOrders(rows);
   return upsertRemovalShipments(rows);
 }
 

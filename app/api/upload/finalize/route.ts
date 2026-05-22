@@ -4,10 +4,23 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 
+const ALLOWED_CONDITIONS = new Set([
+  'GOOD_SELLABLE',
+  'PACKAGING_DAMAGED',
+  'PRODUCT_DAMAGED',
+  'WRONG_ITEM',
+  'MISSING',
+  'BAD_FAKE_PRODUCT',
+]);
+
+function normalizeLpn(value: string) {
+  return value.trim().toUpperCase();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { orderId, folderLink, orderFolderId, type, uploadedById, reason, manifestId, lpnConditions } = body;
+    const { orderId, folderLink, orderFolderId, type, uploadedById, reason, manifestId, orderPlatformId, lpnConditions } = body;
 
     const trackingId = orderId || manifestId;
     if (!trackingId) {
@@ -21,8 +34,17 @@ export async function POST(req: NextRequest) {
       where: {
         OR: [
           { trackingId: trackingId },
-          { id: manifestId || '' }
+          { id: manifestId || '' },
+          { orders: { some: { platformOrderId: trackingId } } },
+          { orders: { some: { platformOrderId: orderPlatformId || '' } } },
         ]
+      },
+      include: {
+        orders: {
+          select: {
+            platformOrderId: true,
+          }
+        }
       }
     });
 
@@ -183,17 +205,41 @@ export async function POST(req: NextRequest) {
     }
 
     const evidenceRecordsCreated = [];
+    const isRejection = type === 'RECEIVER_REJECTION';
+
+    const manifestOrderIds = manifest.orders.map(order => order.platformOrderId);
+    const scopedOrderId =
+      typeof orderPlatformId === 'string' && orderPlatformId.trim()
+        ? orderPlatformId.trim()
+        : manifestOrderIds.includes(trackingId)
+          ? trackingId
+          : manifestOrderIds.length === 1
+            ? manifestOrderIds[0]
+            : null;
+
+    if (!isRejection && !scopedOrderId) {
+      return NextResponse.json(
+        { error: 'Missing orderPlatformId for a multi-order inspection.' },
+        { status: 400 },
+      );
+    }
+
+    if (!isRejection && scopedOrderId && !manifestOrderIds.includes(scopedOrderId)) {
+      return NextResponse.json(
+        { error: `Order ${scopedOrderId} does not belong to manifest ${manifest.trackingId}.` },
+        { status: 400 },
+      );
+    }
 
     // Query all expected ReturnItems for the current manifest to identify missing items
     const expectedItems = await prisma.returnItem.findMany({
       where: {
         order: {
           manifestId: manifest.id
-        }
+        },
+        ...(scopedOrderId ? { orderId: scopedOrderId } : {}),
       }
     });
-
-    const isRejection = type === 'RECEIVER_REJECTION';
 
     if (isRejection) {
       // 5. RECEIVER REJECTION - recorded at the order level.
@@ -230,12 +276,34 @@ export async function POST(req: NextRequest) {
         recovery: 'PACKAGING_DAMAGED',
         bad: 'PRODUCT_DAMAGED',
       };
+      const expectedByLpn = new Map(
+        expectedItems
+          .filter(item => item.lpn)
+          .map(item => [normalizeLpn(item.lpn), item]),
+      );
+
+      if (lpnConditions && typeof lpnConditions === 'object') {
+        const invalidLpns = Object.keys(lpnConditions).filter(
+          lpn => !expectedByLpn.has(normalizeLpn(lpn)),
+        );
+
+        if (invalidLpns.length > 0) {
+          return NextResponse.json(
+            {
+              error: 'One or more scanned LPNs do not belong to this order.',
+              invalidLpns,
+              orderId: scopedOrderId,
+            },
+            { status: 400 },
+          );
+        }
+      }
 
       // A. Process all scanned LPNs from dashboard conditions payload
       if (lpnConditions) {
         for (const [lpn, rawCondition] of Object.entries(lpnConditions)) {
           if (!lpn) continue;
-          scannedLpns.add(lpn);
+          scannedLpns.add(normalizeLpn(lpn));
 
           let resolvedCondition = 'PRODUCT_DAMAGED';
           let inspectorDefectType: string | null = null;
@@ -273,21 +341,22 @@ export async function POST(req: NextRequest) {
               inspectorDefectType = payload || null;
             }
           } else {
-            resolvedCondition = conditionMap[conditionStr] || 'PRODUCT_DAMAGED';
+            resolvedCondition = ALLOWED_CONDITIONS.has(conditionStr)
+              ? conditionStr
+              : conditionMap[conditionStr] || 'PRODUCT_DAMAGED';
           }
 
-          // Find or create ReturnItem
-          let returnItem = await prisma.returnItem.findUnique({
-            where: { lpn },
-          });
+          // Find if this LPN exists as an expected item for the scoped order.
+          const matchingExpectedItem = expectedByLpn.get(normalizeLpn(lpn));
 
-          if (!returnItem) {
-            console.warn(`[Finalize Upload] ReturnItem not found for LPN: ${lpn}. Dynamic creation is disabled.`);
-            return NextResponse.json({ error: `Return item not found for LPN: ${lpn}` }, { status: 404 });
-          } else {
+          let linkedReturnItemId: string | null = null;
+          let evidenceReason = `Product defect folder/photos for LPN ${lpn}`;
+
+          if (matchingExpectedItem) {
+            linkedReturnItemId = matchingExpectedItem.lpn;
             // Update condition
             await prisma.returnItem.update({
-              where: { lpn: returnItem.lpn },
+              where: { lpn: matchingExpectedItem.lpn },
               data: {
                 condition: resolvedCondition as any,
                 inspectorDefectType: inspectorDefectType as any,
@@ -295,7 +364,7 @@ export async function POST(req: NextRequest) {
                 claimSubReason: claimSubReason,
               },
             });
-            console.log(`[Database Update] Updated ReturnItem ${returnItem.lpn} condition: ${resolvedCondition}`);
+            console.log(`[Database Update] Updated ReturnItem ${matchingExpectedItem.lpn} condition: ${resolvedCondition}`);
           }
 
           // Upsert unique Evidence record for this LPN
@@ -309,12 +378,12 @@ export async function POST(req: NextRequest) {
               orderDriveLink,
               lpnDriveLink,
               type: 'PRODUCT_DAMAGE_PHOTO',
-              reason: `Product defect folder/photos for LPN ${lpn}`,
+              reason: evidenceReason,
               claimReason,
               claimSubReason,
               uploadedById: resolvedUploadedById,
               manifestId: manifest.id,
-              returnItemId: returnItem.lpn,
+              returnItemId: linkedReturnItemId,
             },
             create: {
               lpn,
@@ -322,21 +391,21 @@ export async function POST(req: NextRequest) {
               orderDriveLink,
               lpnDriveLink,
               type: 'PRODUCT_DAMAGE_PHOTO',
-              reason: `Product defect folder/photos for LPN ${lpn}`,
+              reason: evidenceReason,
               claimReason,
               claimSubReason,
               uploadedById: resolvedUploadedById,
               manifestId: manifest.id,
-              returnItemId: returnItem.lpn,
+              returnItemId: linkedReturnItemId,
             }
           });
-          console.log(`[Database Evidence Scanned] Upserted Evidence for LPN: ${lpn}`);
+          console.log(`[Database Evidence Scanned] Upserted Evidence for LPN: ${lpn} (Linked: ${linkedReturnItemId !== null})`);
           evidenceRecordsCreated.push(ev);
         }
       }
 
       // B. Process missing LPNs (expected in ReturnItem but not scanned in inspector dashboard)
-      const missingItems = expectedItems.filter(item => item.lpn && !scannedLpns.has(item.lpn));
+      const missingItems = expectedItems.filter(item => item.lpn && !scannedLpns.has(normalizeLpn(item.lpn)));
       for (const item of missingItems) {
         if (!item.lpn) continue;
 

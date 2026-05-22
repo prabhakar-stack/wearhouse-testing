@@ -208,7 +208,7 @@ model Dispute {
 model RemovalShipment {
   id               String    @id @default(uuid())
   removalOrderId   String
-  trackingNumber   String    @unique
+  trackingNumber   String
   shipmentDate     DateTime
   sku              String
   shippedQuantity  Int
@@ -216,6 +216,8 @@ model RemovalShipment {
   manifestId       String?   // Link to Manifest via tracking number match
 
   manifest         Manifest? @relation(fields: [manifestId], references: [id])
+
+  @@unique([trackingNumber, sku])
 }
 
 model Evidence {

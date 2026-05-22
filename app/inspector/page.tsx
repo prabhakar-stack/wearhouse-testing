@@ -30,6 +30,13 @@ type ProductCondition =
   | "MISSING"
   | "BAD_FAKE_PRODUCT";
 
+type InspectorReturnItem = {
+  lpn: string;
+  orderId: string;
+  sku?: string;
+  quantity?: number;
+};
+
 function resolveProductCondition(
   category: "GOOD" | "RECOVERY" | "BAD",
   reason?: string,
@@ -1028,6 +1035,10 @@ function InspectTab({ userId }: { userId?: string }) {
   // Dynamic expected items — fetched from DB on order start
   const [expectedItems, setExpectedItems] = useState(0);
   const [startError, setStartError] = useState("");
+  const [manifestId, setManifestId] = useState("");
+  const [activeOrderPlatformId, setActiveOrderPlatformId] = useState("");
+  const [expectedLpnItems, setExpectedLpnItems] = useState<InspectorReturnItem[]>([]);
+  const [lpnScanError, setLpnScanError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const visibleCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1036,6 +1047,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -1043,6 +1055,7 @@ function InspectTab({ userId }: { userId?: string }) {
     { type: "box" | "lpn" | "product"; id?: string; step?: number; blob: Blob }[]
   >([]);
   const lpnConditionsRef = useRef<Record<string, string>>({});
+  const scannedLpnsRef = useRef<Set<string>>(new Set());
   const reqAnimRef = useRef<number>(0);
   const isOrderCompleteRef = useRef(false);
 
@@ -1056,6 +1069,43 @@ function InspectTab({ userId }: { userId?: string }) {
   useEffect(() => {
     userIdRef.current = userId;
   }, [userId]);
+
+  const resetProcess = () => {
+    setPhase("START");
+    setOrderId("");
+    setManifestId("");
+    setActiveOrderPlatformId("");
+    setExpectedLpnItems([]);
+    setLpnScanError("");
+    setBoxStep(1);
+    setItemStep(1);
+    setItemsProcessed(0);
+    setCurrentLpn("");
+    setCurrentCategory(null);
+    setMissingAcknowledged(false);
+    setStreak(0);
+    setSelectedClaimReason(null);
+    setSelectedClaimSubReason(null);
+    setShowDefectDropdown(false);
+    setExpectedItems(0);
+    setStartError("");
+    isOrderCompleteRef.current = false;
+    capturedImagesRef.current = [];
+    lpnConditionsRef.current = {};
+    scannedLpnsRef.current = new Set();
+  };
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isUploading) {
+        e.preventDefault();
+        e.returnValue = "Evidence upload is in progress. Please do not close or reload the page.";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isUploading]);
 
   const isCameraActive =
     phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION";
@@ -1113,21 +1163,30 @@ function InspectTab({ userId }: { userId?: string }) {
               mr.onstop = () => {
                 if (!isOrderCompleteRef.current) return;
 
-                // Instantly transition UI for the user
-                setPhase("COMPLETED");
+                // Capture current values in local scope immediately before resetting states
+                const activeOrderId = orderId;
+                const activeUserId = userId;
+                const activeManifestId = manifestId;
+                const activePlatformOrderId = activeOrderPlatformId;
+                const capturedImages = [...capturedImagesRef.current];
+                const lpnConditions = { ...lpnConditionsRef.current };
+                const itemsScanned = itemsProcessed;
+                const itemsExpected = expectedItems;
+                const isMissingItemFlagged = itemsProcessed < expectedItems;
+
+                // Reset the UI instantly to the START phase
+                resetProcess();
 
                 // Non-blocking fire-and-forget background upload
                 const backgroundUpload = async () => {
-                  // Capture current values in local scope immediately before any async activity or state resets
-                  const activeOrderId = orderIdRef.current;
-                  const activeUserId = userIdRef.current;
-
                   if (!activeOrderId) {
                     console.error(
                       "[Background Upload] Aborted: activeOrderId is empty",
                     );
                     return;
                   }
+
+                  setIsUploading(true);
 
                   try {
                     const videoChunks =
@@ -1145,7 +1204,7 @@ function InspectTab({ userId }: { userId?: string }) {
                     filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
 
                     let boxCounter = 1;
-                    capturedImagesRef.current.forEach((img) => {
+                    capturedImages.forEach((img) => {
                       if (!img.blob || img.blob.size === 0) return;
                       if (img.type === "box") {
                         const stepNum = img.step || boxCounter;
@@ -1157,18 +1216,15 @@ function InspectTab({ userId }: { userId?: string }) {
                         });
                         boxCounter++;
                       } else if ((img.type === "lpn" || img.type === "product") && img.id) {
-                        const status = lpnConditionsRef.current[img.id];
-                        if (status && status.startsWith("bad")) {
-                          const fileKey = `${img.type}_img_${img.id}`;
-                          const fileName = `${img.type}.jpg`;
-                          filesToUpload.push({
-                            key: fileKey,
-                            name: fileName,
-                            mimeType: "image/jpeg",
-                            blob: img.blob,
-                            lpn: img.id,
-                          });
-                        }
+                        const fileKey = `${img.type}_img_${img.id}`;
+                        const fileName = img.type === "lpn" ? `lpn_${img.id}.jpg` : `lpn_${img.id}_product.jpg`;
+                        filesToUpload.push({
+                          key: fileKey,
+                          name: fileName,
+                          mimeType: "image/jpeg",
+                          blob: img.blob,
+                          lpn: img.id,
+                        });
                       }
                     });
 
@@ -1178,7 +1234,7 @@ function InspectTab({ userId }: { userId?: string }) {
                       mimeType: f.mimeType,
                       lpn: f.lpn,
                       condition: f.lpn
-                        ? lpnConditionsRef.current[f.lpn]
+                        ? lpnConditions[f.lpn]
                         : undefined,
                     }));
 
@@ -1200,7 +1256,36 @@ function InspectTab({ userId }: { userId?: string }) {
                     const { uploadUrls, folderLink, orderFolderId } =
                       await initRes.json();
 
-                    // 2. Upload files — video uses silent chunked pipeline, images use existing raw pipeline
+                    // 2. CALL INSPECTOR EVALUATE EARLY TO REMOVE FROM CUSTODY STACK INSTANTLY
+                    try {
+                      const evalRes = await fetch("/api/inspector/evaluate", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "x-user-role": "INSPECTOR",
+                          "x-user-id": activeUserId || ""
+                        },
+                        body: JSON.stringify({
+                          manifestId: activeManifestId,
+                          orderPlatformId: activePlatformOrderId,
+                          itemsScanned,
+                          itemsExpected,
+                          isMissingItemFlagged,
+                          lpnConditions,
+                          evidenceUrl: folderLink || null
+                        })
+                      });
+                      if (!evalRes.ok) {
+                        const err = await evalRes.json().catch(() => ({}));
+                        console.error("[Background Upload] Early evaluate failed:", err);
+                      } else {
+                        console.log("[Background Upload] Early evaluate completed successfully!");
+                      }
+                    } catch (evalErr) {
+                      console.error("[Background Upload] Early evaluate error:", evalErr);
+                    }
+
+                    // 3. Upload files silently — video uses silent chunked pipeline, images use existing raw pipeline
 
                     // Helper: upload a small file (image) via /api/upload/raw with 3 retries
                     const uploadSmallFile = async (
@@ -1388,12 +1473,7 @@ function InspectTab({ userId }: { userId?: string }) {
                       }
                     }
 
-                    // 3. Finalize Database Write
-                    // Build a map of LPN → condition for the finalize route
-                    const lpnConditions: Record<string, string> = {
-                      ...lpnConditionsRef.current,
-                    };
-
+                    // 4. Finalize Database Write
                     const cleanUserId =
                       activeUserId &&
                       activeUserId !== "undefined" &&
@@ -1405,6 +1485,8 @@ function InspectTab({ userId }: { userId?: string }) {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         orderId: activeOrderId,
+                        manifestId: activeManifestId,
+                        orderPlatformId: activePlatformOrderId,
                         folderLink,
                         orderFolderId,
                         type: "INSPECTION_VIDEO",
@@ -1413,27 +1495,14 @@ function InspectTab({ userId }: { userId?: string }) {
                         lpnConditions,
                       }),
                     });
-
-                    const dockRes = await fetch("/api/dock/receive", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        trackingId: activeOrderId,
-                        tapeIntact: true,
-                        boxCrushed: false,
-                        isTampered: false,
-                        evidenceUrl: folderLink || "UPLOAD_FAILED",
-                      }),
-                    });
-
-                    if (!dockRes.ok)
-                      throw new Error("Failed to log dock receipt");
                   } catch (e) {
-                    console.error("Background pipeline failed:", e);
+                    console.error("Silent background pipeline failed:", e);
+                  } finally {
+                    setIsUploading(false);
                   }
                 };
 
-                backgroundUpload(); // Trigger without await
+                backgroundUpload(); // Trigger silently without blocking UI
               };
 
               mr.start(1000);
@@ -1568,27 +1637,6 @@ function InspectTab({ userId }: { userId?: string }) {
     setTimeout(() => setFloatingXp(null), 1200);
   };
 
-  const resetProcess = () => {
-    setPhase("START");
-    setOrderId("");
-    setBoxStep(1);
-    setItemStep(1);
-    setItemsProcessed(0);
-    setCurrentLpn("");
-    setCurrentCategory(null);
-    setMissingAcknowledged(false);
-    setStreak(0);
-    setCurrentCategory(null);
-    setSelectedClaimReason(null);
-    setSelectedClaimSubReason(null);
-    setShowDefectDropdown(false);
-    setExpectedItems(0);
-    setStartError("");
-    isOrderCompleteRef.current = false;
-    capturedImagesRef.current = [];
-    lpnConditionsRef.current = {};
-  };
-
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orderId.trim()) return;
@@ -1612,6 +1660,8 @@ function InspectTab({ userId }: { userId?: string }) {
           return;
         }
 
+        setManifestId(manifest.id);
+
         // Verify if a RECEIVER_TO_INSPECTOR handshake exists matching the current inspector's user ID
         const hasHandshake = manifest.handshakes?.some(
           (h: any) => h.type === "RECEIVER_TO_INSPECTOR" && h.receiverId === userId
@@ -1624,12 +1674,44 @@ function InspectTab({ userId }: { userId?: string }) {
           return;
         }
 
-        if (manifest.returnItems) {
-          const itemsWithLpn = manifest.returnItems.filter((ri: any) => ri.lpn);
+        const resolvedOrderId = manifest.matchedOrderId || "";
+        const manifestOrderIds = Array.from(
+          new Set(
+            (manifest.returnItems || [])
+              .map((ri: any) => ri.orderId)
+              .filter(Boolean),
+          ),
+        );
+
+        if (!resolvedOrderId && manifestOrderIds.length > 1) {
+          setStartError(
+            "This tracking ID contains multiple orders. Please scan the exact Order ID before inspection."
+          );
+          return;
+        }
+
+        const scopedReturnItems = (manifest.returnItems || []).filter((ri: any) =>
+          resolvedOrderId ? ri.orderId === resolvedOrderId : true,
+        );
+
+        setActiveOrderPlatformId(resolvedOrderId || (manifestOrderIds[0] as string) || "");
+        setExpectedLpnItems(
+          scopedReturnItems
+            .filter((ri: any) => ri.lpn)
+            .map((ri: any) => ({
+              lpn: String(ri.lpn).trim(),
+              orderId: ri.orderId,
+              sku: ri.sku,
+              quantity: ri.quantity,
+            })),
+        );
+
+        if (scopedReturnItems.length > 0) {
+          const itemsWithLpn = scopedReturnItems.filter((ri: any) => ri.lpn);
           const count =
             itemsWithLpn.length > 0
               ? itemsWithLpn.length
-              : manifest.returnItems.reduce(
+              : scopedReturnItems.reduce(
                   (sum: number, ri: any) => sum + (ri.quantity || 1),
                   0,
                 );
@@ -1661,13 +1743,48 @@ function InspectTab({ userId }: { userId?: string }) {
   };
 
   const nextItemStep = () => {
-    if (itemStep === 1 && currentLpn.trim() === "") return;
+    if (itemStep === 1 && !confirmCurrentLpn()) return;
     triggerXp(30);
     if (itemStep < 6) {
       setItemStep((prev) => prev + 1);
     } else {
       console.warn("Item step out of bounds");
     }
+  };
+
+  const normalizeLpn = (value: string) => value.trim().toUpperCase();
+
+  const findExpectedLpn = (value: string) => {
+    const normalized = normalizeLpn(value);
+    return expectedLpnItems.find((item) => normalizeLpn(item.lpn) === normalized);
+  };
+
+  const confirmCurrentLpn = () => {
+    const scannedLpn = currentLpn.trim();
+    if (!scannedLpn) {
+      setLpnScanError("Scan or type the LPN before continuing.");
+      return false;
+    }
+
+    const expectedItem = findExpectedLpn(scannedLpn);
+    if (!expectedItem) {
+      setLpnScanError(
+        activeOrderPlatformId
+          ? `This LPN does not belong to order ${activeOrderPlatformId}.`
+          : "This LPN does not belong to the current inspection order.",
+      );
+      return false;
+    }
+
+    const normalized = normalizeLpn(expectedItem.lpn);
+    if (scannedLpnsRef.current.has(normalized)) {
+      setLpnScanError("This LPN has already been scanned for this order.");
+      return false;
+    }
+
+    setCurrentLpn(expectedItem.lpn);
+    setLpnScanError("");
+    return true;
   };
 
   const CLAIM_REASONS = [
@@ -1760,6 +1877,7 @@ function InspectTab({ userId }: { userId?: string }) {
         body: JSON.stringify({
           lpn: finalizedLpn,
           condition: finalizedCondition,
+          orderPlatformId: activeOrderPlatformId,
         }),
       }).catch((error) =>
         console.error("[Live Product Status] failed:", error),
@@ -1768,8 +1886,10 @@ function InspectTab({ userId }: { userId?: string }) {
 
     triggerXp(50);
     const newProcessed = itemsProcessed + 1;
+    scannedLpnsRef.current.add(normalizeLpn(finalizedLpn));
     setItemsProcessed(newProcessed);
     setCurrentLpn("");
+    setLpnScanError("");
     setCurrentCategory(null);
     setSelectedClaimReason(null);
     setSelectedClaimSubReason(null);
@@ -2173,10 +2293,25 @@ function InspectTab({ userId }: { userId?: string }) {
                               type="text"
                               placeholder="SCAN OR TYPE LPN..."
                               value={currentLpn}
-                              onChange={(e) => setCurrentLpn(e.target.value)}
+                              onChange={(e) => {
+                                setCurrentLpn(e.target.value);
+                                setLpnScanError("");
+                              }}
                               autoFocus
-                              className="w-full min-h-12 bg-white border border-[#313079]/20 text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded"
+                              className={`w-full min-h-12 bg-white border text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded ${
+                                lpnScanError ? "border-red-400" : "border-[#313079]/20"
+                              }`}
                             />
+                            {lpnScanError && (
+                              <p className="text-xs font-bold text-red-600 text-center">
+                                {lpnScanError}
+                              </p>
+                            )}
+                            {activeOrderPlatformId && (
+                              <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
+                                Order: {activeOrderPlatformId}
+                              </p>
+                            )}
                             <button
                               onClick={nextItemStep}
                               disabled={!currentLpn.trim()}
@@ -2406,8 +2541,8 @@ function InspectTab({ userId }: { userId?: string }) {
             <h2 className="text-2xl font-black text-green-700 uppercase tracking-widest mb-3">
               Order Complete
             </h2>
-            <p className="text-green-600 text-xs font-bold tracking-widest uppercase mb-10 bg-white px-4 py-2 rounded-full shadow-sm">
-              Video recording saved
+            <p className={`text-xs font-bold tracking-widest uppercase mb-10 bg-white px-4 py-2 rounded-full shadow-sm ${isUploading ? "text-amber-600 border border-amber-200" : "text-green-600 border border-green-200"}`}>
+              {isUploading ? "Uploading evidence to Drive..." : "Evidence successfully uploaded"}
             </p>
 
             {missingAcknowledged && (
@@ -2421,10 +2556,24 @@ function InspectTab({ userId }: { userId?: string }) {
 
             <button
               onClick={resetProcess}
-              className="w-full max-w-xs min-h-14 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-transform active:scale-95"
+              disabled={isUploading}
+              className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${
+                isUploading
+                  ? "bg-gray-400 cursor-not-allowed text-gray-200"
+                  : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-transform active:scale-95"
+              }`}
             >
-              <span>Process Next Order</span>
-              <ArrowRight size={18} />
+              {isUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Uploading Evidence...</span>
+                </>
+              ) : (
+                <>
+                  <span>Process Next Order</span>
+                  <ArrowRight size={18} />
+                </>
+              )}
             </button>
           </div>
         )}

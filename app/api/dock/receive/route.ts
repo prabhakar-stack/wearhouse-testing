@@ -16,55 +16,132 @@ export async function POST(req: NextRequest) {
 
     const isDamaged = !tapeIntact || boxCrushed || isTampered;
 
+    // Check if it exists in RemovalShipment trackingNumber
+    const removalShipments = await prisma.removalShipment.findMany({
+      where: { trackingNumber: trackingId }
+    });
+
+    // Check if it exists in Order platformOrderId
+    const order = await prisma.order.findUnique({
+      where: { platformOrderId: trackingId }
+    });
+
     // Resolve Manifest
     let manifest = await prisma.manifest.findUnique({
       where: { trackingId }
     });
 
     if (!manifest) {
-      // Check if it exists in RemovalShipment trackingNumber
-      const removalShipment = await prisma.removalShipment.findUnique({
-        where: { trackingNumber: trackingId }
-      });
-
-      // Check if it exists in Order platformOrderId
-      const order = await prisma.order.findUnique({
-        where: { platformOrderId: trackingId }
-      });
-
-      if (!removalShipment && !order) {
+      if (removalShipments.length === 0 && !order) {
         return NextResponse.json({
           error: 'This package/order is not in our shipment removal or order database and cannot be received.'
         }, { status: 404 });
       }
 
-      // If it exists in RemovalShipment or Order but no Manifest exists yet, we create the Manifest
+      const firstRemovalShipment = removalShipments[0] || null;
+      const removalOrderId = firstRemovalShipment?.removalOrderId || null;
+
+      // If no Manifest exists yet, we create the Manifest
       manifest = await prisma.manifest.create({
         data: {
           trackingId,
           status: 'EXPECTED',
           courierName: 'Unknown',
+          removalOrderId,
+          marketplace: 'AMAZON',
           expectedDate: new Date(),
         }
       });
-      
-      // Link the RemovalShipment to this new Manifest if found
-      if (removalShipment) {
-        await prisma.removalShipment.update({
-          where: { id: removalShipment.id },
-          data: { manifestId: manifest.id }
-        });
-      }
-
-      // Link the Order to this new Manifest if found
-      if (order) {
-        await prisma.order.update({
-          where: { platformOrderId: order.platformOrderId },
-          data: { manifestId: manifest.id }
-        });
-      }
-
       console.log(`[Dock Receive Dynamic Create] Created verified Manifest for Tracking ID: ${trackingId}`);
+    }
+
+    // Link shipments, order and generate return items
+    let targetOrderId = order?.platformOrderId || null;
+
+    if (removalShipments.length > 0) {
+      const firstRemovalShipment = removalShipments[0];
+      targetOrderId = firstRemovalShipment.removalOrderId;
+
+      // Fetch raw order to get details
+      const rawOrder = await prisma.aMZRemovalOrder.findFirst({
+        where: { orderId: firstRemovalShipment.removalOrderId }
+      });
+
+      // 1. Create/upsert the operational Order
+      const opOrder = await prisma.order.upsert({
+        where: { platformOrderId: firstRemovalShipment.removalOrderId },
+        update: {
+          marketplace: 'AMAZON',
+          manifestId: manifest.id,
+          ...(rawOrder ? {
+            purchaseDate: rawOrder.requestDate || new Date(),
+            totalAmount: rawOrder.removalFee || null,
+            fulfillmentChannel: 'AMAZON_REMOVAL'
+          } : {})
+        },
+        create: {
+          platformOrderId: firstRemovalShipment.removalOrderId,
+          marketplace: 'AMAZON',
+          manifestId: manifest.id,
+          purchaseDate: rawOrder?.requestDate || new Date(),
+          totalAmount: rawOrder?.removalFee || null,
+          fulfillmentChannel: 'AMAZON_REMOVAL'
+        }
+      });
+
+      // 2. Link all matching RemovalShipment rows to Manifest
+      await prisma.removalShipment.updateMany({
+        where: { trackingNumber: trackingId },
+        data: { manifestId: manifest.id }
+      });
+
+      // 3. Dynamically create ReturnItem entries for expected SKU quantities
+      for (const shipment of removalShipments) {
+        const qty = shipment.shippedQuantity || 1;
+        for (let i = 0; i < qty; i++) {
+          const virtualLpn = `LPN-${trackingId}-${shipment.sku}-${i}`.toUpperCase();
+
+          const rawReturn = await prisma.aMZCustomerReturn.findFirst({
+            where: {
+              orderId: shipment.removalOrderId,
+              sku: shipment.sku
+            }
+          });
+
+          await prisma.returnItem.upsert({
+            where: { lpn: virtualLpn },
+            update: {
+              orderId: opOrder.platformOrderId,
+              sku: shipment.sku,
+              asin: rawReturn?.asin || null,
+              fnsku: rawReturn?.fnsku || null,
+              productName: rawReturn?.productName || `SKU: ${shipment.sku}`,
+              quantity: 1,
+              returnReason: rawReturn?.reason || 'Removal Order Shipment',
+              customerComments: rawReturn?.customerComments || null,
+              amazonDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
+            },
+            create: {
+              lpn: virtualLpn,
+              orderId: opOrder.platformOrderId,
+              sku: shipment.sku,
+              asin: rawReturn?.asin || null,
+              fnsku: rawReturn?.fnsku || null,
+              productName: rawReturn?.productName || `SKU: ${shipment.sku}`,
+              quantity: 1,
+              returnReason: rawReturn?.reason || 'Removal Order Shipment',
+              customerComments: rawReturn?.customerComments || null,
+              amazonDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
+            }
+          });
+        }
+      }
+    } else if (order) {
+      // Just link the order to the manifest
+      await prisma.order.update({
+        where: { platformOrderId: order.platformOrderId },
+        data: { manifestId: manifest.id }
+      });
     }
 
     await prisma.$transaction(async (tx) => {

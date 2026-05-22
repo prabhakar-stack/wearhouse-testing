@@ -81,6 +81,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const lpn = typeof body?.lpn === "string" ? body.lpn.trim() : "";
+    const orderPlatformId =
+      typeof body?.orderPlatformId === "string" ? body.orderPlatformId.trim() : "";
     const condition =
       typeof body?.condition === "string" ? body.condition.trim() : "";
 
@@ -93,6 +95,20 @@ export async function POST(req: Request) {
 
     if (!ALLOWED_CONDITIONS.has(condition)) {
       return NextResponse.json({ error: "Invalid condition" }, { status: 400 });
+    }
+
+    if (orderPlatformId) {
+      const item = await prisma.returnItem.findUnique({
+        where: { lpn },
+        select: { orderId: true },
+      });
+
+      if (!item || item.orderId !== orderPlatformId) {
+        return NextResponse.json(
+          { error: "LPN does not belong to the current order" },
+          { status: 400 },
+        );
+      }
     }
 
     const status = await prisma.productStatus.upsert({

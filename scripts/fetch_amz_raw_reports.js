@@ -490,14 +490,13 @@ function mapReturnRow(row) {
 
 function getRemovalShipmentKey(row) {
   const tracking = pick(row.tracking_number, row.tracking);
-  const sku = pick(row.sku, "unknown_sku");
   if (tracking) {
-    return `${tracking}__${sku}`;
+    return tracking;
   }
 
   return pick(
-    row.removal_order_id && row.sku ? `removal_${row.removal_order_id}_${row.sku}` : null,
-    row.order_id && row.sku ? `removal_${row.order_id}_${row.sku}` : null
+    row.removal_order_id ? `removal_${row.removal_order_id}` : null,
+    row.order_id ? `removal_${row.order_id}` : null
   );
 }
 
@@ -767,10 +766,12 @@ async function syncCoreRemovalShipments(rows) {
         }
 
         try {
-          const existing = await prisma.removalShipment.findFirst({
+          const existing = await prisma.removalShipment.findUnique({
             where: {
-              removalOrderId: mapped.removalOrderId,
-              sku: mapped.sku,
+              trackingNumber_sku: {
+                trackingNumber: mapped.trackingNumber,
+                sku: mapped.sku,
+              },
             },
           });
 
@@ -792,7 +793,7 @@ async function syncCoreRemovalShipments(rows) {
           });
           return created;
         } catch (e) {
-          console.error(`[ERROR] Failed to sync Core RemovalShipment removalOrderId=${mapped.removalOrderId} sku=${mapped.sku}:`, e.message);
+          console.error(`[ERROR] Failed to sync Core RemovalShipment trackingNumber=${mapped.trackingNumber} sku=${mapped.sku}:`, e.message);
           return null;
         }
       })
@@ -805,6 +806,44 @@ async function syncCoreRemovalShipments(rows) {
   return successCount;
 }
 
+async function syncCoreRemovalOrdersToOrders(rows) {
+  if (!rows || rows.length === 0) return 0;
+  console.log(`Syncing ${rows.length} Removal Orders to operational Order table...`);
+  let successCount = 0;
+  for (const rawRow of rows) {
+    const row = normalizeRow(rawRow);
+    const orderId = getOrderId(row);
+    if (!orderId) continue;
+
+    const requestDate = toDate(pick(row.request_date), new Date());
+    const removalFee = toFloat(pick(row.removal_fee));
+
+    try {
+      await prisma.order.upsert({
+        where: { platformOrderId: orderId },
+        update: {
+          marketplace: "AMAZON",
+          purchaseDate: requestDate,
+          totalAmount: removalFee,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+        create: {
+          marketplace: "AMAZON",
+          platformOrderId: orderId,
+          purchaseDate: requestDate,
+          totalAmount: removalFee,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+      });
+      successCount++;
+    } catch (e) {
+      console.error(`[ERROR] Failed to sync operational Order for Removal Order ${orderId}:`, e.message);
+    }
+  }
+  console.log(`Successfully synced ${successCount}/${rows.length} Removal Orders to operational Order table.`);
+  return successCount;
+}
+
 async function main() {
   console.log("STARTING AMAZON RAW AND CORE REPORTS SYNC TASK...");
 
@@ -812,6 +851,7 @@ async function main() {
   const removalOrdersTSV = await fetchReportData(REMOVAL_ORDERS_REPORT_TYPE, "removal_orders_0_30", 30, 0);
   const removalOrderRows = parseTSV(removalOrdersTSV);
   const syncedRemovalOrders = await syncRemovalOrders(removalOrderRows);
+  const syncedCoreOrders = await syncCoreRemovalOrdersToOrders(removalOrderRows);
   const syncedCoreRemovalOrders = await syncCoreRemovalShipments(removalOrderRows);
 
   // 2. Sync Removal Shipments

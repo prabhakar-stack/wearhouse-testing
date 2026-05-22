@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
   try {
     const { trackingId } = await params;
+    let matchedOrderId: string | null = null;
     
     // 1. Try to find by tracking ID
     let manifest = await prisma.manifest.findUnique({
@@ -39,6 +40,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
           }
         }
       });
+      matchedOrderId = manifest ? trackingId : null;
     }
 
     if (!manifest) {
@@ -54,6 +56,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
 
     const formattedManifest = {
       ...manifest,
+      matchedOrderId:
+        matchedOrderId ||
+        manifest.orders.find(order => order.platformOrderId === trackingId)?.platformOrderId ||
+        (manifest.orders.length === 1 ? manifest.orders[0].platformOrderId : null),
       returnItems: flattenedReturnItems
     };
 
@@ -62,4 +68,3 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
     return NextResponse.json({ error: 'Failed to fetch manifest' }, { status: 500 });
   }
 }
-
