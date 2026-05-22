@@ -138,7 +138,9 @@ export async function POST(req: NextRequest) {
 
     // 4. Scan Local System Storage uploads/ directory for any local fallbacks containing tracking ID
     try {
-      const uploadsDir = path.join(process.cwd(), 'uploads');
+      const uploadsDir = process.env.VERCEL
+        ? path.join('/tmp', 'uploads')
+        : path.join(process.cwd(), 'uploads');
       if (fs.existsSync(uploadsDir)) {
         const localFiles = fs.readdirSync(uploadsDir);
         for (const filename of localFiles) {

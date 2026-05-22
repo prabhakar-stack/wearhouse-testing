@@ -8,7 +8,10 @@ export async function GET(
 ) {
   try {
     const { filename } = await params;
-    const filePath = path.join(process.cwd(), 'uploads', filename);
+    const uploadsDir = process.env.VERCEL
+      ? path.join('/tmp', 'uploads')
+      : path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadsDir, filename);
 
     if (!fs.existsSync(filePath)) {
       return new NextResponse('File Not Found', { status: 404 });

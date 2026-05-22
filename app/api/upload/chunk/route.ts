@@ -23,7 +23,10 @@ export async function PUT(req: NextRequest) {
     }
 
     // Ensure temp chunk directory exists: uploads/chunks/<uploadId>/
-    const chunksDir = path.join(process.cwd(), 'uploads', 'chunks', uploadId);
+    const uploadsDir = process.env.VERCEL
+      ? path.join('/tmp', 'uploads')
+      : path.join(process.cwd(), 'uploads');
+    const chunksDir = path.join(uploadsDir, 'chunks', uploadId);
     if (!fs.existsSync(chunksDir)) {
       fs.mkdirSync(chunksDir, { recursive: true });
     }

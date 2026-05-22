@@ -16,7 +16,9 @@ export async function PUT(req: NextRequest) {
     }
 
     // Ensure the uploads directory exists on the system
-    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const uploadsDir = process.env.VERCEL
+      ? path.join('/tmp', 'uploads')
+      : path.join(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }

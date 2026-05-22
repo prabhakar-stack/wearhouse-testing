@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid totalChunks' }, { status: 400 });
     }
 
-    chunksDir = path.join(process.cwd(), 'uploads', 'chunks', uploadId);
+    const uploadsDir = process.env.VERCEL
+      ? path.join('/tmp', 'uploads')
+      : path.join(process.cwd(), 'uploads');
+
+    chunksDir = path.join(uploadsDir, 'chunks', uploadId);
 
     // Verify all chunks are present before assembling
     const missingChunks: number[] = [];
@@ -43,7 +47,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Assemble all .part files into a single final file
-    const uploadsDir = path.join(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
