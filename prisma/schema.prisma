@@ -266,3 +266,86 @@ model AlertSopStep {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Amazon removal orders (raw portal/table import)
+model AMZRemovalOrder {
+  orderId             String    @id @map("order-id")
+  requestDate         DateTime? @map("request-date")
+  orderSource         String?   @map("order-source")
+  orderType           String?   @map("order-type")
+  serviceSpeed        String?   @map("service-speed")
+  orderStatus         String?   @map("order-status")
+  lastUpdatedDate     DateTime? @map("last-updated-date")
+  sku                 String?   @map("sku")
+  fnsku               String?   @map("fnsku")
+  disposition         String?   @map("disposition")
+  requestedQuantity   Int?      @map("requested-quantity")
+  cancelledQuantity   Int?      @map("cancelled-quantity")
+  disposedQuantity    Int?      @map("disposed-quantity")
+  shippedQuantity     Int?      @map("shipped-quantity")
+  inProcessQuantity   Int?      @map("in-process-quantity")
+  removalFee          Float?    @map("removal-fee")
+  currency            String?   @map("currency")
+
+  @@map("AMZ_removal_orders")
+}
+
+// Amazon removal shipments (per-shipment rows)
+model AMZRemovalShipment {
+  id                String    @id @default(uuid())
+  requestDate       DateTime? @map("request-date")
+  orderId           String?   @map("order-id")
+  shipmentDate      DateTime? @map("shipment-date")
+  sku               String?   @map("sku")
+  fnsku             String?   @map("fnsku")
+  disposition       String?   @map("disposition")
+  shippedQuantity   Int?      @map("shipped-quantity")
+  carrier           String?   @map("carrier")
+  trackingNumber    String?   @map("tracking-number")
+  shipmentStatus    String?   @map("shipment-status")
+
+  @@map("AMZ_removal_shipments")
+}
+
+// Amazon reimbursements table import
+model AMZReimbursement {
+  reimbursementId               String   @id @map("reimbursement-id")
+  approvalDate                  DateTime? @map("approval-date")
+  caseId                        String?  @map("case-id")
+  amazonOrderId                 String?  @map("amazon-order-id")
+  reason                        String?  @map("reason")
+  sku                           String?  @map("sku")
+  fnsku                         String?  @map("fnsku")
+  asin                          String?  @map("asin")
+  productName                   String?  @map("product-name")
+  condition                     String?  @map("condition")
+  currencyUnit                  String?  @map("currency-unit")
+  amountPerUnit                 Float?   @map("amount-per-unit")
+  amountTotal                   Float?   @map("amount-total")
+  quantityReimbursedCash        Int?     @map("quantity-reimbursed-cash")
+  quantityReimbursedInventory   Int?     @map("quantity-reimbursed-inventory")
+  quantityReimbursedTotal       Int?     @map("quantity-reimbursed-total")
+  originalReimbursementId       String?  @map("original-reimbursement-id")
+  originalReimbursementType     String?  @map("original-reimbursement-type")
+
+  @@map("AMZ_reimbursements")
+}
+
+// Amazon customer returns (raw LPN-level rows)
+model AMZCustomerReturn {
+  lpn                     String   @id @map("license-plate-number")
+  returnDate              DateTime? @map("return-date")
+  orderId                 String?  @map("order-id")
+  sku                     String?  @map("sku")
+  asin                    String?  @map("asin")
+  fnsku                   String?  @map("fnsku")
+  productName             String?  @map("product-name")
+  quantity                Int?     @map("quantity")
+  fulfillmentCenterId     String?  @map("fulfillment-center-id")
+  detailedDisposition     String?  @map("detailed-disposition")
+  reason                  String?  @map("reason")
+  customerComments        String?  @map("customer-comments")
+  removalOrderType        String?  @map("removal-order-type")
+
+  @@map("AMZ_customer_returns")
+}
