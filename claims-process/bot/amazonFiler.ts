@@ -552,13 +552,13 @@ async function getClaimsForTrackingId(trackingId: string, orderId: string): Prom
           const filters = [];
           const params = [];
           
-          if (tid && columns.includes('tracking_id')) {
+           if (tid && columns.includes('trackingid')) {
             params.push(tid);
-            filters.push(`tracking_id ILIKE $${params.length}`);
+            filters.push(`"trackingId" ILIKE $${params.length}`);
           }
-          if (oid && columns.includes('order_id')) {
+          if (oid && columns.includes('orderid')) {
             params.push(oid);
-            filters.push(`order_id ILIKE $${params.length}`);
+            filters.push(`"orderId" ILIKE $${params.length}`);
           }
 
           if (filters.length === 0) continue;

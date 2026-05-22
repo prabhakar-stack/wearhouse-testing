@@ -11,6 +11,15 @@ let pool: pg.Pool | null = null;
 
 async function setupDatabaseSchema(db: pg.Pool) {
   try {
+    console.log("Checking and setting up AMZ_filed_claims table...");
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "AMZ_filed_claims" (
+        lpn text PRIMARY KEY,
+        filed_at timestamp with time zone DEFAULT now(),
+        case_id text
+      );
+    `);
+
     console.log("Checking and setting up claims_AMZ view...");
 
     // First check existing tables in the database
@@ -62,7 +71,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
           ${hasEvidence ? `
           SELECT DISTINCT ON (lpn)
             lpn,
-            "orderId" AS order_id,
+            "orderId",
             "lpnDriveLink" AS drive_link,
             "orderDriveLink" AS order_drive_link,
             "claimReason" AS claim_reason,
@@ -72,7 +81,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
           ` : `
           SELECT 
             NULL::text AS lpn,
-            NULL::text AS order_id,
+            NULL::text AS "orderId",
             NULL::text AS drive_link,
             NULL::text AS order_drive_link,
             NULL::text AS claim_reason,
@@ -86,7 +95,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
           
           -- orderId mapping
           COALESCE(
-            ev.order_id,
+            ev."orderId",
             ${hasRemovalShipments ? `(
               SELECT rs."order-id" 
               FROM "AMZ_removal_shipments" rs 
@@ -100,21 +109,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
               LIMIT 1
             )` : 'NULL::text'}
           ) AS "orderId",
-          COALESCE(
-            ev.order_id,
-            ${hasRemovalShipments ? `(
-              SELECT rs."order-id" 
-              FROM "AMZ_removal_shipments" rs 
-              WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku 
-              LIMIT 1
-            )` : 'NULL::text'},
-            ${hasReimbursements ? `(
-              SELECT re."case-id" 
-              FROM "AMZ_reimbursements" re 
-              WHERE re.sku = br.sku OR re.fnsku = br.fnsku 
-              LIMIT 1
-            )` : 'NULL::text'}
-          ) AS order_id,
           
           -- trackingId mapping
           COALESCE(
@@ -128,33 +122,15 @@ async function setupDatabaseSchema(db: pg.Pool) {
               SELECT rs."tracking-number" 
               FROM "AMZ_removal_shipments" rs 
               WHERE rs."order-id" = COALESCE(
-                ev.order_id, 
+                ev."orderId", 
                 (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)
               )
               LIMIT 1
             )` : 'NULL::text'}
           ) AS "trackingId",
-          COALESCE(
-            ${hasManifest ? `(
-              SELECT m."trackingId" 
-              FROM "Manifest" m 
-              WHERE m.id = ev."manifestId" 
-              LIMIT 1
-            )` : 'NULL::text'},
-            ${hasRemovalShipments ? `(
-              SELECT rs."tracking-number" 
-              FROM "AMZ_removal_shipments" rs 
-              WHERE rs."order-id" = COALESCE(
-                ev.order_id, 
-                (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)
-              )
-              LIMIT 1
-            )` : 'NULL::text'}
-          ) AS tracking_id,
           
           br.sku,
           br.fnsku,
-          br.product_name,
           br.product_name AS "productName",
           
           -- channel mapping
@@ -163,7 +139,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
               SELECT 1 
               FROM "AMZ_removal_orders" ro 
               WHERE ro."order-id" = COALESCE(
-                ev.order_id,
+                ev."orderId",
                 (SELECT rs."order-id" FROM "AMZ_removal_shipments" rs WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku LIMIT 1)
               )
             )` : 'FALSE'} THEN 'Amazon B2B'
@@ -172,7 +148,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
               SELECT 1 
               FROM "AMZ_removal_orders" ro 
               WHERE ro."order-id" = COALESCE(
-                ev.order_id,
+                ev."orderId",
                 (SELECT rs."order-id" FROM "AMZ_removal_shipments" rs WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku LIMIT 1)
               )
             )` : 'FALSE'} THEN 'AMZ B2C'
@@ -182,13 +158,14 @@ async function setupDatabaseSchema(db: pg.Pool) {
           
           -- status mapping
           CASE
+            WHEN EXISTS (SELECT 1 FROM "AMZ_filed_claims" fc WHERE fc.lpn = br.lpn) THEN 'Claimed'
             WHEN ev.lpn IS NOT NULL THEN 'Inspected'
             WHEN ${hasManifest ? `EXISTS (
               SELECT 1 
               FROM "Manifest" m 
               WHERE m."trackingId" = COALESCE(
                 (SELECT m2."trackingId" FROM "Manifest" m2 WHERE m2.id = ev."manifestId" LIMIT 1),
-                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev.order_id, (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
+                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev."orderId", (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
               ) AND m.status::text = 'AT_DOCK'
             )` : 'FALSE'} THEN 'Received'
             ELSE 'not delivered'
@@ -216,7 +193,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
               FROM "Manifest" m
               WHERE m."trackingId" = COALESCE(
                 (SELECT m2."trackingId" FROM "Manifest" m2 WHERE m2.id = ev."manifestId" LIMIT 1),
-                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev.order_id, (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
+                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev."orderId", (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
               )
               LIMIT 1
             ),
@@ -228,7 +205,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
               FROM "Manifest" m
               WHERE m."trackingId" = COALESCE(
                 (SELECT m2."trackingId" FROM "Manifest" m2 WHERE m2.id = ev."manifestId" LIMIT 1),
-                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev.order_id, (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
+                (SELECT rs."tracking-number" FROM "AMZ_removal_shipments" rs WHERE rs."order-id" = COALESCE(ev."orderId", (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)) LIMIT 1)
               )
               LIMIT 1
             ),
@@ -255,7 +232,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
           "trackingId" text,
           sku text,
           fnsku text,
-          product_name text,
           "productName" text,
           channel text,
           status text,
@@ -594,6 +570,9 @@ async function startServer() {
 
           const searchTerms = [];
           if (columns.includes('lpn')) searchTerms.push('lpn ILIKE $1');
+          if (columns.includes('claimid')) searchTerms.push('"claimId" ILIKE $1');
+          if (columns.includes('orderid')) searchTerms.push('"orderId" ILIKE $1');
+          if (columns.includes('trackingid')) searchTerms.push('"trackingId" ILIKE $1');
           if (columns.includes('claim_id')) searchTerms.push('claim_id ILIKE $1');
           if (columns.includes('order_id')) searchTerms.push('order_id ILIKE $1');
           if (columns.includes('tracking_id')) searchTerms.push('tracking_id ILIKE $1');
@@ -657,6 +636,26 @@ async function startServer() {
       // @ts-ignore
       if (result.otpRequired) {
         isOtpRequired = true;
+      }
+      if (result.success) {
+        const db = getDbPool();
+        if (db) {
+          // 1. Insert into AMZ_filed_claims table to reflect 'Claimed' dynamically in the claims_AMZ view
+          db.query(
+            `INSERT INTO "AMZ_filed_claims" (lpn, case_id) VALUES ($1, $2) ON CONFLICT (lpn) DO NOTHING`,
+            [claimData.lpn || '', result.caseId || '']
+          ).then(() => {
+            console.log(`[DB SUCCESS] Recorded claimed status in AMZ_filed_claims for LPN/Identifier: ${claimData.lpn}`);
+          }).catch(dbErr => {
+            console.error(`[DB ERROR] Failed to record status in AMZ_filed_claims:`, dbErr);
+          });
+          
+          // 2. Also try to update status directly in the fallback table claims_AMZ if it's not a view
+          db.query(
+            `UPDATE "claims_AMZ" SET status = 'Claimed' WHERE lpn = $1`,
+            [claimData.lpn || '']
+          ).catch(() => {});
+        }
       }
     }).catch(err => {
       console.error(`[BOT ERROR] ${identifier}:`, err);
