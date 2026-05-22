@@ -16,9 +16,11 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
     }).catch(() => {});
   }, []);
 
-  const initials = user.name
-    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : user.email.slice(0, 2).toUpperCase();
+  const resolvedName = profile?.name || (user.name !== user.email ? user.name : '') || user.email;
+  const isEmail = resolvedName.includes('@');
+  const initials = isEmail
+    ? resolvedName.slice(0, 2).toUpperCase()
+    : resolvedName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -34,7 +36,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
           <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
             {initials}
           </div>
-          <h2 className="text-xl font-black text-white">{user.name || 'Unnamed User'}</h2>
+          <h2 className="text-xl font-black text-white">{resolvedName}</h2>
           <p className="text-slate-400 text-sm mt-0.5 font-mono">{user.email}</p>
           <div className="mt-3 flex items-center space-x-2">
             <Shield size={12} className="text-[#FF6700]" />
@@ -96,9 +98,22 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
   const [alertCount, setAlertCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
 
-  const displayName = name || email.split('@')[0];
+  useEffect(() => {
+    fetch('/api/users/me')
+      .then(r => r.json())
+      .then(d => { if (d.user) setUserData(d.user); })
+      .catch(() => {});
+  }, []);
 
+  const displayName = userData?.name || (name !== email ? name : '') || email;
+  const isEmail = displayName.includes('@');
+  const initials = isEmail
+    ? displayName.slice(0, 2).toUpperCase()
+    : displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
+  // Fetch alert count for badge
   useEffect(() => {
     const fetchCount = () => {
       fetch('/api/alerts').then(r => r.json()).then(d => {
@@ -211,7 +226,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
           >
             {/* Avatar with orange ring for consistent super access look */}
             <div className="shrink-0 w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black">
-              {displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-white leading-tight break-words">{displayName}</p>

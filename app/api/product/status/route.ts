@@ -100,11 +100,13 @@ export async function POST(req: Request) {
       update: {
         lpn,
         condition: condition as any,
+        updatedAt: new Date(),
       },
       create: {
         id: CURRENT_STATUS_ID,
         lpn,
         condition: condition as any,
+        updatedAt: new Date(),
       },
       select: {
         lpn: true,

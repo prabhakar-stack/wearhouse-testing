@@ -36,6 +36,12 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
       .catch(console.error);
   }, []);
 
+  const resolvedName = userData?.name || (name !== email ? name : '') || email;
+  const isEmail = resolvedName.includes('@');
+  const initials = isEmail
+    ? resolvedName.slice(0, 2).toUpperCase()
+    : resolvedName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
   // Pre-fetch expected list so marketplace lookup is instant when receiver scans
   useEffect(() => {
     fetch('/api/dock/expected')
@@ -66,7 +72,7 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
             <h1 className="text-xl font-bold uppercase tracking-widest text-[#FF6700]">
               {activeTab === 'home' ? 'Receiver Hub' : activeTab === 'receive' ? 'Package Intake' : activeTab === 'profile' ? 'Profile' : activeTab === 'expected' ? 'Expected' : 'Custody Ledger'}
             </h1>
-            <p className="text-[10px] uppercase text-[#313079]/60 tracking-wider mt-1 font-bold">{name || email.split('@')[0]} &bull; {role.replace('_', ' ')}</p>
+            <p className="text-[10px] uppercase text-[#313079]/60 tracking-wider mt-1 font-bold">{resolvedName} &bull; {role.replace('_', ' ')}</p>
           </div>
         </div>
         <button onClick={() => setActiveTab('profile')} className={`hover:text-[#313079] transition-colors ${activeTab === 'profile' ? 'text-[#313079]' : 'text-[#FF6700]'}`}>
@@ -113,11 +119,10 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
               {/* Header gradient */}
               <div className="bg-gradient-to-br from-black to-slate-900 p-8 relative">
                 <div className="absolute top-0 right-0 p-4 opacity-10"><Shield size={100} className="text-white" /></div>
-                {/* Avatar */}
                 <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
-                  {(name || email).split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                  {initials}
                 </div>
-                <h2 className="text-xl font-black text-white">{name || email.split('@')[0]}</h2>
+                <h2 className="text-xl font-black text-white">{resolvedName}</h2>
                 <p className="text-slate-400 text-xs font-mono mt-1">{email}</p>
                 <span className="inline-block mt-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-black border-black text-[#FF6700]">
                   {role.replace(/_/g, ' ')}
@@ -234,6 +239,31 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
   const [trackingId, setTrackingId] = useState('');
   const [scannedTrackingId, setScannedTrackingId]   = useState('');
   const [marketplace, setMarketplace] = useState<Marketplace>('AMAZON');
+  const [searchError, setSearchError] = useState('');
+  const [loadingVerify, setLoadingVerify] = useState(false);
+
+  const verifyAndSetTrackingId = async (id: string) => {
+    const trimmedId = id.trim();
+    if (!trimmedId) return;
+    setLoadingVerify(true);
+    setSearchError('');
+    try {
+      const res = await fetch(`/api/dock/verify?trackingId=${encodeURIComponent(trimmedId)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.error || 'Failed to verify Tracking ID');
+        setLoadingVerify(false);
+        return;
+      }
+      setMarketplace(data.marketplace || 'AMAZON');
+      setScannedTrackingId(trimmedId);
+      setTrackingId(trimmedId);
+    } catch (err: any) {
+      setSearchError('Network error or server unavailable');
+    } finally {
+      setLoadingVerify(false);
+    }
+  };
 
   // Three accordion checks — each advances automatically
   const [activeStep, setActiveStep]     = useState(1);
@@ -315,7 +345,7 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
       await scannerRef.current.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 300, height: 100 } },
-        (text: string) => { stopScanner(); setScannedTrackingId(text); setTrackingId(text); },
+        (text: string) => { stopScanner(); verifyAndSetTrackingId(text); },
         () => {}
       );
     } catch { setScanning(false); }
@@ -331,7 +361,7 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
 
   const handleManualSearch = (e: any) => {
     e.preventDefault();
-    if (trackingId.trim()) { setScannedTrackingId(trackingId.trim()); }
+    if (trackingId.trim()) { verifyAndSetTrackingId(trackingId.trim()); }
   };
 
   // Mark step & auto-advance
@@ -471,10 +501,20 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
             <span className="bg-white px-4 text-[#313079]/45 text-xs uppercase font-bold tracking-widest relative z-10 mx-auto">Manual Override</span>
           </div>
           <form onSubmit={handleManualSearch} className="flex flex-col space-y-3">
-            <input type="text" placeholder="ENTER TRACKING ID" value={trackingId} onChange={e => setTrackingId(e.target.value)}
+            <input type="text" placeholder="ENTER TRACKING ID" value={trackingId} onChange={e => { setTrackingId(e.target.value); setSearchError(''); }}
               className="w-full bg-white border-2 border-[#313079]/20 text-[#313079] p-4 font-mono text-lg focus:outline-none focus:border-[#FF6700] text-center rounded-xl" />
-            <button type="submit" disabled={!trackingId} className="w-full py-4 bg-[#FF6700]/5 border border-[#FF6700]/10 text-[#313079]/70 hover:text-[#FF6700] hover:border-[#FF6700] transition-colors uppercase tracking-widest text-sm font-black disabled:opacity-50 rounded-2xl">
-              Proceed
+            {searchError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-xs font-bold rounded flex items-center space-x-2 w-full">
+                <AlertOctagon size={16} className="shrink-0" />
+                <span>{searchError}</span>
+              </div>
+            )}
+            <button type="submit" disabled={!trackingId || loadingVerify} className="w-full py-4 bg-[#FF6700]/5 border border-[#FF6700]/10 text-[#313079]/70 hover:text-[#FF6700] hover:border-[#FF6700] transition-colors uppercase tracking-widest text-sm font-black disabled:opacity-50 rounded-2xl flex items-center justify-center space-x-2">
+              {loadingVerify ? (
+                <div className="w-5 h-5 border-2 border-[#313079]/70 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>Proceed</span>
+              )}
             </button>
           </form>
         </div>

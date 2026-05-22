@@ -101,6 +101,16 @@ export async function PUT(req: NextRequest) {
       }
 
       console.log(`[Google Drive Success] Successfully uploaded file to Google Drive: ${fileId}`);
+
+      // Delete the local file since the upload to Google Drive succeeded
+      try {
+        if (fs.existsSync(localFilePath)) {
+          fs.unlinkSync(localFilePath);
+          console.log(`[Local Disk Cleanup] Cleaned up local file: ${localFilePath}`);
+        }
+      } catch (cleanupErr) {
+        console.warn(`[Local Disk Cleanup Warning] Could not delete local file ${localFilePath}:`, cleanupErr);
+      }
     } catch (driveError: any) {
       console.warn(`⚠️ [Google Drive Warning] Drive upload failed, falling back to local storage serving:`, driveError.message);
       

@@ -126,6 +126,16 @@ export async function POST(req: NextRequest) {
       }
 
       console.log(`[Assemble] Successfully uploaded assembled file to Google Drive: ${fileId}`);
+
+      // Delete the local file since the upload to Google Drive succeeded
+      try {
+        if (fs.existsSync(assembledFilePath)) {
+          fs.unlinkSync(assembledFilePath);
+          console.log(`[Local Disk Cleanup] Cleaned up local assembled file: ${assembledFilePath}`);
+        }
+      } catch (cleanupErr) {
+        console.warn(`[Local Disk Cleanup Warning] Could not delete local assembled file ${assembledFilePath}:`, cleanupErr);
+      }
     } catch (driveError: any) {
       console.warn(`⚠️ [Assemble] Drive upload failed, falling back to local serving:`, driveError.message);
       const localName = path.basename(assembledFilePath);

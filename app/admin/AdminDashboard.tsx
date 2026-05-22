@@ -24,9 +24,11 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
     INSPECTOR: 'bg-[#FF6700]/5 text-[#FF6700] border-[#FF6700]/10',
   };
 
-  const initials = user.name
-    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : user.email.slice(0, 2).toUpperCase();
+  const resolvedName = profile?.name || (user.name !== user.email ? user.name : '') || user.email;
+  const isEmail = resolvedName.includes('@');
+  const initials = isEmail
+    ? resolvedName.slice(0, 2).toUpperCase()
+    : resolvedName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -43,7 +45,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
           <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
             {initials}
           </div>
-          <h2 className="text-xl font-black text-white">{user.name || 'Unnamed User'}</h2>
+          <h2 className="text-xl font-black text-white">{resolvedName}</h2>
           <p className="text-slate-400 text-sm mt-0.5 font-mono">{user.email}</p>
           <span className="inline-block mt-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-black border-black text-[#FF6700]">
             {roleLabel}
@@ -102,8 +104,20 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
   const [alertCount, setAlertCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
 
-  const displayName = name || email.split('@')[0];
+  useEffect(() => {
+    fetch('/api/users/me')
+      .then(r => r.json())
+      .then(d => { if (d.user) setUserData(d.user); })
+      .catch(() => {});
+  }, []);
+
+  const displayName = userData?.name || (name !== email ? name : '') || email;
+  const isEmail = displayName.includes('@');
+  const initials = isEmail
+    ? displayName.slice(0, 2).toUpperCase()
+    : displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   // Fetch alert count for badge
   useEffect(() => {
@@ -216,9 +230,8 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
             className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors group text-left"
             title="View Profile"
           >
-            {/* Avatar */}
             <div className="shrink-0 w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black">
-              {displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-white leading-tight break-words">{displayName}</p>
