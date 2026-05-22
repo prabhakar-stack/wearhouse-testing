@@ -50,6 +50,11 @@ export default function SmartFiling() {
   const fetchConfig = async () => {
     try {
       const res = await fetch('/api/bot/config');
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Server returned non-ok for config:", res.status, errorText);
+        return;
+      }
       const data = await res.json();
       setConfig(data);
     } catch (err) {
@@ -89,6 +94,7 @@ export default function SmartFiling() {
     try {
       // 1. Fetch all claims to determine what's eligible
       const claimsRes = await fetch('/api/claims');
+      if (!claimsRes.ok) throw new Error("Failed to fetch claims");
       const allClaims: any[] = await claimsRes.json();
 
       // 2. Group by Tracking ID
@@ -99,20 +105,28 @@ export default function SmartFiling() {
         groups[tid].push(c);
       });
 
-      // 3. Filter for Tracking IDs where ALL associated rows are marked "Inspected"
+      // 3. Filter for Tracking IDs where ALL associated rows are marked "Inspected" OR have a Rejected Delivery type
       const eligibleTrackingIds = Object.keys(groups).filter(tid => {
         if (tid === 'No Tracking') return false;
         const groupItems = groups[tid];
-        // Must have at least one row and ALL rows must be 'Inspected'
-        return groupItems.length > 0 && groupItems.every(item => item.status === 'Inspected');
+        // Require at least one row, and ALL rows must either be 'Inspected' OR have type 'Rejected' / 'RejectedDelivery'
+        return groupItems.length > 0 && groupItems.every(item => {
+          const isInspected = item.status === 'Inspected';
+          const isRejected = item.type === 'RejectedDelivery' || item.type === 'Rejected' || (item.type || '').toLowerCase().includes('rejected');
+          return isInspected || isRejected;
+        });
       });
 
       const updatedTasks: BotTask[] = [];
 
       // 4. For each eligible tracking ID, check if there's a bot log
       for (const tid of eligibleTrackingIds) {
-        const firstClaim = groups[tid][0];
-        const logId = firstClaim.lpn || tid; // Use LPN as primary log key
+        const groupItems = groups[tid];
+        const firstClaim = groupItems[0];
+        const logId = firstClaim.orderId || firstClaim.lpn || tid; // Use Order ID as primary log key
+        const hasRejected = groupItems.some(item => 
+          item.type === 'RejectedDelivery' || item.type === 'Rejected' || (item.type || '').toLowerCase().includes('rejected')
+        );
         
         try {
           const res = await fetch(`/api/bot/logs/${logId}`);
@@ -124,9 +138,9 @@ export default function SmartFiling() {
               id: `BT-${logId}`,
               claimId: logId,
               orderId: firstClaim.orderId || "N/A",
-              type: "Amazon SAFE-T",
+              type: hasRejected ? "Rejected Delivery" : "Amazon SAFE-T",
               status: isFinished ? (data.logs.some((l: string) => l.includes('SUCCESS')) ? 'Succeeded' : 'Failed') : 'Running',
-              timestamp: "System Auto",
+              timestamp: hasRejected ? "Rejected" : "System Auto",
               logs: data.logs
             });
           } else {
@@ -135,10 +149,14 @@ export default function SmartFiling() {
               id: `Q-${logId}`,
               claimId: logId,
               orderId: firstClaim.orderId || "N/A",
-              type: "Ready to File",
+              type: hasRejected ? "Rejected Delivery" : "Ready to File",
               status: 'Queued',
-              timestamp: "Inspected",
-              logs: ["Validation Complete. All shipment items are marked as 'Inspected'. Ready for SAFE-T filing."]
+              timestamp: hasRejected ? "Rejected" : "Inspected",
+              logs: [
+                hasRejected 
+                  ? "Rejected Delivery detected. Ready for automatic SAFE-T filing."
+                  : "Validation Complete. All shipment items are marked as 'Inspected'. Ready for SAFE-T filing."
+              ]
             });
           }
         } catch (e) {
@@ -270,7 +288,7 @@ export default function SmartFiling() {
                             <span className="text-xs font-black text-[#313079]">{task.id}</span>
                             <span className="text-[10px] font-bold text-slate-400">/ {task.timestamp}</span>
                           </div>
-                          <h4 className="text-sm font-bold text-slate-900">Claim {task.claimId}</h4>
+                          <h4 className="text-sm font-bold text-slate-900">Order ID: {task.claimId}</h4>
                           <span className="text-[10px] font-extrabold px-1.5 py-0.5 bg-slate-100 rounded uppercase text-slate-500 mt-1 inline-block">
                             {task.type}
                           </span>
@@ -286,11 +304,11 @@ export default function SmartFiling() {
                                 const res = await fetch('/api/bot/trigger', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ lpn: task.claimId })
+                                  body: JSON.stringify({ orderId: task.claimId })
                                 });
                                 const data = await res.json();
                                 if (res.ok) {
-                                  alert(`Bot triggered for LPN: ${task.claimId}`);
+                                  alert(`Bot triggered for Order: ${task.claimId}`);
                                 } else {
                                   alert(data.message || "Failed to start bot.");
                                 }
@@ -422,6 +440,8 @@ export default function SmartFiling() {
               </button>
             </div>
           </div>
+
+
 
           <div className="bg-indigo-900 rounded-2xl p-6 text-white shadow-lg shadow-indigo-100">
             <div className="flex items-center gap-3 mb-4">

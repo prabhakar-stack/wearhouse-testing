@@ -165,6 +165,13 @@ async function startServer() {
 
     rawRows.forEach((row: any) => {
       const data = toCamelCase(row);
+
+      // Normalize 'Rejected' type which means 'RejectedDelivery'
+        const typeStr = (data.type || "").toLowerCase();
+        if (typeStr === 'rejected' || typeStr === 'rejecteddelivery') {
+          data.type = 'RejectedDelivery';
+        }
+
       // Calculate SLA Days Elapsed
       const rowDate = data.date || data.createdAt || data.created_at;
       if (rowDate) {
@@ -211,10 +218,9 @@ async function startServer() {
       isAvailable: !isBotRunning && coolingRemaining === 0
     });
   });
-
-  app.get("/api/bot/logs/:lpn", (req, res) => {
-    const { lpn } = req.params;
-    const logPath = path.join(process.cwd(), 'bot_logs', `${lpn}.log`);
+  app.get("/api/bot/logs/:id", (req, res) => {
+    const { id } = req.params;
+    const logPath = path.join(process.cwd(), 'bot_logs', `${id}.log`);
     
     if (fs.existsSync(logPath)) {
       const logs = fs.readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);
@@ -359,5 +365,6 @@ async function startServer() {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
+
 
 startServer();

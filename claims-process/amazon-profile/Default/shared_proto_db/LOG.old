@@ -1,3 +1,3 @@
-2026/05/20-17:48:26.219 597c Reusing MANIFEST E:\returns-process\amazon-profile\Default\shared_proto_db/MANIFEST-000001
-2026/05/20-17:48:26.219 597c Recovering log #3
-2026/05/20-17:48:26.220 597c Reusing old log E:\returns-process\amazon-profile\Default\shared_proto_db/000003.log 
+2026/05/22-11:51:55.465 4de4 Reusing MANIFEST E:\Returns-process\claims-process\amazon-profile\Default\shared_proto_db/MANIFEST-000001
+2026/05/22-11:51:55.465 4de4 Recovering log #3
+2026/05/22-11:51:55.466 4de4 Reusing old log E:\Returns-process\claims-process\amazon-profile\Default\shared_proto_db/000003.log 
