@@ -605,11 +605,20 @@ async function findOrCreateReturnItemForReimbursement(row) {
     });
   }
 
-  const existing = await prisma.returnItem.findFirst({
-    where: {
-      OR: [{ sku }, { fnsku: pick(normalized.fnsku) }, { asin: pick(normalized.asin) }],
-    },
-  });
+  const identityFilters = [
+    sku ? { sku } : null,
+    pick(normalized.fnsku) ? { fnsku: pick(normalized.fnsku) } : null,
+    pick(normalized.asin) ? { asin: pick(normalized.asin) } : null,
+  ].filter(Boolean);
+
+  const existing = identityFilters.length > 0
+    ? await prisma.returnItem.findFirst({
+        where: {
+          ...(orderId ? { orderId } : {}),
+          OR: identityFilters,
+        },
+      })
+    : null;
 
   if (existing) {
     return existing;
@@ -765,6 +774,11 @@ async function syncCoreRemovalShipments(rows) {
           return null;
         }
 
+        if (!mapped.trackingNumber || String(mapped.trackingNumber).startsWith("removal_")) {
+          console.log("[WARN] Skipping core removal shipment row without real tracking number:", rawRow);
+          return null;
+        }
+
         try {
           const existing = await prisma.removalShipment.findUnique({
             where: {
@@ -782,7 +796,6 @@ async function syncCoreRemovalShipments(rows) {
                 shipmentDate: mapped.shipmentDate,
                 shippedQuantity: mapped.shippedQuantity,
                 disposition: mapped.disposition,
-                manifestId: mapped.manifestId,
               },
             });
             return updated;
@@ -852,7 +865,6 @@ async function main() {
   const removalOrderRows = parseTSV(removalOrdersTSV);
   const syncedRemovalOrders = await syncRemovalOrders(removalOrderRows);
   const syncedCoreOrders = await syncCoreRemovalOrdersToOrders(removalOrderRows);
-  const syncedCoreRemovalOrders = await syncCoreRemovalShipments(removalOrderRows);
 
   // 2. Sync Removal Shipments
   const removalShipmentsTSV = await fetchReportData(REMOVAL_SHIPMENTS_REPORT_TYPE, "removal_shipments_0_30", 30, 0);
@@ -875,7 +887,7 @@ async function main() {
   console.log("\n======================================");
   console.log("SYNC SUMMARY:");
   console.log(`- AMZRemovalOrders: ${syncedRemovalOrders} records synced to Raw`);
-  console.log(`- RemovalShipments (from Removal Orders): ${syncedCoreRemovalOrders} records synced to Core`);
+  console.log(`- Orders (from Removal Orders): ${syncedCoreOrders} records synced to Core`);
   console.log(`- AMZRemovalShipments: ${syncedRemovalShipments} records synced to Raw`);
   console.log(`- RemovalShipments (from Removal Shipments): ${syncedCoreRemovalShipments} records synced to Core`);
   console.log(`- AMZReimbursements: ${syncedReimbursements} records synced to Raw`);

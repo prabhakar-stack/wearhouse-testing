@@ -403,11 +403,20 @@ async function findOrCreateReturnItemForReimbursement(row) {
     });
   }
 
-  const existing = await prisma.returnItem.findFirst({
-    where: {
-      OR: [{ sku }, { fnsku: pick(normalized.fnsku) }, { asin: pick(normalized.asin) }],
-    },
-  });
+  const identityFilters = [
+    sku ? { sku } : null,
+    pick(normalized.fnsku) ? { fnsku: pick(normalized.fnsku) } : null,
+    pick(normalized.asin) ? { asin: pick(normalized.asin) } : null,
+  ].filter(Boolean);
+
+  const existing = identityFilters.length > 0
+    ? await prisma.returnItem.findFirst({
+        where: {
+          ...(orderId ? { orderId } : {}),
+          OR: identityFilters,
+        },
+      })
+    : null;
 
   if (existing) {
     return existing;
@@ -547,10 +556,15 @@ async function upsertRemovalShipments(rows) {
     const groupSaved = await Promise.all(group.map(async (rawRow) => {
       const mapped = mapRemovalShipmentRow(rawRow);
 
-      if (!mapped.removalOrderId || !mapped.sku) {
-        console.log("Skipping removal shipment row without removalOrderId or sku", rawRow);
-        return null;
-      }
+        if (!mapped.removalOrderId || !mapped.sku) {
+          console.log("Skipping removal shipment row without removalOrderId or sku", rawRow);
+          return null;
+        }
+
+        if (!mapped.trackingNumber || String(mapped.trackingNumber).startsWith("removal_")) {
+          console.log("Skipping removal shipment row without real tracking number", rawRow);
+          return null;
+        }
 
       const existing = await prisma.removalShipment.findUnique({
         where: {
@@ -568,7 +582,6 @@ async function upsertRemovalShipments(rows) {
             shipmentDate: mapped.shipmentDate,
             shippedQuantity: mapped.shippedQuantity,
             disposition: mapped.disposition,
-            manifestId: mapped.manifestId,
           },
         });
         return updated;
@@ -667,8 +680,7 @@ async function fetchAndStoreRemovalOrders() {
   if (!reportData) return [];
   const rows = parseTSV(reportData.toString());
   console.log(`Parsed ${rows.length} removal order rows`);
-  await upsertCoreRemovalOrdersToOrders(rows);
-  return upsertRemovalShipments(rows);
+  return upsertCoreRemovalOrdersToOrders(rows);
 }
 
 async function fetchAndStoreRemovalShipments() {
