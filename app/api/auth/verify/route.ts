@@ -28,13 +28,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const resolvedName = user.name || user.email;
+
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role, name: user.name || null },
+      { userId: user.id, email: user.email, role: user.role, name: resolvedName },
       JWT_SECRET,
       { expiresIn: "12h" },
     );
 
-    const response = NextResponse.json({ success: true, role: user.role, name: user.name || null });
+    const response = NextResponse.json({ success: true, role: user.role, name: resolvedName });
     response.cookies.set("session", token, {
       httpOnly: true,
       secure: isProduction,

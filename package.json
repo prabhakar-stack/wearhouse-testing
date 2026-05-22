@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
+    "seed:test-order": "node prisma/seed-test-order.js",
     "postbuild": "prisma migrate deploy",
     "postinstall": "prisma generate"
   },

@@ -22,6 +22,23 @@ export async function POST(req: NextRequest) {
     });
 
     if (!manifest) {
+      // Check if it exists in RemovalShipment trackingNumber
+      const removalShipment = await prisma.removalShipment.findUnique({
+        where: { trackingNumber: trackingId }
+      });
+
+      // Check if it exists in Order platformOrderId
+      const order = await prisma.order.findUnique({
+        where: { platformOrderId: trackingId }
+      });
+
+      if (!removalShipment && !order) {
+        return NextResponse.json({
+          error: 'This package/order is not in our shipment removal or order database and cannot be received.'
+        }, { status: 404 });
+      }
+
+      // If it exists in RemovalShipment or Order but no Manifest exists yet, we create the Manifest
       manifest = await prisma.manifest.create({
         data: {
           trackingId,
@@ -30,7 +47,24 @@ export async function POST(req: NextRequest) {
           expectedDate: new Date(),
         }
       });
-      console.log(`[Dock Receive Dynamic Create] Created missing Manifest for Tracking ID: ${trackingId}`);
+      
+      // Link the RemovalShipment to this new Manifest if found
+      if (removalShipment) {
+        await prisma.removalShipment.update({
+          where: { id: removalShipment.id },
+          data: { manifestId: manifest.id }
+        });
+      }
+
+      // Link the Order to this new Manifest if found
+      if (order) {
+        await prisma.order.update({
+          where: { platformOrderId: order.platformOrderId },
+          data: { manifestId: manifest.id }
+        });
+      }
+
+      console.log(`[Dock Receive Dynamic Create] Created verified Manifest for Tracking ID: ${trackingId}`);
     }
 
     await prisma.$transaction(async (tx) => {

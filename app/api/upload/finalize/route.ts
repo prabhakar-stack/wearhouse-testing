@@ -27,16 +27,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (!manifest) {
-      // Create a minimal manifest if it doesn't exist yet (dynamic creation for edge cases)
-      manifest = await prisma.manifest.create({
-        data: {
-          trackingId: trackingId,
-          status: 'EXPECTED',
-          courierName: 'Unknown',
-          expectedDate: new Date(),
-        }
-      });
-      console.log(`[Database Dynamic Create] Created missing Manifest for ID: ${trackingId}`);
+      console.warn(`[Finalize Upload] Manifest not found for Tracking ID: ${trackingId}. Dynamic creation is disabled.`);
+      return NextResponse.json({ error: `Manifest not found for ID: ${trackingId}` }, { status: 404 });
     }
 
     // Auth with Google using OAuth2 Refresh Token credentials to avoid Service Account quota limits
@@ -290,37 +282,8 @@ export async function POST(req: NextRequest) {
           });
 
           if (!returnItem) {
-            const platformOrderId = trackingId;
-            let order = await prisma.order.findUnique({
-              where: { platformOrderId },
-            });
-
-            if (!order) {
-              order = await prisma.order.create({
-                data: {
-                  platformOrderId: platformOrderId,
-                  marketplace: 'AMAZON',
-                  purchaseDate: new Date(),
-                  manifestId: manifest.id,
-                },
-              });
-              console.log(`[Database Dynamic Create] Created missing Order for ID: ${platformOrderId}`);
-            }
-
-            returnItem = await prisma.returnItem.create({
-              data: {
-                orderId: order.platformOrderId,
-                sku: lpn,
-                lpn: lpn,
-                quantity: 1,
-                returnReason: 'Inspected',
-                condition: resolvedCondition as any,
-                inspectorDefectType: inspectorDefectType as any,
-                claimReason: claimReason,
-                claimSubReason: claimSubReason,
-              },
-            });
-            console.log(`[Database Dynamic Create] Created ReturnItem for LPN: ${lpn}`);
+            console.warn(`[Finalize Upload] ReturnItem not found for LPN: ${lpn}. Dynamic creation is disabled.`);
+            return NextResponse.json({ error: `Return item not found for LPN: ${lpn}` }, { status: 404 });
           } else {
             // Update condition
             await prisma.returnItem.update({

@@ -4,7 +4,9 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
   try {
     const { trackingId } = await params;
-    const manifest = await prisma.manifest.findUnique({
+    
+    // 1. Try to find by tracking ID
+    let manifest = await prisma.manifest.findUnique({
       where: { trackingId: trackingId },
       include: {
         handshakes: { orderBy: { timestamp: 'asc' } },
@@ -16,6 +18,28 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
         }
       }
     });
+
+    // 2. If not found, try to search by platformOrderId
+    if (!manifest) {
+      manifest = await prisma.manifest.findFirst({
+        where: {
+          orders: {
+            some: {
+              platformOrderId: trackingId
+            }
+          }
+        },
+        include: {
+          handshakes: { orderBy: { timestamp: 'asc' } },
+          inspection: true,
+          orders: {
+            include: {
+              returnItems: true
+            }
+          }
+        }
+      });
+    }
 
     if (!manifest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
@@ -38,3 +62,4 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
     return NextResponse.json({ error: 'Failed to fetch manifest' }, { status: 500 });
   }
 }
+

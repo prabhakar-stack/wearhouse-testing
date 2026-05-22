@@ -587,7 +587,7 @@ function InspectorDashboard({ role }: { role: string }) {
             </h1>
             <p className="text-[#313079]/60 text-xs font-bold tracking-widest mt-1 uppercase">
               {userData
-                ? userData.name || userData.email?.split("@")[0] || role
+                ? userData.name || userData.email || role
                 : role.replace("_", " ")}{" "}
               &bull; {role.replace(/_/g, " ")}
             </p>
@@ -679,22 +679,17 @@ function InspectorDashboard({ role }: { role: string }) {
                 {/* Avatar with initials from name or email */}
                 <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
                   {userData
-                    ? (userData.name || userData.email || "?")
-                        .split(" ")
-                        .map((n: string) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2)
+                    ? userData.name
+                      ? userData.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+                      : userData.email?.slice(0, 2).toUpperCase() || "?"
                     : "?"}
                 </div>
                 <h2 className="text-xl font-black text-white">
                   {userData
-                    ? userData.name ||
-                      userData.email?.split("@")[0] ||
-                      "Inspector"
+                    ? userData.name || userData.email || "Inspector"
                     : "Loading..."}
                 </h2>
-                {userData?.name && (
+                {userData?.email && (
                   <p className="text-slate-400 text-xs font-mono mt-1">
                     {userData.email}
                   </p>
@@ -1045,7 +1040,7 @@ function InspectTab({ userId }: { userId?: string }) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const capturedImagesRef = useRef<
-    { type: "box" | "lpn" | "product"; id?: string; blob: Blob }[]
+    { type: "box" | "lpn" | "product"; id?: string; step?: number; blob: Blob }[]
   >([]);
   const lpnConditionsRef = useRef<Record<string, string>>({});
   const reqAnimRef = useRef<number>(0);
@@ -1146,52 +1141,33 @@ function InspectTab({ userId }: { userId?: string }) {
 
                     const blob = new Blob(videoChunks, { type: "video/webm" });
 
-                    const filesToUpload: {
-                      key: string;
-                      name: string;
-                      mimeType: string;
-                      lpn?: string;
-                      blob: Blob;
-                    }[] = [];
-                    filesToUpload.push({
-                      key: "file",
-                      name: `inspection-${Date.now()}.webm`,
-                      mimeType: "video/webm",
-                      blob,
-                    });
+                    const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
+                    filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
 
                     let boxCounter = 1;
-                    let lpnCounters: Record<string, number> = {};
-
                     capturedImagesRef.current.forEach((img) => {
                       if (!img.blob || img.blob.size === 0) return;
-
                       if (img.type === "box") {
+                        const stepNum = img.step || boxCounter;
                         filesToUpload.push({
-                          key: `box_${boxCounter}`,
-                          name: `box_${boxCounter}.jpg`,
+                          key: `step_${stepNum}`,
+                          name: `step${stepNum}.jpg`,
                           mimeType: "image/jpeg",
                           blob: img.blob,
                         });
                         boxCounter++;
-                      } else if (
-                        (img.type === "lpn" || img.type === "product") &&
-                        img.id
-                      ) {
-                        // Stop processing images client-side entirely if not 'bad'
-                        // Prepare images if marked 'bad' (e.g. starts with 'bad')
+                      } else if ((img.type === "lpn" || img.type === "product") && img.id) {
                         const status = lpnConditionsRef.current[img.id];
                         if (status && status.startsWith("bad")) {
-                          if (!lpnCounters[img.id]) lpnCounters[img.id] = 1;
-                          const c = lpnCounters[img.id];
+                          const fileKey = `${img.type}_img_${img.id}`;
+                          const fileName = `${img.type}.jpg`;
                           filesToUpload.push({
-                            key: `lpn_${img.id}_image_${c}`,
-                            name: `lpn_${img.id}_image_${c}.jpg`,
+                            key: fileKey,
+                            name: fileName,
                             mimeType: "image/jpeg",
                             blob: img.blob,
                             lpn: img.id,
                           });
-                          lpnCounters[img.id]++;
                         }
                       }
                     });
@@ -1521,20 +1497,18 @@ function InspectTab({ userId }: { userId?: string }) {
         );
         ctx.restore();
 
-        // ✅ THE CORRECTED CROP LOGIC
         if (type === "lpn" || type === "product") {
           const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = canvas.width / 2;
+          tempCanvas.width = canvas.width * 0.3;
           tempCanvas.height = canvas.height;
           const tCtx = tempCanvas.getContext("2d");
 
           if (tCtx) {
-            // Cut exactly the right half of the image
             tCtx.drawImage(
               canvas,
-              canvas.width / 2,
+              canvas.width * 0.7,
               0,
-              canvas.width / 2,
+              canvas.width * 0.3,
               canvas.height,
               0,
               0,
@@ -1543,11 +1517,11 @@ function InspectTab({ userId }: { userId?: string }) {
             );
             tempCanvas.toBlob(
               (blob) => {
-                // 🐛 FIX: Dynamically use the `type` instead of hardcoding 'lpn'
                 if (blob)
                   capturedImagesRef.current.push({
                     type,
                     id: identifier,
+                    step: boxStep,
                     blob,
                   });
               },
@@ -1556,11 +1530,15 @@ function InspectTab({ userId }: { userId?: string }) {
             );
           }
         } else {
-          // Full box photo
           canvas.toBlob(
             (blob) => {
               if (blob)
-                capturedImagesRef.current.push({ type, id: identifier, blob });
+                capturedImagesRef.current.push({
+                  type,
+                  id: identifier,
+                  step: boxStep,
+                  blob,
+                });
             },
             "image/jpeg",
             0.8,
@@ -1616,7 +1594,11 @@ function InspectTab({ userId }: { userId?: string }) {
     if (!orderId.trim()) return;
     setStartError("");
 
-    // Fetch manifest to get dynamic item count
+    if (!userId) {
+      setStartError("Authentication error. Please log in again.");
+      return;
+    }
+
     try {
       const res = await fetch(
         `/api/manifest/${encodeURIComponent(orderId.trim())}`,
@@ -1624,7 +1606,25 @@ function InspectTab({ userId }: { userId?: string }) {
       if (res.ok) {
         const data = await res.json();
         const manifest = data.manifest;
-        if (manifest && manifest.returnItems) {
+
+        if (!manifest) {
+          setStartError("This Order ID / Tracking ID is not found in the system.");
+          return;
+        }
+
+        // Verify if a RECEIVER_TO_INSPECTOR handshake exists matching the current inspector's user ID
+        const hasHandshake = manifest.handshakes?.some(
+          (h: any) => h.type === "RECEIVER_TO_INSPECTOR" && h.receiverId === userId
+        );
+
+        if (!hasHandshake) {
+          setStartError(
+            "This package is not in your stack. Please take custody first from the Ledger or Dock."
+          );
+          return;
+        }
+
+        if (manifest.returnItems) {
           const itemsWithLpn = manifest.returnItems.filter((ri: any) => ri.lpn);
           const count =
             itemsWithLpn.length > 0
@@ -1635,19 +1635,21 @@ function InspectTab({ userId }: { userId?: string }) {
                 );
           setExpectedItems(Math.max(count, 1));
         } else {
-          setExpectedItems(1); // Fallback minimum
+          setExpectedItems(1);
         }
       } else {
-        // Manifest not found — still allow inspection with fallback count
-        setExpectedItems(1);
+        setStartError("This Order ID / Tracking ID is not found in the system.");
+        return;
       }
     } catch {
-      setExpectedItems(1);
+      setStartError("Failed to verify custody. Please try again.");
+      return;
     }
 
     setPhase("BOX_EVIDENCE");
     triggerXp(50);
   };
+
 
   const nextBoxStep = () => {
     triggerXp(20);
@@ -1914,13 +1916,13 @@ function InspectTab({ userId }: { userId?: string }) {
           {/* Split Screen Overlay for Item Inspection */}
           {phase === "ITEM_INSPECTION" && (
             <div className="absolute inset-0 z-10 pointer-events-none flex">
-              <div className="w-1/2 h-full border-r-2 border-white/40 border-dashed flex items-center justify-center bg-black/20">
-                <span className="text-white/60 font-black text-2xl tracking-widest drop-shadow-lg -rotate-90 md:rotate-0">
+              <div className="w-[70%] h-full border-r-2 border-white/40 border-dashed flex items-center justify-center bg-black/20">
+                <span className="text-white/60 font-black text-2xl tracking-widest">
                   BOX AREA
                 </span>
               </div>
-              <div className="w-1/2 h-full flex items-center justify-center">
-                <span className="text-white/60 font-black text-2xl tracking-widest drop-shadow-lg -rotate-90 md:rotate-0">
+              <div className="w-[30%] h-full flex items-center justify-center">
+                <span className="text-white/60 font-black text-2xl tracking-widest">
                   ITEM AREA
                 </span>
               </div>
@@ -1996,6 +1998,11 @@ function InspectTab({ userId }: { userId?: string }) {
                 <span>Initialize</span>
                 <ArrowRight size={18} />
               </button>
+              {startError && (
+                <div className="w-full text-red-600 text-xs font-black uppercase tracking-wider text-center bg-red-50 border-2 border-red-200 p-3 rounded-lg shadow-sm animate-in fade-in duration-200 mt-2">
+                  {startError}
+                </div>
+              )}
             </form>
           </div>
         )}
