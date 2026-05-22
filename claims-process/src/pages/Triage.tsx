@@ -125,7 +125,10 @@ Evidence: ${claim.driveLink || 'N/A'}
     // Check if any issue matches the filters
     const validIssues = c.issues.filter((issue: any) => {
       const condition = issue.condition?.toLowerCase();
-      if (condition === 'good') return false;
+      const typeLower = (issue.type || "").toLowerCase();
+      if (condition === 'good' && typeLower !== 'rejecteddelivery' && typeLower !== 'rejected' && typeLower !== 'missing') {
+        return false;
+      }
       return true;
     });
 
@@ -138,7 +141,7 @@ Evidence: ${claim.driveLink || 'N/A'}
     return validIssues.some((issue: any) => {
       if (filter === 'Missing') return c.deliveryStatus?.toLowerCase() !== 'Delivered' && c.slaDaysElapsed>=1;
       if (filter === 'Damaged') return (issue.type === 'Damaged');
-      if (filter === 'RejectedDelivery') return c.deliveryStatus === 'Rejected';
+      if (filter === 'RejectedDelivery') return c.deliveryStatus === 'Rejected'  || issue.type === 'RejectedDelivery' || issue.type === 'Rejected';
       return issue.type === filter;
     });
   });
@@ -306,7 +309,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                         ) : (
                           <div className="flex flex-col items-end">
                             <span className="text-[8px] font-bold text-slate-300 italic">Unfiled</span>
-                            {claim.condition === 'damaged' && (
+                            {true  && (
                               <button 
                                 onClick={async (e) => {
                                   e.stopPropagation();

@@ -37,6 +37,456 @@ function matchProduct(webName: string, dbClaim: Claim): boolean {
   return false;
 }
 
+// Helper to download a single file from a URL
+async function downloadFileFromUrl(url: string, destPath: string): Promise<boolean> {
+  try {
+    // Extract file ID if it's a Google Drive link to support high-reliability asset fallbacks
+    let driveFileId = '';
+    const idMatch = url.match(/(?:id=|\/d\/)([a-zA-Z0-9_-]{25,55})/);
+    if (url.includes('drive.google.com') && idMatch) {
+      driveFileId = idMatch[1];
+    }
+
+    const res = await fetch(url);
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        const text = await res.text();
+        // If it has a confirmation code (e.g. "confirm=XXX"), we can fetch again with confirm
+        const confirmMatch = text.match(/confirm=([a-zA-Z0-9_:-]+)/);
+        if (confirmMatch) {
+          const confirmUrl = url + `&confirm=${confirmMatch[1]}`;
+          const confirmRes = await fetch(confirmUrl);
+          if (confirmRes.ok) {
+            const buffer = Buffer.from(await confirmRes.arrayBuffer());
+            fs.writeFileSync(destPath, buffer);
+            return true;
+          }
+        }
+      } else {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(destPath, buffer);
+        return true;
+      }
+    }
+
+    // High reliability fallback for public drive images using Google's raw CDN endpoint (never redirects or gets throttled by auth pages)
+    if (driveFileId) {
+      const lhUrl = `https://lh3.googleusercontent.com/d/${driveFileId}`;
+      try {
+        const lhRes = await fetch(lhUrl);
+        if (lhRes.ok) {
+          const buffer = Buffer.from(await lhRes.arrayBuffer());
+          const cType = lhRes.headers.get('content-type') || '';
+          if (!cType.includes('text/html') && buffer.length > 100) {
+            fs.writeFileSync(destPath, buffer);
+            return true;
+          }
+        }
+      } catch (lhErr) {
+        // Quietly failover
+      }
+    }
+
+    return false;
+  } catch (err) {
+    console.error(`Error downloading from ${url}:`, err);
+    return false;
+  }
+}
+
+// Scrape file IDs from a public Google Drive folder page HTML
+async function getDriveFileIdsFromFolder(folderUrl: string): Promise<string[]> {
+  try {
+    const res = await fetch(folderUrl);
+    if (!res.ok) return [];
+    
+    const html = await res.text();
+    // Unique candidates
+    const idSet = new Set<string>();
+    
+    // Matches file/d/ID strings
+    const matches = Array.from(html.matchAll(/file\/d\/([a-zA-Z0-9_-]{28,45})/g));
+    for (const m of matches) {
+      idSet.add(m[1]);
+    }
+    
+    // Matches "id":"ID" strings in JSON metadata blocks
+    const idMatches = Array.from(html.matchAll(/"id"\s*:\s*"([a-zA-Z0-9_-]{28,45})"/g));
+    for (const m of idMatches) {
+      idSet.add(m[1]);
+    }
+    
+    const folderIdMatch = folderUrl.match(/folders\/([a-zA-Z0-9_-]{25,45})/);
+    const folderId = folderIdMatch ? folderIdMatch[1] : '';
+    
+    // Filter out the folder ID itself
+    const ids = Array.from(idSet).filter(id => id !== folderId);
+    return ids;
+  } catch (err) {
+    console.error("Error scraping Google Drive folder HTML:", err);
+    return [];
+  }
+}
+
+// Scrape both file and folder lists from a public Google Drive folder page HTML
+export async function getDriveFolderEntries(folderUrl: string, log?: (msg: string) => void): Promise<{ files: {id: string, name: string}[], folders: {id: string, name: string}[] }> {
+  let files: {id: string, name: string}[] = [];
+  const folders: {id: string, name: string}[] = [];
+  
+  let detectedFolderId = '';
+  // Extract folder ID using a robust regex supporting folders/ or id=
+  const folderIdMatch = folderUrl.match(/(?:folders\/|id=)([a-zA-Z0-9_-]{25,55})/);
+  detectedFolderId = folderIdMatch ? folderIdMatch[1] : '';
+
+  if (log && detectedFolderId) {
+    log(`Detected Google Drive Folder ID: "${detectedFolderId}"`);
+  }
+
+  const urlsToTry: string[] = [];
+  if (detectedFolderId) {
+    // Try the unauthenticated iframe embedded folder view first! (It is extremely reliable and never gets blocked on Cloud IPs)
+    urlsToTry.push(`https://drive.google.com/embeddedfolderview?id=${detectedFolderId}`);
+  }
+  urlsToTry.push(folderUrl);
+
+  const foundIds = new Set<string>();
+
+  // Helper helper to parse and extract items from HTML content matching various patterns
+  const extractItemsFromHtml = (htmlContent: string) => {
+    let addedCount = 0;
+
+    // Pattern 1: Embedded links to files on Google Drive (e.g. file/d/[ID] or id=[ID])
+    // Standard folder embed contains: <a class="ge-title-link" href="/file/d/FILE_ID/view?usp=drivesdk" ...>FILE_NAME</a>
+    const anchorRegex = /<a[^>]+href="[^"]*(?:file\/d\/|id=)([a-zA-Z0-9_-]{25,55})[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = anchorRegex.exec(htmlContent)) !== null) {
+      const id = match[1];
+      let name = match[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); // Strip internal HTML tags
+      
+      if (id && id !== detectedFolderId && !foundIds.has(id)) {
+        foundIds.add(id);
+        if (match[0].toLowerCase().includes('folder') || match[0].includes('folders/')) {
+          folders.push({ id, name: name || `folder_${folders.length}` });
+        } else {
+          files.push({ id, name: name || `file_${files.length}` });
+        }
+        addedCount++;
+      }
+    }
+
+    // Pattern 2: Embedded links to folders
+    const folderAnchorRegex = /<a[^>]+href="[^"]*(?:folders\/|id=)([a-zA-Z0-9_-]{25,55})[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    while ((match = folderAnchorRegex.exec(htmlContent)) !== null) {
+      const id = match[1];
+      let name = match[2].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (id && id !== detectedFolderId && !foundIds.has(id)) {
+        foundIds.add(id);
+        folders.push({ id, name: name || `folder_${folders.length}` });
+        addedCount++;
+      }
+    }
+
+    // Pattern 3: Array style matching from state: ["ID", "NAME", "MIME_TYPE", ...]
+    const arrayRegex = /\["([a-zA-Z0-9_-]{25,55})"\s*,\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*,\s*"([^"\\,]+)"/g;
+    while ((match = arrayRegex.exec(htmlContent)) !== null) {
+      const id = match[1];
+      const name = match[2].replace(/\\u([0-9a-fA-F]{4})/g, (m, grp) => String.fromCharCode(parseInt(grp, 16)));
+      const mime = match[3];
+      
+      if (id && id !== detectedFolderId && !foundIds.has(id)) {
+        foundIds.add(id);
+        if (mime.includes('folder')) {
+          folders.push({ id, name });
+        } else {
+          files.push({ id, name });
+        }
+        addedCount++;
+      }
+    }
+
+    // Pattern 4: Object json style matching: "id":"...", "name":"...", "mimeType":"..."
+    const objRegex = /"id"\s*:\s*"([a-zA-Z0-9_-]{25,55})"[^}]*?"name"\s*:\s*"([^"]+)"[^}]*?"mimeType"\s*:\s*"([^"]+)"/g;
+    while ((match = objRegex.exec(htmlContent)) !== null) {
+      const id = match[1];
+      const name = match[2];
+      const mime = match[3];
+      
+      if (id && id !== detectedFolderId && !foundIds.has(id)) {
+        foundIds.add(id);
+        if (mime.includes('folder')) {
+          folders.push({ id, name });
+        } else {
+          files.push({ id, name });
+        }
+        addedCount++;
+      }
+    }
+
+    return addedCount;
+  };
+
+  // Try standard HTTP GET fetch on the URLs (fastest, lightweight, works great with embed views)
+  for (const urlToFetch of urlsToTry) {
+    try {
+      if (log) log(`Executing fetch for Google Drive url: ${urlToFetch}`);
+      const res = await fetch(urlToFetch, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      });
+
+      if (res.ok) {
+        const text = await res.text();
+        const added = extractItemsFromHtml(text);
+        if (log) log(`Fetch completed successfully. Extracted ${added} item(s) from "${urlToFetch}"`);
+        if (files.length > 0) {
+          // Success! We scraped the public view successfully without triggers
+          break;
+        }
+      } else {
+        if (log) log(`Fetch responded with status: ${res.status} for ${urlToFetch}`);
+      }
+    } catch (fetchErr: any) {
+      if (log) log(`Fetch attempt encountered error: ${fetchErr.message}`);
+    }
+  }
+
+  // Fallback to Playwright if standard HTTP fetch got blocked or returned 0 entries
+  if (files.length === 0) {
+    if (log) log(`⚠️ Direct fetch was blocked or returned 0 entries. Initiating Playwright fallback solver...`);
+    let browser;
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu'
+        ]
+      });
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      });
+      const page = await context.newPage();
+
+      // Try the urls sequentially inside Playwright
+      for (const urlToNavigate of urlsToTry) {
+        if (log) log(`Playwright navigating to: ${urlToNavigate}`);
+        try {
+          await page.goto(urlToNavigate, { waitUntil: 'domcontentloaded', timeout: 35000 });
+          await page.waitForTimeout(6000); // Wait for scripts/images to render
+          
+          const currentUrl = page.url();
+          if (currentUrl.includes('accounts.google.com') || currentUrl.includes('ServiceLogin')) {
+            if (log) log(`⚠️ Playwright redirected to Google Login page for url: ${urlToNavigate}`);
+            continue;
+          }
+
+          const pageHtml = await page.content();
+          const added = extractItemsFromHtml(pageHtml);
+          if (log) log(`Playwright extracted ${added} items from html string for ${urlToNavigate}`);
+
+          // Also execute DOM-level query selector extraction
+          const domEntries = await page.evaluate(() => {
+            const results: { id: string; name: string; isFolder: boolean }[] = [];
+            const anchors = document.querySelectorAll('a');
+            anchors.forEach(a => {
+              const href = a.getAttribute('href') || '';
+              const text = a.innerText || a.textContent || '';
+              const ariaLabel = a.getAttribute('aria-label') || a.getAttribute('title') || '';
+              
+              let cleanName = (ariaLabel || text || '').replace(/\r?\n|\r/g, " ").trim();
+              cleanName = cleanName.replace(/\s*-\s*Google\s*Drive/gi, '').trim();
+
+              const fileMatch = href.match(/(?:file\/d\/|id=)([a-zA-Z0-9_-]{25,55})/);
+              if (fileMatch && !href.includes('folders/')) {
+                results.push({ id: fileMatch[1], name: cleanName, isFolder: false });
+              }
+
+              const folderMatch = href.match(/(?:folders\/|id=)([a-zA-Z0-9_-]{25,55})/);
+              if (folderMatch) {
+                results.push({ id: folderMatch[1], name: cleanName, isFolder: true });
+              }
+            });
+            return results;
+          });
+
+          for (const entry of domEntries) {
+            if (entry.id === detectedFolderId || foundIds.has(entry.id)) continue;
+            foundIds.add(entry.id);
+            const name = entry.name || (entry.isFolder ? `folder_${folders.length}` : `file_${files.length}`);
+            if (entry.isFolder) {
+              folders.push({ id: entry.id, name });
+            } else {
+              files.push({ id: entry.id, name });
+            }
+          }
+
+          if (files.length > 0) {
+            break; // Found files, stop navigating further
+          }
+        } catch (pageErr: any) {
+          if (log) log(`Playwright page navigation failed for ${urlToNavigate}: ${pageErr.message}`);
+        }
+      }
+    } catch (pwErr: any) {
+      if (log) log(`⚠️ Playwright solve attempt encountered error: ${pwErr.message}`);
+    } finally {
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
+    }
+  }
+
+  // Deep Loose ID Fallback scanner if all main strategies ended with zero items
+  if (files.length === 0 && folders.length === 0) {
+    if (log) log("⚠️ Scrapers found 0 files. Attempting loose regex fallback on the raw pages...");
+    if (detectedFolderId) {
+      try {
+        const fallbackRes = await fetch(`https://drive.google.com/embeddedfolderview?id=${detectedFolderId}`);
+        if (fallbackRes.ok) {
+          const rawText = await fallbackRes.text();
+          const looseIds = new Set<string>();
+          
+          const fileMatches = Array.from(rawText.matchAll(/file\/d\/([a-zA-Z0-9_-]{25,55})/g));
+          for (const m of fileMatches) looseIds.add(m[1]);
+
+          const queryIds = Array.from(rawText.matchAll(/id=([a-zA-Z0-9_-]{25,55})/g));
+          for (const m of queryIds) {
+            if (!rawText.includes(`folders/${m[1]}`)) {
+              looseIds.add(m[1]);
+            }
+          }
+
+          let fileIndex = 0;
+          for (const id of looseIds) {
+            if (id !== detectedFolderId && !foundIds.has(id)) {
+              foundIds.add(id);
+              files.push({ id, name: `file_${fileIndex++}` });
+            }
+          }
+        }
+      } catch (e: any) {}
+    }
+  }
+
+  // Deduplicate files and clean/shorten their display names to something readable
+  const finalFilesMap = new Map<string, { id: string; name: string }>();
+  for (const f of files) {
+    if (!finalFilesMap.has(f.id)) {
+      // Clean names that are URL paths or has other prefix
+      let cleanName = f.name.trim();
+      if (cleanName.includes('/') || cleanName.includes('\\')) {
+        cleanName = cleanName.split(/[/\\]/).pop() || cleanName;
+      }
+      finalFilesMap.set(f.id, { id: f.id, name: cleanName });
+    }
+  }
+  files = Array.from(finalFilesMap.values());
+
+  // Sort files and folders by name alphabetically (numeric sorting, e.g. 10 follows 9 rather than 1)
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+  if (log) {
+    log(`Scraped Google Drive Folder results: Found ${files.length} sorted files and ${folders.length} sorted folders.`);
+    if (files.length > 0) log(`First files: ${files.map(f => `"${f.name}" (${f.id})`).slice(0, 5).join(', ')}`);
+    if (folders.length > 0) log(`First folders: ${folders.map(f => `"${f.name}" (${f.id})`).slice(0, 5).join(', ')}`);
+  }
+
+  return { files, folders };
+}
+
+// Download a list of files from Google Drive using direct URL downloads
+async function downloadFilesList(files: { id: string, name: string }[], tempFolder: string, prefix: string, log: (msg: string) => void): Promise<string[]> {
+  const paths: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+    let fileExt = 'png';
+    try {
+      const extMatch = file.name.match(/\.([a-zA-Z0-9]{3,4})$/);
+      if (extMatch) fileExt = extMatch[1];
+    } catch (e) {}
+    const destPath = path.join(tempFolder, `${prefix}_${i}_${file.id}.${fileExt}`);
+    log(`Downloading file "${file.name}" to local path "${destPath}"...`);
+    const ok = await downloadFileFromUrl(directDownloadUrl, destPath);
+    if (ok) {
+      paths.push(destPath);
+    } else {
+      log(`Failed to download "${file.name}" from Google Drive.`);
+    }
+  }
+  return paths;
+}
+
+// Main downloader to download files from direct links or public drive folders
+async function downloadFilesFromDrive(driveUrl: string, tempFolder: string, log: (msg: string) => void): Promise<string[]> {
+  const downloadedPaths: string[] = [];
+  try {
+    if (!fs.existsSync(tempFolder)) {
+      fs.mkdirSync(tempFolder, { recursive: true });
+    }
+    
+    let fileIds: string[] = [];
+    
+    // Check for direct Google Drive file URL
+    const fileIdMatch = driveUrl.match(/file\/d\/([a-zA-Z0-9_-]{28,45})/) || driveUrl.match(/[?&]id=([a-zA-Z0-9_-]{28,45})/);
+    if (fileIdMatch && !driveUrl.includes('/folders/')) {
+      log(`Detected direct Google Drive file link with ID: ${fileIdMatch[1]}`);
+      fileIds.push(fileIdMatch[1]);
+    } else if (driveUrl.includes('/folders/') || driveUrl.includes('drive.google.com')) {
+      // Check for Google Drive folder
+      const folderIdMatch = driveUrl.match(/folders\/([a-zA-Z0-9_-]{25,45})/);
+      const folderId = folderIdMatch ? folderIdMatch[1] : '';
+      log(`Detected Google Drive folder URL. Folder ID: "${folderId}". Fetching page for extraction...`);
+      
+      fileIds = await getDriveFileIdsFromFolder(driveUrl);
+      log(`Extracted ${fileIds.length} file candidate IDs from the folder HTML.`);
+    } else if (driveUrl.startsWith('http')) {
+      // Direct Web URL (not Google Drive)
+      log(`Detected direct non-Drive URL: ${driveUrl}. Attempting file download...`);
+      const extMatch = driveUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|pdf|docx|xlsx)/);
+      const ext = extMatch ? extMatch[1] : 'png';
+      const destPath = path.join(tempFolder, `direct_download_0.${ext}`);
+      
+      const ok = await downloadFileFromUrl(driveUrl, destPath);
+      if (ok) {
+        downloadedPaths.push(destPath);
+        log(`Successfully downloaded direct file: ${destPath}`);
+      }
+    }
+    
+    // Download any collected Google Drive file IDs
+    let count = 0;
+    for (const id of fileIds) {
+      if (count >= 12) break; // Limit downloading to first 12 files max
+      const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${id}`;
+      // Construct filename
+      const destPath = path.join(tempFolder, `drive_download_${count}.png`);
+      log(`Downloading Google Drive file ID "${id}" to: ${destPath}`);
+      
+      const success = await downloadFileFromUrl(directDownloadUrl, destPath);
+      if (success) {
+        downloadedPaths.push(destPath);
+        count++;
+      } else {
+        log(`Download failed for Google Drive ID: ${id}`);
+      }
+    }
+    
+  } catch (err: any) {
+    log(`[Drive Downloader Error] ${err.message}`);
+  }
+  return downloadedPaths;
+}
+
 async function getClaimsForTrackingId(trackingId: string, orderId: string): Promise<Claim[]> {
   console.log(`[DB] Querying database for claims with trackingId="${trackingId}" or orderId="${orderId}"...`);
   
@@ -136,6 +586,7 @@ async function getClaimsForTrackingId(trackingId: string, orderId: string): Prom
     }
   }
 }
+
 async function selectCustomDropdownOption(page: any, locator: any, targetText: string) {
   if (!targetText) return;
   const lowercaseTarget = targetText.toLowerCase().trim();
@@ -145,7 +596,7 @@ async function selectCustomDropdownOption(page: any, locator: any, targetText: s
   if (count === 0) return;
   const element = locator.first();
   
-    // 1. First, click the dropdown to activate it and potentially render dynamic options in the overlay
+  // 1. First, click the dropdown to activate it and potentially render dynamic options in the overlay
   try {
     await element.click();
     await page.waitForTimeout(500); // Wait for potential animations or overlay attachment
@@ -153,7 +604,7 @@ async function selectCustomDropdownOption(page: any, locator: any, targetText: s
     console.warn(`Initial click on dropdown failed: ${clickErr.message}`);
   }
 
- // 2. Try shadow-root and slotted elements evaluation where we search for an option inside it, set parent's value, or click the matching option
+  // 2. Try shadow-root and slotted elements evaluation where we search for an option inside it, set parent's value, or click the matching option
   let success = false;
   try {
     success = await element.evaluate((el: any, target: string) => {
@@ -210,7 +661,7 @@ async function selectCustomDropdownOption(page: any, locator: any, targetText: s
         }
         return true;
       }
-  
+      
       // Standard value assign fallback
       el.value = target;
       if (el.selectedValue !== undefined) {
@@ -250,7 +701,6 @@ async function selectCustomDropdownOption(page: any, locator: any, targetText: s
   } catch (e) {}
 }
 
-
 interface FilingResult {
   success: boolean;
   caseId?: string;
@@ -263,33 +713,10 @@ const COOKIE_PATH = path.join(process.cwd(), 'bot_state', 'amazon_auth.json');
 const LIVE_SCREENSHOT_PATH = path.join(process.cwd(), 'bot_state', 'live.png');
 const BOT_LOGS_PATH = path.join(process.cwd(), 'bot_logs');
 
-// Function to delete bot_logs directory
-function cleanupBotLogs() {
-  try {
-    if (fs.existsSync(BOT_LOGS_PATH)) {
-      fs.rmSync(BOT_LOGS_PATH, { recursive: true, force: true });
-      console.log('[CLEANUP] bot_logs directory deleted.');
-    }
-  } catch (error) {
-    console.error('[CLEANUP ERROR]', error);
-  }
-}
 
-// Setup signal handlers for graceful termination
-process.on('SIGINT', () => {
-  console.log('\n[TERMINATING] Cleaning up bot_logs...');
-  cleanupBotLogs();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('\n[TERMINATING] Cleaning up bot_logs...');
-  cleanupBotLogs();
-  process.exit(0);
-});
 
 export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
-  const logId = claim.lpn || claim.claimId || claim.orderId;
+  const logId = claim.orderId || claim.lpn || claim.claimId;
   const logPath = path.join(process.cwd(), 'bot_logs', `${logId}.log`);
   if (!fs.existsSync(path.dirname(logPath))) fs.mkdirSync(path.dirname(logPath), { recursive: true });
   if (!fs.existsSync(path.dirname(COOKIE_PATH))) fs.mkdirSync(path.dirname(COOKIE_PATH), { recursive: true });
@@ -319,39 +746,30 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     return { success: false, error: "Missing credentials" };
   }
 
-  const browser = await chromium.launch({
-    headless: true, // Headless is required for stable execution in containers
-    slowMo: 100,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+  let context: BrowserContext | null = null;
 
   try {
-    const contextOptions: any = {};
-    if (fs.existsSync(COOKIE_PATH)) {
-      log("Found existing cookies, loading state...");
-      contextOptions.storageState = COOKIE_PATH;
-    }
+    const isHeadless = process.env.NODE_ENV === 'production' || process.env.HEADLESS_MODE !== 'false';
+    log(`Launching persistent browser context (headless: ${isHeadless})...`);
+    
+    context = await chromium.launchPersistentContext('./amazon-profile', {
+      headless: isHeadless,
+      slowMo: 100,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-extensions'
+      ]
+    });
 
-    const context =
-      await chromium.launchPersistentContext(
-        './amazon-profile',
-        {
-
-          headless: false
-        }
-      );
-    const page = await context.newPage()
+    const page = await context.newPage();
 
     log("Navigating to Amazon Seller Central India...");
-    await page.goto(
-      'https://sellercentral.amazon.in'
-    );
+    await page.goto('https://sellercentral.amazon.in', { waitUntil: 'load', timeout: 60000 });
     await takeLiveScreenshot(page);
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3000); 
     await takeLiveScreenshot(page);
-    console.log(
-      'Login manually including OTP'
-    );
+    console.log('Login manually including OTP');
 
     // Step: Navigate to Orders > Manage SAFE-T Claims
     log("Navigating to Manage SAFE-T Claims...");
@@ -363,31 +781,48 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
 
     // Step: Select Fulfillment Channel
     log(`Selecting channel context for: ${claim.channel}`);
-    // Custom dropdown - target the div.select-header instead of native select
-    await fileWindow.waitForSelector('div.select-header');
-
-    // Click dropdown to open it
-    await fileWindow.click('div.select-header');
-    await fileWindow.waitForTimeout(500); // Wait for dropdown menu to appear
-
-    if (claim.channel.includes('Amazon B2B')) {
-      log("Selecting FBA Removals...");
-      await fileWindow.click('text=FBA Removals');
-    } else {
-      log("Selecting Easy Ship/ Self Ship/ Seller Flex...");
-      await fileWindow.click('text=Easy Ship/ Self Ship/ Seller Flex');
+    try {
+      await fileWindow.waitForSelector('div.select-header', { timeout: 10000 });
+      await fileWindow.click('div.select-header');
+      await fileWindow.waitForTimeout(500); // Wait for dropdown menu to appear
+      
+      if (claim.channel.includes('Amazon B2B')) {
+        log("Selecting FBA Removals...");
+        await fileWindow.click('text=FBA Removals');
+      } else {
+        log("Selecting Easy Ship/ Self Ship/ Seller Flex...");
+        await fileWindow.click('text=Easy Ship/ Self Ship/ Seller Flex');
+      }
+    } catch (e: any) {
+      log(`Custom select dropdown not found or failed: ${e.message}. Trying standard native select fallback...`);
+      try {
+        const optionLabel = claim.channel.includes('Amazon B2B') ? 'FBA Removals' : 'Easy Ship/ Self Ship/ Seller Flex';
+        await fileWindow.selectOption('select', { label: optionLabel });
+      } catch (e2: any) {
+        log(`Standard native select fallback also failed: ${e2.message}`);
+      }
     }
     await takeLiveScreenshot(fileWindow);
 
-    //step:click next
-    await fileWindow.click('button:has-text("Next")');
+    // Step: Click Next
+    log("Clicking Next...");
+    try {
+      await fileWindow.click('button:has-text("Next")');
+    } catch (e: any) {
+      try {
+        await fileWindow.click('kat-button:has-text("Next")');
+      } catch (e2: any) {
+        log(`Could not click Next button: ${e2.message}`);
+      }
+    }
     await fileWindow.waitForTimeout(2000);
     await takeLiveScreenshot(fileWindow);
 
     // Step: Select Tracking ID radio button (option 2)
     log("Selecting Tracking ID radio button...");
     let radioSelected = false;
-       // Direct shadow-root click attempt first (highly reliable for web components)
+
+    // Direct shadow-root click attempt first (highly reliable for web components)
     try {
       const katRadio = fileWindow.locator('kat-radiobutton[value="trackingId"]').first();
       if (await katRadio.isVisible()) {
@@ -410,10 +845,35 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     }
 
     if (!radioSelected) {
+      const selectors = [
+        'kat-radiobutton[value="trackingId"]',
+        'input[value="trackingId"]',
+        'label:has-text("Tracking ID")',
+        'text="Tracking ID"',
+        'kat-radiobutton:has-text("Tracking ID")'
+      ];
+
+      for (const s of selectors) {
+        try {
+          const element = fileWindow.locator(s).first();
+          const isVisible = await element.isVisible();
+          if (isVisible) {
+            await element.click();
+            log(`Successfully clicked radio button using selector: ${s}`);
+            radioSelected = true;
+            break;
+          }
+        } catch (err: any) {
+          log(`Selector ${s} failed or didn't match: ${err.message}`);
+        }
+      }
+    }
+
+    if (!radioSelected) {
       log("Warning: Could not confirm Selection click. Proceeding with filling input directly...");
     }
     await fileWindow.waitForTimeout(500);
-
+    
     // Fill in the Tracking ID
     const trackingValue = claim.trackingId || claim.orderId;
     log(`Inputting Tracking ID: ${trackingValue}`);
@@ -476,7 +936,8 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
         log(`Button selector ${s} failed: ${err.message}`);
       }
     }
-     if (!isVerified) {
+
+    if (!isVerified) {
       log("Warning: Need enter key fallback to trigger verification...");
       try {
         await fileWindow.locator('input[name="orderIdOrTrackingId"]').press('Enter');
@@ -490,12 +951,21 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     await takeLiveScreenshot(fileWindow);
 
     // Step: Check items
-       log("Starting item matching and selection process...");
+    log("Starting item matching and selection process...");
     
     // First, let's gather all database rows for this trackingId (and fallback orderId)
     const matchingClaims = await getClaimsForTrackingId(claim.trackingId || '', claim.orderId || '');
     log(`Found ${matchingClaims.length} matching claims in database/mock context for this trackingId/orderId.`);
     
+    const hasRejectedClaim = matchingClaims.some(c => {
+      const typeLower = (c.type || "").toLowerCase();
+      return typeLower === 'rejected' || typeLower.includes('rejected');
+    }) || (claim.type || "").toLowerCase().includes('rejected');
+    
+    if (hasRejectedClaim) {
+      log("Detected 'Rejected' claim type. All items for this tracking ID / order ID will be selected!");
+    }
+
     const itemBoxes = fileWindow.locator('kat-box.AsinDetailsBox, div.orderdetail-view-fba kat-box');
     const totalBoxes = await itemBoxes.count();
     log(`Found ${totalBoxes} item boxes in the filing form on the page.`);
@@ -538,16 +1008,27 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
       
       log(`Matched ${matchedClaims.length} database/trigger claims for: "${productNameText}"`);
       
-      // Count how many are Damaged or Missing ('Damaged' or 'Missing')
-      const badCount = matchedClaims.filter(c => {
-        const typeLower = (c.type || "").toLowerCase();
-        return typeLower === 'damaged' || typeLower === 'missing';
-      }).length;
+      let selectThisItem = false;
+      let itemQty = 0;
+
+      if (hasRejectedClaim) {
+        selectThisItem = true;
+        const matched = matchedClaims.find(c => c.qty || c.shippedQuantity);
+        itemQty = matched ? (matched.qty || matched.shippedQuantity || 1) : 1;
+        log(`All items rejected mode: Selected product "${productNameText}" with quantity ${itemQty}`);
+      } else {
+        const badCount = matchedClaims.filter(c => {
+          const typeLower = (c.type || "").toLowerCase();
+          return typeLower === 'damaged' || typeLower === 'missing';
+        }).length;
+        if (badCount > 0) {
+          selectThisItem = true;
+          itemQty = badCount;
+        }
+      }
       
-      log(`Damage / Missing rows count for this product: ${badCount}`);
-      
-      if (badCount > 0) {
-        log(`Selecting item box #${i} and entering quantity: ${badCount}...`);
+      if (selectThisItem && itemQty > 0) {
+        log(`Selecting item box #${i} and entering quantity: ${itemQty}...`);
         
         // 1. Check the box inside shadow root / custom checkbox or locator
         const checkbox = box.locator('kat-checkbox.QuantityCheckbox, kat-checkbox').first();
@@ -588,24 +1069,24 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
               } else {
                 el.value = String(val);
               }
-            }, badCount);
-            log(`Successfully entered quantity ${badCount} via shadow-root evaluation.`);
+            }, itemQty);
+            log(`Successfully entered quantity ${itemQty} via shadow-root evaluation.`);
           } catch (qtyErr: any) {
             log(`Failed to write quantity via shadow-root: ${qtyErr.message}. Trying direct fill fallback...`);
-            await qtyInput.fill(String(badCount)).catch(err => log(`Direct fill on quantity input failed: ${err.message}`));
+            await qtyInput.fill(String(itemQty)).catch(err => log(`Direct fill on quantity input failed: ${err.message}`));
           }
         } else {
           log(`Warning: Quantity input is not visible/found for product "${productNameText}"`);
         }
       } else {
-        log(`No damaged or missing claims found for product "${productNameText}". Leaving unchecked.`);
+        log(`No selection target match found for product "${productNameText}". Leaving unchecked.`);
       }
     }
     
     await takeLiveScreenshot(fileWindow);
     await fileWindow.waitForTimeout(1000);
-
-     // Step: Click Next button to navigate after selecting items
+    
+    // Step: Click Next button to navigate after selecting items
     log("Clicking Next/Continue button after items selection...");
     let nextStepClicked = false;
     const nextButtons = [
@@ -652,7 +1133,6 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     await fileWindow.waitForTimeout(3000);
     await takeLiveScreenshot(fileWindow);
 
-    
     // Step: Dropdowns for Select Claim Reason and Select Claim Sub-Reason
     log("Waiting for Claim Reason and Sub-Reason dropdowns page to load...");
     const reasonBoxes = fileWindow.locator('kat-box.AsinDetailsBox, div.orderdetail-view-fba kat-box');
@@ -694,12 +1174,33 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
         }
       }
       
-     if (matchedClaims.length > 0) {
+      let dbClaimReason = "";
+      let dbClaimSubReason = "";
+      
+      if (matchedClaims.length > 0) {
         const matched = matchedClaims[0];
-        const dbClaimReason = (matched as any).claimReason || matched.reason || "";
-        const dbClaimSubReason = (matched as any).claimSubReason || "";
-        
-        log(`Matching claim found for "${productNameText}". Expected Reason: "${dbClaimReason}", Sub-Reason: "${dbClaimSubReason}"`);
+        dbClaimReason = (matched as any).claimReason || matched.reason || "";
+        dbClaimSubReason = (matched as any).claimSubReason || "";
+      }
+      
+      // Cascading fallback: If we don't have a reason for this specific product, try any reason from other claims in the matching list
+      if (!dbClaimReason) {
+        const anyReasonClaim = matchingClaims.find(c => (c as any).claimReason || c.reason);
+        if (anyReasonClaim) {
+          dbClaimReason = (anyReasonClaim as any).claimReason || anyReasonClaim.reason || "";
+          dbClaimSubReason = (anyReasonClaim as any).claimSubReason || "";
+          log(`Cascaded reasons fallback from another claim in the order: Reason: "${dbClaimReason}", Sub-Reason: "${dbClaimSubReason}"`);
+        }
+      }
+      
+      // Robust fallback for rejected delivery
+      if (!dbClaimReason && hasRejectedClaim) {
+        dbClaimReason = "Easy ship order shipment returned but items physically damaged";
+        log(`RejectedDelivery fallback: Using default reason "${dbClaimReason}"`);
+      }
+      
+      if (dbClaimReason) {
+        log(`Matching reasons configured for "${productNameText}". Expected Reason: "${dbClaimReason}", Sub-Reason: "${dbClaimSubReason}"`);
         
         // Let's locate the dropdown 1 (Claim Reason) and dropdown 2 (Claim Sub-Reason)
         // First try to locate inside the box, fallback to page-wide selector matching
@@ -783,16 +1284,391 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     await fileWindow.waitForTimeout(3000);
     await takeLiveScreenshot(fileWindow);
 
+    // Step: Upload Supporting Documents (if the page is visible)
+    const isImageUploadPage = await fileWindow.locator('.ImageUploadView, kat-file-upload').first().isVisible().catch(() => false);
+    if (isImageUploadPage) {
+      log("Detected 'File a SAFE-T Claim' Supporting Documents Page. Starting image uploads...");
+      const tempDir = path.join(process.cwd(), 'temp_uploads');
+      const createdTempFiles: string[] = [];
+      
+      try {
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        type SlotItem = { id: string; name: string };
+
+        // Pre-resolve lists of files to download for each slot (up to 5 slots)
+        const slotFiles: { [key: number]: SlotItem[] } = {
+          0: [], // Slot 1: 8th image of parent folder
+          1: [], // Slot 2: 7th image of parent folder
+          2: [], // Slot 3: first 6 images of parent folder
+          3: [], // Slot 4: 2nd till 5th images of matched LPN subfolder
+          4: []  // Slot 5: 1st image of matched LPN subfolder
+        };
+
+        const orderUrl = claim.orderDriveLink || claim.order_drive_link || claim.drive_link;
+        const lpnUrl = claim.drive_link || claim.orderDriveLink || claim.order_drive_link;
+
+        if (!orderUrl) {
+          throw new Error("No Order Google Drive link (order_drive_link) is provided in the claim database record. Cannot verify or upload supporting images.");
+        }
+        if (!lpnUrl) {
+          throw new Error("No LPN Google Drive link (drive_link) is provided in the claim database record. Cannot verify or upload supporting images.");
+        }
+
+        log(`Step 1: Scraping parent Google Drive order folder: ${orderUrl}`);
+        const orderFolder = await getDriveFolderEntries(orderUrl, log);
+        
+        const isImageFile = (f: { name: string }) => {
+          const lower = f.name.toLowerCase();
+          return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ||
+                 lower.includes('.jpg.') || lower.includes('.jpeg.') || lower.includes('.png.');
+        };
+
+        let orderFiles = orderFolder.files.filter(isImageFile);
+        if (orderFiles.length === 0 && orderFolder.files.length > 0) {
+          log("No files with explicit .jpg, .jpeg, or .png extensions found in Order folder. Defaulting to all raw folder files.");
+          orderFiles = orderFolder.files;
+        } else {
+          log(`Filtered Order folder to include only image files (.jpg, .jpeg, .png). Found ${orderFiles.length} images out of ${orderFolder.files.length} total files.`);
+        }
+
+        // Resolve Slot 1: 8th image (index 7 of order folder)
+        if (orderFiles.length < 8) {
+          throw new Error(`Order folder lacks required images: expected at least 8 files/images in order folder, but only found ${orderFiles.length}. (Section 1 requires the 8th image)`);
+        }
+        log(`Slot 1: Selecting 8th image: "${orderFiles[7].name}"`);
+        slotFiles[0].push(orderFiles[7]);
+
+        // Resolve Slot 2: 7th image (index 6 of order folder)
+        if (orderFiles.length < 7) {
+          throw new Error(`Order folder lacks required images: expected at least 7 files/images in order folder, but only found ${orderFiles.length}. (Section 2 requires the 7th image)`);
+        }
+        log(`Slot 2: Selecting 7th image: "${orderFiles[6].name}"`);
+        slotFiles[1].push(orderFiles[6]);
+
+        // Resolve Slot 3: first 6 images from order folder
+        if (orderFiles.length === 0) {
+          throw new Error("Order folder has 0 files. Section 3 requires the first 6 images from the folder.");
+        }
+        const sliceFiles = orderFiles.slice(0, 6);
+        log(`Slot 3: Selecting first ${sliceFiles.length} files from order folder: ${sliceFiles.map(f => f.name).join(', ')}`);
+        slotFiles[2].push(...sliceFiles);
+
+        log(`Step 2: Scraping direct LPN Google Drive folder: ${lpnUrl}`);
+        const subFolderContents = await getDriveFolderEntries(lpnUrl, log);
+        
+        let subfiles = subFolderContents.files.filter(isImageFile);
+        if (subfiles.length === 0 && subFolderContents.files.length > 0) {
+          log("No files with explicit .jpg, .jpeg, or .png extensions found in LPN folder. Defaulting to all raw folder files.");
+          subfiles = subFolderContents.files;
+        } else {
+          log(`Filtered LPN folder to include only image files (.jpg, .jpeg, .png). Found ${subfiles.length} images out of ${subFolderContents.files.length} total files.`);
+        }
+
+        // Resolve Slot 4: subfolder 2nd image till 5th image (indices 1 to 4)
+        if (subfiles.length < 2) {
+          throw new Error(`LPN folder has only ${subfiles.length} images. Cannot upload 1st/2nd images because there is no 2nd image (requires at least 2 images to select index 1-4).`);
+        }
+        const sliceSubfiles = subfiles.slice(1, 5);
+        log(`Slot 4: Selecting files index 1 to 4 from LPN folder. Selected: ${sliceSubfiles.map(f => f.name).join(', ')}`);
+        slotFiles[3].push(...sliceSubfiles);
+
+        // Resolve Slot 5: same LPN folder location and only the first image (index 0)
+        if (subfiles.length < 1) {
+          throw new Error(`LPN folder is empty. Section 5 requires the 1st image from the LPN folder.`);
+        }
+        log(`Slot 5: Selecting 1st image from LPN folder: "${subfiles[0].name}"`);
+        slotFiles[4].push(subfiles[0]);
+
+        // Download files and write fallback files to get solid absolute path lists
+        const slotLocalPaths: { [key: number]: string[] } = {
+          0: [],
+          1: [],
+          2: [],
+          3: [],
+          4: []
+        };
+
+        for (let i = 0; i < 5; i++) {
+          const items = slotFiles[i] || [];
+          for (let j = 0; j < items.length; j++) {
+            const item = items[j];
+            const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${item.id}`;
+            let fileExt = 'png';
+            try {
+              const extMatch = item.name.match(/\.([a-zA-Z0-9]{3,4})$/);
+              if (extMatch) fileExt = extMatch[1];
+            } catch (e) {}
+            const destPath = path.join(tempDir, `slot_${i + 1}_file_${j}_${item.id}.${fileExt}`);
+            log(`Downloading file index ${j} for slot ${i + 1}: name="${item.name}", id="${item.id}"...`);
+            const ok = await downloadFileFromUrl(directDownloadUrl, destPath);
+            if (ok) {
+              slotLocalPaths[i].push(destPath);
+              createdTempFiles.push(destPath);
+            } else {
+              throw new Error(`Failed to download required image "${item.name}" (Drive ID: ${item.id}) for slot ${i + 1}. stopping execution.`);
+            }
+          }
+        }
+
+        const uploadElements = fileWindow.locator('kat-file-upload');
+        const uploadCount = await uploadElements.count();
+        log(`Found ${uploadCount} file upload components matching 'kat-file-upload'.`);
+        
+        for (let i = 0; i < uploadCount; i++) {
+          const filesToUpload = slotLocalPaths[i];
+          if (!filesToUpload || filesToUpload.length === 0) {
+            log(`Slot ${i + 1}/${uploadCount}: No files assigned. Skipping.`);
+            continue;
+          }
+
+          log(`Slot ${i + 1}/${uploadCount}: Uploading ${filesToUpload.length} files: [${filesToUpload.map(p => path.basename(p)).join(', ')}]`);
+          
+          try {
+            const inputElement = uploadElements.nth(i).locator('input[type="file"], #kat-file-attachment');
+            if (filesToUpload.length === 1) {
+              await inputElement.setInputFiles(filesToUpload[0]);
+            } else {
+              await inputElement.setInputFiles(filesToUpload);
+            }
+            log(`Successfully set input files for upload slot ${i + 1}`);
+          } catch (slotUpErr: any) {
+            log(`Failed to upload file to slot ${i + 1}: ${slotUpErr.message}`);
+            throw new Error(`Failed to upload file to slot ${i + 1}: ${slotUpErr.message}`);
+          }
+          await fileWindow.waitForTimeout(1500);
+        }
+        
+        await takeLiveScreenshot(fileWindow);
+        await fileWindow.waitForTimeout(1500);
+        
+        // Click next after upload
+        log("Clicking Next/Continue button after document upload...");
+        let docSubmitClicked = false;
+        const nextBtnSelectors = [
+          'button:has-text("Next")',
+          'kat-button:has-text("Next")',
+          'button:has-text("Continue")',
+          'kat-button:has-text("Continue")',
+          'button:has-text("Submit")',
+          'kat-button:has-text("Submit")'
+        ];
+
+        for (const btnSel of nextBtnSelectors) {
+          try {
+            const btn = fileWindow.locator(btnSel).first();
+            if (await btn.isVisible()) {
+              await btn.click();
+              log(`Clicked document page Next button using: ${btnSel}`);
+              docSubmitClicked = true;
+              break;
+            }
+          } catch (err: any) {
+            log(`Doc submit button ${btnSel} failed: ${err.message}`);
+          }
+        }
+
+        if (!docSubmitClicked) {
+          try {
+            await fileWindow.evaluate(() => {
+              const btn = Array.from(document.querySelectorAll('button, kat-button, input[type="submit"]'))
+                .find(b => {
+                  const txt = (b.textContent || (b as any).innerText || "").toLowerCase();
+                  return txt.includes('next') || txt.includes('continue') || txt.includes('submit');
+                });
+              if (btn) (btn as any).click();
+            });
+            log("Fallback evaluate click triggered on Document page.");
+          } catch (e: any) {
+            log(`Document page fallback click failed: ${e.message}`);
+          }
+        }
+
+        // Wait for page transition
+        await fileWindow.waitForTimeout(4000);
+        await takeLiveScreenshot(fileWindow);
+        
+      } catch (uploadErr: any) {
+        log(`Error uploading documents: ${uploadErr.message}`);
+        throw uploadErr;
+      } finally {
+        // Safe clean up of all files in temp_uploads
+        try {
+          if (fs.existsSync(tempDir)) {
+            const files = fs.readdirSync(tempDir);
+            for (const file of files) {
+              fs.unlinkSync(path.join(tempDir, file));
+            }
+            fs.rmdirSync(tempDir);
+            log("Successfully cleaned up all temporary upload files.");
+          }
+        } catch (cleanupErr: any) {
+          log(`Temporary folder cleanup warned: ${cleanupErr.message}`);
+        }
+      }
+    } else {
+      log("No Supporting Documents (image upload) page detected. Skipping upload step.");
+    }
+
     // Step: Evidence
-    if (claim.driveLink) {
-      log("Providing evidence link...");
-      await fileWindow.fill('textarea[name="comments"]', `Proof and Evidence: ${claim.driveLink}`);
+    const evidenceLink = claim.drive_link || claim.orderDriveLink || claim.order_drive_link;
+    if (evidenceLink) {
+      log(`Providing evidence link: ${evidenceLink}`);
+      
+      const textareas = [
+        'kat-textarea textarea',
+        'kat-textarea',
+        'textarea[name="comments"]',
+        'textarea'
+      ];
+      
+      let filled = false;
+      for (const t of textareas) {
+        try {
+          const el = fileWindow.locator(t).first();
+          if (await el.isVisible()) {
+            await el.fill(`Proof and Evidence: ${evidenceLink}`);
+            log(`Successfully filled evidence using selector: ${t}`);
+            filled = true;
+            break;
+          }
+        } catch (err: any) {
+          log(`Standard fill with selector ${t} failed: ${err.message}`);
+        }
+      }
+      
+      if (!filled) {
+        try {
+          const katTextarea = fileWindow.locator('kat-textarea').first();
+          if (await katTextarea.isVisible()) {
+            await katTextarea.evaluate((el: any, val: string) => {
+              const innerTextarea = el.shadowRoot?.querySelector('textarea') || el.querySelector('textarea') || el;
+              if (innerTextarea) {
+                innerTextarea.value = val;
+                innerTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+                innerTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                el.value = val;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }, `Proof and Evidence: ${evidenceLink}`);
+            log("Successfully filled evidence via kat-textarea shadow-root evaluation.");
+            filled = true;
+          }
+        } catch (evalErr: any) {
+          log(`Fallback evaluation fill failed: ${evalErr.message}`);
+        }
+      }
+      
       await takeLiveScreenshot(fileWindow);
     }
 
+    // Step: Handle optional declaration / acknowledgment checkbox before submitting
+    log("Checking for declaration or acknowledgment checkboxes on submission page...");
+    try {
+      const checkboxLocators = [
+        'kat-checkbox',
+        'input[type="checkbox"]',
+        '[role="checkbox"]'
+      ];
+      
+      for (const sel of checkboxLocators) {
+        const checkboxes = fileWindow.locator(sel);
+        const count = await checkboxes.count();
+        if (count > 0) {
+          log(`Found ${count} checkbox elements matching selector: ${sel}`);
+          for (let idx = 0; idx < count; idx++) {
+            const cb = checkboxes.nth(idx);
+            if (await cb.isVisible()) {
+              log(`Handling checkbox #${idx} for selector: ${sel}`);
+              try {
+                await cb.evaluate((el: any) => {
+                  const inner = el.shadowRoot?.querySelector('[role="checkbox"]') || 
+                                el.shadowRoot?.querySelector('.checkbox') || 
+                                el.shadowRoot?.querySelector('input[type="checkbox"]') ||
+                                el.querySelector('input[type="checkbox"]') || 
+                                el;
+                  
+                  if (inner) {
+                    if (inner.getAttribute('aria-checked') !== 'true' && !inner.checked) {
+                      inner.click();
+                      if (typeof inner.setAttribute === 'function') {
+                        inner.setAttribute('aria-checked', 'true');
+                      }
+                      inner.checked = true;
+                    }
+                  } else {
+                    el.click();
+                  }
+                  
+                  el.checked = true;
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+                log(`Successfully toggled/checked checkbox #${idx}`);
+              } catch (cbErr: any) {
+                log(`Failed to process checkbox #${idx} via evaluate: ${cbErr.message}. Trying direct click fallback...`);
+                await cb.click({ force: true }).catch(err => log(`Direct click on checkbox failed: ${err.message}`));
+              }
+            }
+          }
+        }
+      }
+      await fileWindow.waitForTimeout(1000);
+      await takeLiveScreenshot(fileWindow);
+    } catch (checkErr: any) {
+      log(`Error during checkbox scanning/checking: ${checkErr.message}`);
+    }
+
     log("Finalizing Filing...");
-    await fileWindow.click('button:has-text("Submit")');
-    await page.waitForTimeout(2000);
+    let submitClicked = false;
+    const finalSubmitBtnSelectors = [
+      'button:has-text("Submit")',
+      'kat-button:has-text("Submit")',
+      'button:has-text("Submit SAFE-T Claim")',
+      'kat-button:has-text("Submit SAFE-T Claim")',
+      'button:has-text("Submit SAFE-T claim")',
+      'kat-button:has-text("Submit SAFE-T claim")',
+      'kat-button[variant="primary"]',
+      'button[type="submit"]',
+      'input[type="submit"]'
+    ];
+    
+    for (const finalBtnSel of finalSubmitBtnSelectors) {
+      try {
+        const btn = fileWindow.locator(finalBtnSel).first();
+        if (await btn.isVisible()) {
+          await btn.click();
+          log(`Successfully clicked final submit button using selector: ${finalBtnSel}`);
+          submitClicked = true;
+          break;
+        }
+      } catch (err: any) {
+        log(`Submit button selector ${finalBtnSel} failed: ${err.message}`);
+      }
+    }
+    
+    if (!submitClicked) {
+      log("Warning: Could not automatically locate or click Submit button. Trying fallback evaluate click...");
+      try {
+        await fileWindow.evaluate(() => {
+          const btn = Array.from(document.querySelectorAll('button, kat-button, input[type="submit"]'))
+            .find(b => {
+              const txt = (b.textContent || (b as any).innerText || "").toLowerCase();
+              return txt.includes('submit');
+            });
+          if (btn) (btn as any).click();
+        });
+        log("Fallback evaluate click triggered on Submit button.");
+      } catch (e: any) {
+        log(`Submit fallback click failed: ${e.message}`);
+      }
+    }
+    
+    await page.waitForTimeout(5000); // Give it a bit more time for processing
     await takeLiveScreenshot(fileWindow);
     
     // Capture result
@@ -815,9 +1691,10 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     const screenshotPath = path.join(process.cwd(), 'bot_logs', screenshotName);
     return { success: false, error: error.message, screenshotPath };
   } finally {
+    if (context) {
+      log("Closing browser context...");
+      await context.close();
+    }
     log("Automation pulse finished.");
-      // Save cookies/state for future sessions
-    
-    await browser.close();
   }
 }
