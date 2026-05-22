@@ -42,6 +42,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `No manifest found for Tracking ID: ${trackingId}` }, { status: 404 });
     }
 
+    if (manifest.status !== 'AT_DOCK') {
+      return NextResponse.json({
+        error: `This package cannot be taken over from status "${manifest.status}". Expected AT_DOCK.`,
+        manifest: {
+          id: manifest.id,
+          trackingId: manifest.trackingId,
+          status: manifest.status,
+        }
+      }, { status: 409 });
+    }
+
     const initialReturnItems = (manifest.orders || []).flatMap(o =>
       (o.returnItems || []).map(ri => ({
         id: ri.lpn,

@@ -1660,8 +1660,6 @@ function InspectTab({ userId }: { userId?: string }) {
           return;
         }
 
-        setManifestId(manifest.id);
-
         // Verify if a RECEIVER_TO_INSPECTOR handshake exists matching the current inspector's user ID
         const hasHandshake = manifest.handshakes?.some(
           (h: any) => h.type === "RECEIVER_TO_INSPECTOR" && h.receiverId === userId
@@ -1673,6 +1671,20 @@ function InspectTab({ userId }: { userId?: string }) {
           );
           return;
         }
+
+        if (manifest.status !== "IN_INSPECTION") {
+          setStartError(
+            "This package is not active in your inspection stack. Take custody from the receiver before scanning."
+          );
+          return;
+        }
+
+        if (manifest.inspection?.completedAt) {
+          setStartError("This package has already been inspected.");
+          return;
+        }
+
+        setManifestId(manifest.id);
 
         const resolvedOrderId = manifest.matchedOrderId || "";
         const manifestOrderIds = Array.from(

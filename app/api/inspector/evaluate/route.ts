@@ -53,6 +53,14 @@ export async function POST(req: Request) {
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
       include: {
+        handshakes: {
+          where: { type: 'RECEIVER_TO_INSPECTOR' },
+          orderBy: { timestamp: 'desc' },
+          select: { receiverId: true, timestamp: true },
+        },
+        inspection: {
+          select: { id: true, completedAt: true },
+        },
         orders: {
           include: {
             returnItems: {
@@ -67,12 +75,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
-    // Status validation: only IN_INSPECTION manifests can be evaluated
-    // Also allow AT_DOCK for backwards compatibility during transition
-    if (!['IN_INSPECTION', 'AT_DOCK'].includes(manifest.status)) {
+    if (manifest.status !== 'IN_INSPECTION') {
       return NextResponse.json({ 
         error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.` 
       }, { status: 400 });
+    }
+
+    const latestInspectorHandshake = manifest.handshakes[0];
+    if (!latestInspectorHandshake || latestInspectorHandshake.receiverId !== userId) {
+      return NextResponse.json(
+        { error: 'This manifest is not in your inspector stack.' },
+        { status: 403 },
+      );
+    }
+
+    if (manifest.inspection?.completedAt) {
+      return NextResponse.json(
+        { error: 'This manifest has already been inspected.' },
+        { status: 409 },
+      );
     }
 
     const manifestOrderIds = manifest.orders.map(order => order.platformOrderId);
