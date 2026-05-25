@@ -509,7 +509,7 @@ async function syncCoreReturns(rows) {
   console.log(`Syncing ${rows.length} Customer Returns to Core Tables...`);
   let successCount = 0;
 
-  for (const group of chunkArray(rows, 100)) {
+  for (const group of chunkArray(rows, 10)) {
     const groupSaved = await Promise.all(
       group.map(async (rawRow) => {
         const mapped = mapReturnRow(rawRow);
@@ -519,52 +519,54 @@ async function syncCoreReturns(rows) {
           return null;
         }
 
+        // Parse LPNs: split by commas or spaces if multiple exist
+        const rawLpns = mapped.lpn;
+        const lpns = typeof rawLpns === 'string'
+          ? rawLpns.split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+          : [mapped.lpn];
+
+        const qty = Math.max(mapped.quantity || 1, lpns.length);
+        const returnItems = [];
+
         try {
-          const order = await prisma.order.upsert({
-            where: { platformOrderId: mapped.orderId },
-            update: {
-              marketplace: "AMAZON",
-              ...(mapped.purchaseDate ? { purchaseDate: mapped.purchaseDate } : {}),
-            },
-            create: {
-              marketplace: "AMAZON",
-              platformOrderId: mapped.orderId,
-              purchaseDate: mapped.purchaseDate || new Date(),
-            },
-          });
+          for (let i = 0; i < qty; i++) {
+            const lpnVal = lpns[i] || `${lpns[0] || 'LPN'}-${i}`;
 
-          const returnItem = await prisma.returnItem.upsert({
-            where: { lpn: mapped.lpn },
-            update: {
-              orderId: order.platformOrderId,
-              sku: mapped.sku,
-              asin: mapped.asin,
-              fnsku: mapped.fnsku,
-              productName: mapped.productName,
-              quantity: mapped.quantity,
-              returnReason: mapped.returnReason,
-              customerComments: mapped.customerComments,
-              amazonDisposition: mapped.amazonDisposition,
-              itemPrice: mapped.itemPrice,
-            },
-            create: {
-              orderId: order.platformOrderId,
-              sku: mapped.sku,
-              lpn: mapped.lpn,
-              asin: mapped.asin,
-              fnsku: mapped.fnsku,
-              productName: mapped.productName,
-              quantity: mapped.quantity,
-              returnReason: mapped.returnReason,
-              customerComments: mapped.customerComments,
-              amazonDisposition: mapped.amazonDisposition,
-              itemPrice: mapped.itemPrice,
-            },
-          });
-
-          return returnItem;
+            const returnItem = await prisma.returnItem.upsert({
+              where: { lpn: lpnVal },
+              update: {
+                orderId: mapped.orderId,
+                sku: mapped.sku,
+                asin: mapped.asin,
+                fnsku: mapped.fnsku,
+                productName: mapped.productName,
+                returnDate: mapped.purchaseDate,
+                fulfillmentCenterId: pick(rawRow.fulfillment_center_id, rawRow.fulfillmentcenterid),
+                returnReason: mapped.returnReason,
+                customerComments: mapped.customerComments,
+                amazonDisposition: mapped.amazonDisposition,
+                itemPrice: mapped.itemPrice,
+              },
+              create: {
+                orderId: mapped.orderId,
+                sku: mapped.sku,
+                lpn: lpnVal,
+                asin: mapped.asin,
+                fnsku: mapped.fnsku,
+                productName: mapped.productName,
+                returnDate: mapped.purchaseDate,
+                fulfillmentCenterId: pick(rawRow.fulfillment_center_id, rawRow.fulfillmentcenterid),
+                returnReason: mapped.returnReason,
+                customerComments: mapped.customerComments,
+                amazonDisposition: mapped.amazonDisposition,
+                itemPrice: mapped.itemPrice,
+              },
+            });
+            returnItems.push(returnItem);
+          }
+          return returnItems[0] || null;
         } catch (e) {
-          console.error(`[ERROR] Failed to upsert Core Return platformOrderId=${mapped.orderId} lpn=${mapped.lpn}:`, e.message);
+          console.error(`[ERROR] Failed to upsert Core Return orderId=${mapped.orderId} lpn=${mapped.lpn}:`, e.message);
           return null;
         }
       })
@@ -591,20 +593,6 @@ async function findOrCreateReturnItemForReimbursement(row) {
     return null;
   }
 
-  if (orderId) {
-    await prisma.order.upsert({
-      where: { platformOrderId: orderId },
-      update: {
-        marketplace: "AMAZON",
-      },
-      create: {
-        marketplace: "AMAZON",
-        platformOrderId: orderId,
-        purchaseDate: toDate(pick(normalized.approval_date), new Date()),
-      },
-    });
-  }
-
   const identityFilters = [
     sku ? { sku } : null,
     pick(normalized.fnsku) ? { fnsku: pick(normalized.fnsku) } : null,
@@ -624,16 +612,11 @@ async function findOrCreateReturnItemForReimbursement(row) {
     return existing;
   }
 
-  if (!orderId) {
-    return null;
-  }
-
   return prisma.returnItem.upsert({
     where: { lpn },
     update: {
       orderId,
       sku,
-      quantity: toInt(pick(normalized.quantity_reimbursed_total, normalized.quantity_reimbursed_cash, normalized.quantity_reimbursed_inventory), 1),
       returnReason: pick(normalized.reason, normalized.original_reimbursement_type) || "Reimbursement",
       productName: pick(normalized.product_name),
       fnsku: pick(normalized.fnsku),
@@ -644,7 +627,6 @@ async function findOrCreateReturnItemForReimbursement(row) {
       orderId,
       sku,
       lpn,
-      quantity: toInt(pick(normalized.quantity_reimbursed_total, normalized.quantity_reimbursed_cash, normalized.quantity_reimbursed_inventory), 1),
       returnReason: pick(normalized.reason, normalized.original_reimbursement_type) || "Reimbursement",
       productName: pick(normalized.product_name),
       fnsku: pick(normalized.fnsku),
@@ -742,82 +724,6 @@ async function syncCoreReimbursements(rows) {
   return successCount;
 }
 
-function mapRemovalShipmentRow(rawRow) {
-  const row = normalizeRow(rawRow);
-  const removalOrderId = pick(row.order_id, row.removal_order_id);
-  const trackingNumber = getRemovalShipmentKey(row);
-
-  return {
-    removalOrderId,
-    trackingNumber,
-    shipmentDate: toDate(pick(row.shipment_date, row.request_date, row.last_updated_date), new Date()),
-    sku: pick(row.sku) || trackingNumber,
-    shippedQuantity: toInt(pick(row.shipped_quantity, row.requested_quantity), 1),
-    disposition: pick(row.disposition) || "Unknown",
-    manifestId: null,
-  };
-}
-
-async function syncCoreRemovalShipments(rows) {
-  if (!rows || rows.length === 0) return 0;
-
-  console.log(`Syncing ${rows.length} Removal Shipments/Orders to Core Table (RemovalShipment)...`);
-  let successCount = 0;
-
-  for (const group of chunkArray(rows, 100)) {
-    const groupSaved = await Promise.all(
-      group.map(async (rawRow) => {
-        const mapped = mapRemovalShipmentRow(rawRow);
-
-        if (!mapped.removalOrderId || !mapped.sku) {
-          console.log("[WARN] Skipping core removal shipment row without removalOrderId or sku:", rawRow);
-          return null;
-        }
-
-        if (!mapped.trackingNumber || String(mapped.trackingNumber).startsWith("removal_")) {
-          console.log("[WARN] Skipping core removal shipment row without real tracking number:", rawRow);
-          return null;
-        }
-
-        try {
-          const existing = await prisma.removalShipment.findUnique({
-            where: {
-              trackingNumber_sku: {
-                trackingNumber: mapped.trackingNumber,
-                sku: mapped.sku,
-              },
-            },
-          });
-
-          if (existing) {
-            const updated = await prisma.removalShipment.update({
-              where: { id: existing.id },
-              data: {
-                shipmentDate: mapped.shipmentDate,
-                shippedQuantity: mapped.shippedQuantity,
-                disposition: mapped.disposition,
-              },
-            });
-            return updated;
-          }
-
-          const created = await prisma.removalShipment.create({
-            data: mapped,
-          });
-          return created;
-        } catch (e) {
-          console.error(`[ERROR] Failed to sync Core RemovalShipment trackingNumber=${mapped.trackingNumber} sku=${mapped.sku}:`, e.message);
-          return null;
-        }
-      })
-    );
-
-    successCount += groupSaved.filter(Boolean).length;
-  }
-
-  console.log(`Successfully synced ${successCount}/${rows.length} Removal Shipments/Orders to Core Table.`);
-  return successCount;
-}
 
 async function syncCoreRemovalOrdersToOrders(rows) {
   if (!rows || rows.length === 0) return 0;
@@ -870,7 +776,6 @@ async function main() {
   const removalShipmentsTSV = await fetchReportData(REMOVAL_SHIPMENTS_REPORT_TYPE, "removal_shipments_0_30", 30, 0);
   const removalShipmentRows = parseTSV(removalShipmentsTSV);
   const syncedRemovalShipments = await syncRemovalShipments(removalShipmentRows);
-  const syncedCoreRemovalShipments = await syncCoreRemovalShipments(removalShipmentRows);
 
   // 3. Sync Reimbursements
   const reimbursementsTSV = await fetchReportData(REIMBURSEMENTS_REPORT_TYPE, "reimbursements_0_30", 30, 0);
@@ -889,7 +794,6 @@ async function main() {
   console.log(`- AMZRemovalOrders: ${syncedRemovalOrders} records synced to Raw`);
   console.log(`- Orders (from Removal Orders): ${syncedCoreOrders} records synced to Core`);
   console.log(`- AMZRemovalShipments: ${syncedRemovalShipments} records synced to Raw`);
-  console.log(`- RemovalShipments (from Removal Shipments): ${syncedCoreRemovalShipments} records synced to Core`);
   console.log(`- AMZReimbursements: ${syncedReimbursements} records synced to Raw`);
   console.log(`- Reimbursements: ${syncedCoreReimbursements} records synced to Core`);
   console.log(`- AMZCustomerReturns: ${syncedCustomerReturns} records synced to Raw`);

@@ -37,12 +37,7 @@ export async function GET(req: NextRequest) {
           select: {
             marketplace: true,
             platformOrderId: true,
-            returnItems: {
-              select: {
-                lpn: true,
-                sku: true
-              }
-            }
+            trackingNumber: true,
           }
         }
       },
@@ -50,20 +45,27 @@ export async function GET(req: NextRequest) {
     });
 
     // Transform into the format the UI expects
-    const formattedLedger = ledger.map(item => {
+    // Since ReturnItem is decoupled, we will get the expected items count by looking at the AMZRemovalShipment expected quantities.
+    const formattedLedger = await Promise.all(ledger.map(async (item) => {
       const firstOrder = item.orders?.[0];
       const marketplace = firstOrder?.marketplace || 'UNKNOWN';
       const orderId = firstOrder?.platformOrderId || item.trackingId;
       const isInspecting = item.status === 'IN_INSPECTION' && item.inspectedBy === user.email;
 
-      // Flatten return items across all orders
-      const flatReturnItems = (item.orders || []).flatMap(o =>
-        (o.returnItems || []).map(ri => ({
-          lpn: ri.lpn
-        }))
-      );
+      const orderIds = (item.orders || []).map(o => o.platformOrderId);
+      const trackingNumbers = (item.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
 
-      const itemsExpected = flatReturnItems.length;
+      const shipments = await prisma.aMZRemovalShipment.findMany({
+        where: {
+          OR: [
+            { orderId: { in: orderIds } },
+            { trackingNumber: { in: trackingNumbers } }
+          ]
+        },
+        select: { shippedQuantity: true }
+      });
+
+      const itemsExpected = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
       return {
         id: item.id,
@@ -75,7 +77,7 @@ export async function GET(req: NextRequest) {
         itemsExpected: itemsExpected,
         itemsInspected: 0,
       };
-    });
+    }));
 
     return NextResponse.json({ ledger: formattedLedger });
   } catch (error: any) {

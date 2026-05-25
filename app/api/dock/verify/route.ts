@@ -28,9 +28,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, marketplace });
     }
 
-        // 2. Check if RemovalShipment exists
-    const removalShipment = await prisma.removalShipment.findFirst({
-      where: { trackingNumber: trackingId }
+    // 2. Check if AMZRemovalShipment exists
+    const removalShipment = await prisma.aMZRemovalShipment.findFirst({
+      where: {
+        OR: [
+          { trackingNumber: trackingId },
+          { orderId: trackingId }
+        ]
+      }
     });
 
     if (removalShipment) {

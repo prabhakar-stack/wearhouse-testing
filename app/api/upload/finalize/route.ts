@@ -17,21 +17,7 @@ function normalizeLpn(value: string) {
   return value.trim().toUpperCase();
 }
 
-async function resolveFnskuForSku(sku: string): Promise<string | null> {
-  const ret = await prisma.aMZCustomerReturn.findFirst({
-    where: { sku },
-    select: { fnsku: true }
-  });
-  if (ret?.fnsku) return ret.fnsku;
 
-  const rem = await prisma.aMZRemovalOrder.findFirst({
-    where: { sku },
-    select: { fnsku: true }
-  });
-  if (rem?.fnsku) return rem.fnsku;
-
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,6 +45,7 @@ export async function POST(req: NextRequest) {
         orders: {
           select: {
             platformOrderId: true,
+            trackingNumber: true,
           }
         }
       }
@@ -249,13 +236,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Query all expected ReturnItems for the current manifest to identify missing items
+    // Since ReturnItem is decoupled from Order, let's find the relevant return items.
+    // Fetch the raw removal shipments to know which SKUs/FNSKUs were expected in this manifest/orders
+    const trackingNumbers = (manifest.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
+
+    const removalShipments = await prisma.aMZRemovalShipment.findMany({
+      where: {
+        OR: [
+          { orderId: { in: manifestOrderIds } },
+          { trackingNumber: { in: trackingNumbers } }
+        ]
+      }
+    });
+
+    const expectedSkus = Array.from(new Set(removalShipments.map(s => s.sku).filter((s): s is string => !!s)));
+    const expectedFnskus = Array.from(new Set(removalShipments.map(s => s.fnsku).filter((f): f is string => !!f)));
+
     const expectedItems = await prisma.returnItem.findMany({
       where: {
-        order: {
-          manifestId: manifest.id
-        },
-        ...(scopedOrderId ? { orderId: scopedOrderId } : {}),
+        OR: [
+          { sku: { in: expectedSkus } },
+          { fnsku: { in: expectedFnskus } }
+        ]
       }
     });
 
@@ -295,22 +297,22 @@ export async function POST(req: NextRequest) {
         recovery: 'PACKAGING_DAMAGED',
         bad: 'PRODUCT_DAMAGED',
       };
-      // 1. Fetch expected removal shipments to determine expected quantities per SKU/FNSKU
-      const shipments = await prisma.removalShipment.findMany({
-        where: { removalOrderId: scopedOrderId }
+      // 1. Fetch expected removal shipments to determine expected quantities per FNSKU
+      const shipments = await prisma.aMZRemovalShipment.findMany({
+        where: {
+          OR: [
+            { orderId: scopedOrderId },
+            { trackingNumber: scopedOrderId }
+          ]
+        }
       });
 
-      const expectedSkuQuantities = new Map<string, number>();
-      for (const s of shipments) {
-        if (s.sku && s.shippedQuantity) {
-          expectedSkuQuantities.set(s.sku, (expectedSkuQuantities.get(s.sku) || 0) + s.shippedQuantity);
-        }
-      }
-
       const expectedFnskuQuantities = new Map<string, number>();
-      for (const [sku, qty] of expectedSkuQuantities.entries()) {
-        const fnsku = await resolveFnskuForSku(sku) || sku;
-        expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + qty);
+      for (const s of shipments) {
+        if (s.fnsku && s.shippedQuantity) {
+          const fnsku = s.fnsku;
+          expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + s.shippedQuantity);
+        }
       }
 
       // A. Process all scanned LPNs from dashboard conditions payload
@@ -342,8 +344,8 @@ export async function POST(req: NextRequest) {
               : conditionMap[conditionStr] || 'PRODUCT_DAMAGED';
           }
 
-          // Lookup from customer returns database to get details
-          const rawReturn = await prisma.aMZCustomerReturn.findUnique({
+          // Lookup from operational ReturnItem to get details
+          const rawReturn = await prisma.returnItem.findUnique({
             where: { lpn: normalizedLpnVal }
           });
 
@@ -355,38 +357,20 @@ export async function POST(req: NextRequest) {
             expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
           }
 
-          // Dynamically upsert the ReturnItem
           await prisma.returnItem.upsert({
             where: { lpn: normalizedLpnVal },
-            update: {
-              orderId: scopedOrderId,
-              sku: rawReturn?.sku || 'UNKNOWN_SKU',
-              asin: rawReturn?.asin || null,
-              fnsku: rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
-              returnReason: rawReturn?.reason || 'Removal Order Shipment',
-              customerComments: rawReturn?.customerComments || null,
-              amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
-              customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
-              condition: resolvedCondition as any,
-              claimReason: claimReason,
-              claimSubReason: claimSubReason,
-            },
+            update: {},
             create: {
               lpn: normalizedLpnVal,
-              orderId: scopedOrderId,
-              sku: rawReturn?.sku || 'UNKNOWN_SKU',
+              sku: rawReturn?.sku || "UNKNOWN_SKU",
               asin: rawReturn?.asin || null,
               fnsku: rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
-              returnReason: rawReturn?.reason || 'Removal Order Shipment',
+              productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
+              reason: rawReturn?.reason || "Removal Order Shipment",
               customerComments: rawReturn?.customerComments || null,
-              amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
-              customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
-              condition: resolvedCondition as any,
-              claimReason: claimReason,
-              claimSubReason: claimSubReason,
-            }
+              // marketplace defaults to "amazon"
+            },
+            select: { lpn: true }
           });
 
           const lpnDriveLink = lpnToDriveLinkMap[lpn] || null;
@@ -427,7 +411,6 @@ export async function POST(req: NextRequest) {
                 claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
                 uploadedByEmail: resolvedUploadedByEmail,
                 manifestId: manifest.id,
-                returnItemId: normalizedLpnVal,
               },
               create: {
                 lpn: normalizedLpnVal,
@@ -439,7 +422,6 @@ export async function POST(req: NextRequest) {
                 claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
                 uploadedByEmail: resolvedUploadedByEmail,
                 manifestId: manifest.id,
-                returnItemId: normalizedLpnVal,
               }
             });
             evidenceRecordsCreated.push(ev);

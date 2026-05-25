@@ -17,32 +17,12 @@ export async function GET(req: NextRequest) {
         ? { id: manifestId }
         : { trackingId: trackingId! },
       include: {
-        orders: {
-          include: {
-            returnItems: {
-              include: {
-                evidences: {
-                  select: {
-                    id: true,
-                    lpn: true,
-                    orderId: true,
-                    orderDriveLink: true,
-                    lpnDriveLink: true,
-                    type: true,
-                    claimReason: true,
-                    claimSubReason: true,
-                    createdAt: true
-                  }
-                }
-              }
-            }
-          }
-        },
+        orders: true,
         evidences: {
           select: {
             id: true,
             lpn: true,
-            orderId: true,
+
             orderDriveLink: true,
             lpnDriveLink: true,
             type: true,
@@ -58,17 +38,48 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
-    const flattenedReturnItems = (manifest.orders || []).flatMap(order =>
-      (order.returnItems || []).map(ri => ({
-        ...ri,
-        id: ri.lpn,
-        order: {
-          marketplace: order.marketplace,
-          platformOrderId: order.platformOrderId,
-          customerOrderId: order.customerOrderId,
-        }
-      }))
-    );
+    // Since ReturnItem is decoupled from Order, let's find the relevant return items.
+    // We can fetch ReturnItem rows matching orderId = order.platformOrderId for backwards compatibility,
+    // or by matching the SKUs/FNSKUs expected in these Orders from AMZRemovalShipment.
+    // Let's get the tracking numbers / order IDs first.
+    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
+    const trackingNumbers = (manifest.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
+
+    // Fetch the raw removal shipments to know which SKUs/FNSKUs were expected in this manifest/order
+    const removalShipments = await prisma.aMZRemovalShipment.findMany({
+      where: {
+        OR: [
+          { trackingNumber: { in: trackingNumbers } }
+        ]
+      }
+    });
+
+    const expectedSkus = Array.from(new Set(removalShipments.map(s => s.sku).filter((s): s is string => !!s)));
+    const expectedFnskus = Array.from(new Set(removalShipments.map(s => s.fnsku).filter((f): f is string => !!f)));
+
+        // Fetch return data directly from AMZ_customer_returns
+const returnItems = await prisma.returnItem.findMany({
+  where: {
+    OR: [
+      { sku: { in: expectedSkus } },
+      { fnsku: { in: expectedFnskus } },
+    ],
+  },
+});
+
+// Pull associated evidences by LPN (foreign key)
+const evidences = await prisma.evidence.findMany({
+  where: { lpn: { in: returnItems.map((ri) => ri.lpn) } },
+});
+const evidenceMap = Object.fromEntries(
+  evidences.map((ev) => [ev.lpn, ev])
+);
+
+    // Map AMZ_customer_returns rows to expected structure (no order mapping needed)
+    const flattenedReturnItems = returnItems.map(ri => ({
+      ...ri,
+      id: ri.lpn
+    }));
 
     const manifestWithFlattenedItems = {
       ...manifest,
@@ -92,15 +103,13 @@ export async function GET(req: NextRequest) {
         lpn: ri.lpn,
         sku: ri.sku,
         quantity: 1, // Quantity is always 1 per LPN row
-        condition: ri.condition,
-        returnReason: ri.returnReason,
+        condition: ri.detailedDisposition,
+        returnReason: ri.reason,
         customerComments: ri.customerComments,
-        marketplace: ri.order?.marketplace,
-        platformOrderId: ri.order?.platformOrderId,
-        customerOrderId: ri.order?.customerOrderId,
-        evidences: ri.evidences,
-        claimReason: ri.claimReason,
-        claimSubReason: ri.claimSubReason,
+        marketplace: ri.marketplace,
+        evidences: evidenceMap[ri.lpn] ? [evidenceMap[ri.lpn]] : [],
+        claimReason: evidenceMap[ri.lpn]?.claimReason || null,
+        claimSubReason: evidenceMap[ri.lpn]?.claimSubReason || null,
       })),
       orderEvidences: manifest.evidences,
       // Pre-built text for clipboard copy

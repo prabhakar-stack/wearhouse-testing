@@ -4,117 +4,133 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
   try {
     const { trackingId } = await params;
-    let matchedOrderId: string | null = null;
     
-    // 1. Try to find by tracking ID
-    let manifest = await prisma.manifest.findUnique({
-      where: { trackingId: trackingId },
-      include: {
-        orders: {
-          include: {
-            returnItems: true
-          }
-        }
+    // Resolve one-to-one mapping using AMZRemovalShipment:
+    // trackingId can be either trackingNumber (AWB) or orderId (removal order platform ID)
+    const shipmentMatch = await prisma.aMZRemovalShipment.findFirst({
+      where: {
+        OR: [
+          { trackingNumber: trackingId },
+          { orderId: trackingId }
+        ]
       }
     });
 
-    // 2. If not found, try to search by platformOrderId
-    if (!manifest) {
-      manifest = await prisma.manifest.findFirst({
-        where: {
-          orders: {
-            some: {
-              platformOrderId: trackingId
-            }
-          }
-        },
-        include: {
-          orders: {
-            include: {
-              returnItems: true
-            }
-          }
-        }
-      });
-      matchedOrderId = manifest ? trackingId : null;
-    }
+    const resolvedOrderId = shipmentMatch?.orderId || trackingId;
+    const resolvedTrackingId = shipmentMatch?.trackingNumber || trackingId;
+
+    // Try to find manifest by resolved tracking ID
+    let manifest = await prisma.manifest.findFirst({
+      where: {
+        OR: [
+          { trackingId: resolvedTrackingId },
+          { trackingId: resolvedOrderId },
+          { removalOrderId: resolvedOrderId }
+        ]
+      },
+      include: {
+        orders: true
+      }
+    });
 
     if (!manifest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
-    const removalOrderId = manifest.removalOrderId || matchedOrderId || manifest.orders?.[0]?.platformOrderId;
+    // Query expected shipments using manifest orders and tracking numbers for robust lookup
+    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
+    const trackingNumbers = [
+      trackingId,
+      resolvedTrackingId,
+      resolvedOrderId,
+      ...(manifest.orders || []).map(o => o.trackingNumber)
+    ].filter((t): t is string => !!t);
 
-    // Find all removal shipments for this removalOrderId or trackingId
-    const shipments = await prisma.removalShipment.findMany({
+    const shipments = await prisma.aMZRemovalShipment.findMany({
       where: {
         OR: [
-          { manifestId: manifest.id },
-          ...(removalOrderId ? [{ removalOrderId }] : []),
-          { trackingNumber: manifest.trackingId }
+          { orderId: { in: orderIds } },
+          { trackingNumber: { in: trackingNumbers } }
         ]
       }
     });
 
-    const expectedSkuQuantities = new Map<string, number>();
+    // Compute expected quantity per fnsku from shipments
+    const expectedTotals: Record<string, number> = {};
     for (const s of shipments) {
-      if (s.sku && s.shippedQuantity) {
-        expectedSkuQuantities.set(s.sku, (expectedSkuQuantities.get(s.sku) || 0) + s.shippedQuantity);
+      if (s.fnsku) {
+        expectedTotals[s.fnsku] = (expectedTotals[s.fnsku] || 0) + (s.shippedQuantity || 0);
       }
     }
 
-    const expectedFnskusList: { fnsku: string; sku: string; quantity: number; productName: string }[] = [];
-    let totalExpectedQuantity = 0;
+    // Fetch actual ReturnItem rows that match any expected fnsku
+    const fnskuList = Object.keys(expectedTotals);
+    const returnItems = await prisma.returnItem.findMany({
+      where: { fnsku: { in: fnskuList } },
+      select: { fnsku: true, lpn: true }
+    });
 
-    for (const [sku, qty] of expectedSkuQuantities.entries()) {
-      const rawReturn = await prisma.aMZCustomerReturn.findFirst({
-        where: { sku },
-        select: { fnsku: true, productName: true }
-      });
-
-      let fnsku = rawReturn?.fnsku;
-      let productName = rawReturn?.productName;
-
-      if (!fnsku) {
-        const rawOrder = await prisma.aMZRemovalOrder.findFirst({
-          where: { sku },
-          select: { fnsku: true }
-        });
-        fnsku = rawOrder?.fnsku || sku;
+    const actualTotals: Record<string, number> = {};
+    for (const ri of returnItems) {
+      if (ri.fnsku) {
+        actualTotals[ri.fnsku] = (actualTotals[ri.fnsku] || 0) + 1;
       }
+    }
 
-      if (!productName) {
-        productName = `SKU: ${sku}`;
-      }
-
-      expectedFnskusList.push({
+    const fnskuCounts = Object.keys(expectedTotals).map(fnsku => {
+      const expected = expectedTotals[fnsku];
+      const actual = actualTotals[fnsku] || 0;
+      return {
         fnsku,
-        sku,
-        quantity: qty,
-        productName
+        expected,
+        actual,
+        status: actual >= expected ? 'completed' : 'pending'
+      };
+    });
+
+
+
+    // Build product‑level items list for UI (sku, fnsku, shipped qty, name)
+    const items: Array<{ sku: string; fnsku: string | null; quantity: number; productName: string }> = [];
+    let totalExpectedQuantity = 0;
+    for (const s of shipments) {
+      if (!s.sku) continue;
+      const rawReturn = await prisma.aMZCustomerReturn.findFirst({
+        where: { sku: s.sku }
       });
-      totalExpectedQuantity += qty;
+      items.push({
+        sku: s.sku,
+        fnsku: s.fnsku || null,
+        quantity: s.shippedQuantity || 0,
+        productName: rawReturn?.productName || 'Unknown Product'
+      });
+      totalExpectedQuantity += s.shippedQuantity || 0;
     }
 
-    const flattenedReturnItems = (manifest.orders || []).flatMap(order =>
-      (order.returnItems || []).map(ri => ({
-        ...ri,
-        id: ri.lpn
-      }))
-    );
+    const flattenedReturnItems = returnItems.map(ri => ({
+      ...ri,
+      id: ri.lpn
+    }));
 
-    if (totalExpectedQuantity === 0) {
-      totalExpectedQuantity = flattenedReturnItems.length;
-    }
+    // Map orders to make sure they have up-to-date totalQuantity and totalAmount
+    const rawOrder = await prisma.aMZRemovalOrder.findFirst({
+      where: { orderId: resolvedOrderId }
+    });
+
+    const formattedOrders = (manifest.orders || []).map(order => ({
+      ...order,
+      totalQuantity: order.totalQuantity || totalExpectedQuantity,
+      totalAmount: order.totalAmount || rawOrder?.removalFee || 0.0,
+      trackingNumber: order.trackingNumber || resolvedTrackingId || null
+    }));
 
     const formattedManifest = {
       ...manifest,
+      orders: formattedOrders,
       totalExpectedQuantity: Math.max(totalExpectedQuantity, 1),
-      expectedFnskus: expectedFnskusList,
-      matchedOrderId:
-        matchedOrderId ||
-        manifest.orders.find(order => order.platformOrderId === trackingId)?.platformOrderId ||
-        (manifest.orders.length === 1 ? manifest.orders[0].platformOrderId : null),
+      expectedFnskus: items,
+      fnskuCounts,
+      matchedOrderId: resolvedOrderId,
       returnItems: flattenedReturnItems
     };
 

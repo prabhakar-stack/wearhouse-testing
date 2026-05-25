@@ -34,16 +34,21 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
 
-    // If found, check if it is in EXPECTED or LOST_IN_TRANSIT or AT_DOCK status to continue
-    const allowedStatuses = ['EXPECTED', 'LOST_IN_TRANSIT', 'AT_DOCK'];
-    if (!allowedStatuses.includes(manifest.status)) {
-      console.warn(`[Dock Receive Warning] Manifest ${manifest.trackingId} is in status ${manifest.status}. Allowing check-in overwrite.`);
+    // Ensure only forward state transitions are allowed. If already in inspection or claims, block re-receiving.
+    const stateHierarchy = ['EXPECTED', 'LOST_IN_TRANSIT', 'AT_DOCK', 'IN_INSPECTION', 'INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
+    const currentStatusIndex = stateHierarchy.indexOf(manifest.status);
+    const atDockIndex = stateHierarchy.indexOf('AT_DOCK');
+
+    if (currentStatusIndex > atDockIndex) {
+      return NextResponse.json({
+        error: `Cannot receive package. It is already in a later stage ("${manifest.status}"). Only forward state transitions are allowed.`
+      }, { status: 400 });
     }
 
     // Fetch removal shipments and AMZ removal orders matching the manifest's removalOrderId to link them
     const removalOrderId = manifest.removalOrderId;
-    const removalShipments = removalOrderId ? await prisma.removalShipment.findMany({
-      where: { removalOrderId }
+    const removalShipments = removalOrderId ? await prisma.aMZRemovalShipment.findMany({
+      where: { orderId: removalOrderId }
     }) : [];
 
     const rawOrder = removalOrderId ? await prisma.aMZRemovalOrder.findFirst({
@@ -54,12 +59,15 @@ export async function POST(req: NextRequest) {
 
     // Link shipments, order and generate return items if removalOrderId is active
     if (removalOrderId) {
+      const totalQuantity = removalShipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
+
       // Create/upsert the operational Order
       const opOrder = await prisma.order.upsert({
         where: { platformOrderId: removalOrderId },
         update: {
           marketplace: 'AMAZON',
           manifestId: manifest.id,
+          totalQuantity: totalQuantity,
           ...(rawOrder ? {
             requestDate: rawOrder.requestDate || new Date(),
             totalAmount: rawOrder.removalFee || null,
@@ -70,59 +78,33 @@ export async function POST(req: NextRequest) {
           platformOrderId: removalOrderId,
           marketplace: 'AMAZON',
           manifestId: manifest.id,
+          totalQuantity: totalQuantity,
           requestDate: rawOrder?.requestDate || new Date(),
           totalAmount: rawOrder?.removalFee || null,
           fulfillmentChannel: 'AMAZON_REMOVAL'
         }
       });
 
-      // Link matching expected shipments to this Manifest
-      await prisma.removalShipment.updateMany({
-        where: { removalOrderId },
-        data: { manifestId: manifest.id }
-      });
+
 
       // Dynamically generate ReturnItem records (LPN-level) for expected SKU quantities
       for (const shipment of removalShipments) {
         const qty = shipment.shippedQuantity || 1;
+        const skuVal = shipment.sku || 'UNKNOWN_SKU';
+
         for (let i = 0; i < qty; i++) {
-          const virtualLpn = `LPN-${manifest.trackingId}-${shipment.sku}-${i}`.toUpperCase();
+          const virtualLpn = `LPN-${manifest.trackingId}-${skuVal}-${i}`.toUpperCase();
 
           const rawReturn = await prisma.aMZCustomerReturn.findFirst({
             where: {
-              orderId: shipment.removalOrderId,
-              sku: shipment.sku
+              orderId: shipment.orderId,
+              sku: skuVal
             }
           });
 
           const customerOrderId = rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER';
 
-          await prisma.returnItem.upsert({
-            where: { lpn: virtualLpn },
-            update: {
-              orderId: opOrder.platformOrderId,
-              sku: shipment.sku,
-              asin: rawReturn?.asin || null,
-              fnsku: rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${shipment.sku}`,
-              returnReason: rawReturn?.reason || 'Removal Order Shipment',
-              customerComments: rawReturn?.customerComments || null,
-              amazonDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-              customerOrderId: customerOrderId,
-            },
-            create: {
-              lpn: virtualLpn,
-              orderId: opOrder.platformOrderId,
-              sku: shipment.sku,
-              asin: rawReturn?.asin || null,
-              fnsku: rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${shipment.sku}`,
-              returnReason: rawReturn?.reason || 'Removal Order Shipment',
-              customerComments: rawReturn?.customerComments || null,
-              amazonDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-              customerOrderId: customerOrderId,
-            }
-          });
+          // ReturnItem upsert removed – data now sourced directly from AMZ_customer_returns
         }
       }
     }

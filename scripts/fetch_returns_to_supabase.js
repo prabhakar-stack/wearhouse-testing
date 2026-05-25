@@ -323,49 +323,56 @@ async function upsertReturns(rows) {
           return null;
         }
 
-        const order = await prisma.order.upsert({
-          where: { platformOrderId: mapped.orderId },
-          update: {
-            marketplace: "AMAZON",
-            ...(mapped.purchaseDate ? { purchaseDate: mapped.purchaseDate } : {}),
-          },
-          create: {
-            marketplace: "AMAZON",
-            platformOrderId: mapped.orderId,
-            purchaseDate: mapped.purchaseDate || new Date(),
-          },
-        });
+        // Parse LPNs: split by commas or spaces if multiple exist
+        const rawLpns = mapped.lpn;
+        const lpns = typeof rawLpns === 'string'
+          ? rawLpns.split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+          : [mapped.lpn];
 
-        const returnItem = await prisma.returnItem.upsert({
-          where: { lpn: mapped.lpn },
-          update: {
-            orderId: order.platformOrderId,
-            sku: mapped.sku,
-            asin: mapped.asin,
-            fnsku: mapped.fnsku,
-            productName: mapped.productName,
-            quantity: mapped.quantity,
-            returnReason: mapped.returnReason,
-            customerComments: mapped.customerComments,
-            amazonDisposition: mapped.amazonDisposition,
-            itemPrice: mapped.itemPrice,
-          },
-          create: {
-            orderId: order.platformOrderId,
-            sku: mapped.sku,
-            lpn: mapped.lpn,
-            asin: mapped.asin,
-            fnsku: mapped.fnsku,
-            productName: mapped.productName,
-            quantity: mapped.quantity,
-            returnReason: mapped.returnReason,
-            customerComments: mapped.customerComments,
-            amazonDisposition: mapped.amazonDisposition,
-            itemPrice: mapped.itemPrice,
-          },
-        });
+        const qty = Math.max(mapped.quantity || 1, lpns.length);
+        const returnItems = [];
 
-        return returnItem;
+        try {
+          for (let i = 0; i < qty; i++) {
+            const lpnVal = lpns[i] || `${lpns[0] || 'LPN'}-${i}`;
+
+            const returnItem = await prisma.returnItem.upsert({
+              where: { lpn: lpnVal },
+              update: {
+                orderId: mapped.orderId,
+                sku: mapped.sku,
+                asin: mapped.asin,
+                fnsku: mapped.fnsku,
+                productName: mapped.productName,
+                returnDate: mapped.purchaseDate,
+                fulfillmentCenterId: pick(rawRow.fulfillment_center_id, rawRow.fulfillmentcenterid),
+                returnReason: mapped.returnReason,
+                customerComments: mapped.customerComments,
+                amazonDisposition: mapped.amazonDisposition,
+                itemPrice: mapped.itemPrice,
+              },
+              create: {
+                orderId: mapped.orderId,
+                sku: mapped.sku,
+                lpn: lpnVal,
+                asin: mapped.asin,
+                fnsku: mapped.fnsku,
+                productName: mapped.productName,
+                returnDate: mapped.purchaseDate,
+                fulfillmentCenterId: pick(rawRow.fulfillment_center_id, rawRow.fulfillmentcenterid),
+                returnReason: mapped.returnReason,
+                customerComments: mapped.customerComments,
+                amazonDisposition: mapped.amazonDisposition,
+                itemPrice: mapped.itemPrice,
+              },
+            });
+            returnItems.push(returnItem);
+          }
+          return returnItems[0];
+        } catch (e) {
+          console.error(`[ERROR] Failed to upsert ReturnItem orderId=${mapped.orderId} lpn=${mapped.lpn}:`, e.message);
+          return null;
+        }
       }),
     );
 
@@ -389,20 +396,6 @@ async function findOrCreateReturnItemForReimbursement(row) {
     return null;
   }
 
-  if (orderId) {
-    await prisma.order.upsert({
-      where: { platformOrderId: orderId },
-      update: {
-        marketplace: "AMAZON",
-      },
-      create: {
-        marketplace: "AMAZON",
-        platformOrderId: orderId,
-        purchaseDate: toDate(pick(normalized.approval_date), new Date()),
-      },
-    });
-  }
-
   const identityFilters = [
     sku ? { sku } : null,
     pick(normalized.fnsku) ? { fnsku: pick(normalized.fnsku) } : null,
@@ -422,16 +415,11 @@ async function findOrCreateReturnItemForReimbursement(row) {
     return existing;
   }
 
-  if (!orderId) {
-    return null;
-  }
-
   return prisma.returnItem.upsert({
     where: { lpn },
     update: {
       orderId,
       sku,
-      quantity: toInt(pick(normalized.quantity_reimbursed_total, normalized.quantity_reimbursed_cash, normalized.quantity_reimbursed_inventory), 1),
       returnReason: pick(normalized.reason, normalized.original_reimbursement_type) || "Reimbursement",
       productName: pick(normalized.product_name),
       fnsku: pick(normalized.fnsku),
@@ -442,7 +430,6 @@ async function findOrCreateReturnItemForReimbursement(row) {
       orderId,
       sku,
       lpn,
-      quantity: toInt(pick(normalized.quantity_reimbursed_total, normalized.quantity_reimbursed_cash, normalized.quantity_reimbursed_inventory), 1),
       returnReason: pick(normalized.reason, normalized.original_reimbursement_type) || "Reimbursement",
       productName: pick(normalized.product_name),
       fnsku: pick(normalized.fnsku),
@@ -638,11 +625,8 @@ async function upsertCoreRemovalOrdersToOrders(rows) {
 
 async function readReturnsFromDatabase(limit = 25) {
   return prisma.returnItem.findMany({
-    orderBy: [{ order: { purchaseDate: "desc" } }, { lpn: "desc" }],
+    orderBy: [{ returnDate: "desc" }, { lpn: "desc" }],
     take: limit,
-    include: {
-      order: true,
-    },
   });
 }
 

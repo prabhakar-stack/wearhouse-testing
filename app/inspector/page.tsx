@@ -1010,9 +1010,7 @@ function InspectTab({ userId }: { userId?: string }) {
   >("START");
   const [orderId, setOrderId] = useState("");
 
-  const [score, setScore] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [floatingXp, setFloatingXp] = useState<number | null>(null);
+
 
   const [boxStep, setBoxStep] = useState(1);
 
@@ -1089,7 +1087,6 @@ function InspectTab({ userId }: { userId?: string }) {
     setCurrentLpn("");
     setCurrentCategory(null);
     setMissingAcknowledged(false);
-    setStreak(0);
     setSelectedClaimReason(null);
     setSelectedClaimSubReason(null);
     setShowDefectDropdown(false);
@@ -1642,10 +1639,7 @@ function InspectTab({ userId }: { userId?: string }) {
   };
 
   const triggerXp = (amount: number) => {
-    setScore((s) => s + amount);
-    setStreak((s) => s + 1);
-    setFloatingXp(amount);
-    setTimeout(() => setFloatingXp(null), 1200);
+    // XP and gamification elements removed
   };
 
   const handleStart = async (e: React.FormEvent) => {
@@ -1671,17 +1665,7 @@ function InspectTab({ userId }: { userId?: string }) {
           return;
         }
 
-        // Verify if a RECEIVER_TO_INSPECTOR handshake exists matching the current inspector's user ID
-        const hasHandshake = manifest.handshakes?.some(
-          (h: any) => h.type === "RECEIVER_TO_INSPECTOR" && h.receiverId === userId
-        );
 
-        if (!hasHandshake) {
-          setStartError(
-            "This package is not in your stack. Please take custody first from the Ledger or Dock."
-          );
-          return;
-        }
 
         if (manifest.status !== "IN_INSPECTION") {
           setStartError(
@@ -1866,27 +1850,6 @@ function InspectTab({ userId }: { userId?: string }) {
           value: "fake_counterfeit",
           label: "c. Fake/ replica/ counterfeit item received",
         },
-      ],
-    },
-    {
-      id: "not_received",
-      label: "3. I did not receive my removal order",
-      subReasons: [
-        { value: "shipment_lost", label: "a. Entire shipment is lost" },
-        { value: "dispute_status", label: "b. Dispute delivery status" },
-      ],
-    },
-    {
-      id: "missing_qty",
-      label:
-        "4. I received removal order with missing quantity/ accessories/parts",
-      subReasons: [
-        { value: "missing_units", label: "a. Missing units inside a shipment" },
-        {
-          value: "missing_parts",
-          label: "b. Missing parts/accessories/components",
-        },
-        { value: "missing_main", label: "c. Missing main item" },
       ],
     },
   ];
@@ -2121,35 +2084,30 @@ function InspectTab({ userId }: { userId?: string }) {
 
       <div className="w-[40%] bg-white flex flex-col relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20">
         <div className="bg-white border-b border-[#313079]/10 p-4 flex justify-between items-center shrink-0 shadow-sm relative">
-          {floatingXp && (
-            <div className="absolute top-10 left-1/2 -translate-x-1/2 text-green-500 font-black text-xl animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none z-50">
-              +{floatingXp} XP
-            </div>
-          )}
           <div className="flex items-center space-x-2">
             <div className="bg-[#FF6700]/10 p-1.5 rounded text-[#FF6700]">
-              <Zap size={16} fill="currentColor" />
+              <Box size={16} />
             </div>
             <div>
               <p className="text-[9px] uppercase font-bold text-[#313079]/50 tracking-widest">
-                Total Score
+                Tracking ID
               </p>
               <p className="text-sm font-black font-mono text-[#313079]">
-                {score} XP
+                {manifestId ? orderId : "—"}
               </p>
             </div>
           </div>
           <div className="flex items-center space-x-2 text-right">
             <div>
               <p className="text-[9px] uppercase font-bold text-[#313079]/50 tracking-widest">
-                Streak
+                Order ID
               </p>
               <p className="text-sm font-black font-mono text-[#FF6700]">
-                {streak}x
+                {activeOrderPlatformId || "—"}
               </p>
             </div>
             <div className="bg-[#FF6700]/10 p-1.5 rounded text-[#FF6700]">
-              <TrendingUp size={16} />
+              <FileText size={16} />
             </div>
           </div>
         </div>
@@ -2497,11 +2455,11 @@ function InspectTab({ userId }: { userId?: string }) {
                             </div>
                             <div className="space-y-1.5">
                               <button
-                                onClick={() => handleRecoverySelected("barcode not clear")}
+                                onClick={() => handleRecoverySelected("Barcode Damaged")}
                                 className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
                               >
                                 <span className="flex-1 pr-2">
-                                  Barcode not clear
+                                  Barcode Damaged
                                 </span>
                                 <ArrowRight
                                   size={14}
@@ -2509,11 +2467,11 @@ function InspectTab({ userId }: { userId?: string }) {
                                 />
                               </button>
                               <button
-                                onClick={() => handleRecoverySelected("product packaging box replacement required")}
+                                onClick={() => handleRecoverySelected("Packaging Damaged")}
                                 className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
                               >
                                 <span className="flex-1 pr-2">
-                                  Product packaging box replacement required
+                                  Packaging Damaged
                                 </span>
                                 <ArrowRight
                                   size={14}

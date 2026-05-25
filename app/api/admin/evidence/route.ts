@@ -6,7 +6,7 @@ export async function GET(req: Request) {
     const evidence = await prisma.evidence.findMany({
       include: {
         manifest: true,
-        returnItem: true,
+
       },
       orderBy: {
         createdAt: 'desc',

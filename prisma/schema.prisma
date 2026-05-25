@@ -75,7 +75,7 @@ model Manifest {
   status           PackageState
   marketplace      Marketplace?
   courierName      String?
-  removalOrderId   String?        // Amazon removal order ID linking to RemovalShipment
+  removalOrderId   String?        // Amazon removal order ID linking to AMZRemovalShipment
   expectedDate     DateTime?
   receivedAt       DateTime?
   receivedBy       String?        // Receiver's email
@@ -87,7 +87,6 @@ model Manifest {
   orders           Order[]
   evidences        Evidence[]
   alerts           Alert[]
-  removalShipments RemovalShipment[]
 }
 
 model Order {
@@ -95,63 +94,26 @@ model Order {
   platformOrderId    String       @id // Amazon removal order-id
   requestDate        DateTime?    // Amazon removal request date
   totalAmount        Float?       // Amazon removal fee
+  totalQuantity      Int?         // Total quantity of items in the order
   fulfillmentChannel String?      // FBA / FBM / AMAZON_REMOVAL
   manifestId         String?
   manifest           Manifest?    @relation(fields: [manifestId], references: [id])
-  customerOrderId    String?      // Original customer purchase order ID
-
-  returnItems        ReturnItem[]
-}
-
-model ReturnItem {
-  orderId              String
-  sku                  String
-  lpn                  String              @id // License plate number
-  asin                 String?             // From AMZ_customer_returns.asin
-  fnsku                String?             // From AMZ_customer_returns.fnsku
-  productName          String?             // Product name per LPN
-  returnReason         String              // From AMZ_customer_returns.reason
-  customerComments     String?             // From AMZ_customer_returns.customer-comments
-  amazonDisposition    String?             // From AMZ_customer_returns.detailed-disposition (SELLABLE, DAMAGED, etc.)
-  condition            ItemCondition?      // Inspector's grade (GOOD_SELLABLE, PRODUCT_DAMAGED, etc.)
-  claimReason          String?
-  claimSubReason       String?
-  itemPrice            Float?              // Per-unit price for reimbursement calculation
-  customerOrderId      String?             // Required original customer purchase order ID
-
-  order                Order               @relation(fields: [orderId], references: [platformOrderId])
-  reimbursement        Reimbursement?
-  evidences            Evidence[]
+  trackingNumber     String?      // Carrier tracking number associated with the removal order
 }
 
 model Reimbursement {
   id                      String     @id @default(uuid())
-  returnItemId            String     @unique
-  platformReimbursementId String?    @unique
+  // Fields referencing ReturnItem removed
+  // returnItemId            String     @unique
+  // platformReimbursementId String?    @unique
   amountReimbursed        Float
   currency                String
   reimbursementReason     String?
   status                  String
   filedAt                 DateTime?
   resolvedAt              DateTime?
-
-  returnItem              ReturnItem @relation(fields: [returnItemId], references: [lpn])
 }
 
-model RemovalShipment {
-  id               String    @id @default(uuid())
-  removalOrderId   String
-  trackingNumber   String
-  shipmentDate     DateTime
-  sku              String
-  shippedQuantity  Int
-  disposition      String
-  manifestId       String?   // Link to Manifest via tracking number match
-
-  manifest         Manifest? @relation(fields: [manifestId], references: [id])
-
-  @@unique([trackingNumber, sku])
-}
 
 model Evidence {
   id              String       @id @default(uuid())
@@ -163,13 +125,13 @@ model Evidence {
   rawReference    String?
   uploadedByEmail String?      // Email of user who uploaded
   manifestId      String?
-  returnItemId    String?
+  // returnItemId    String?
   claimReason     String?
   claimSubReason  String?
   createdAt       DateTime     @default(now())
 
   manifest     Manifest?   @relation(fields: [manifestId], references: [id])
-  returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
+  // returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
 }
 
 model Alert {
@@ -290,4 +252,31 @@ model AMZCustomerReturn {
   removalOrderType        String?  @map("removal-order-type")
 
   @@map("AMZ_customer_returns")
+}
+
+model ReturnItem {
+  lpn                     String   @id @map("license-plate-number")
+  returnDate              DateTime? @map("return-date")
+  sku                     String?  @map("sku")
+  asin                    String?  @map("asin")
+  fnsku                   String? @map("fnsku")
+  productName             String? @map("product-name")
+  quantity                Int?    @map("quantity")
+  fulfillmentCenterId     String? @map("fulfillment-center-id")
+  detailedDisposition     String? @map("detailed-disposition")
+  reason                  String? @map("reason")
+  customerComments        String? @map("customer-comments")
+  removalOrderType        String? @map("removal-order-type")
+  marketplace             String? @default("amazon")
+  @@map("ReturnItem")
+}
+
+
+// Added to prevent dropping table which has views depending on it
+model AMZFiledClaim {
+  lpn     String    @id
+  filedAt DateTime? @default(now()) @map("filed_at")
+  caseId  String?   @map("case_id")
+
+  @@map("AMZ_filed_claims")
 }

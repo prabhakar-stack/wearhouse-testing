@@ -24,7 +24,6 @@ async function main() {
       platformOrderId: 'ORD001',
       requestDate: new Date('2024-01-01'),
       marketplace: 'AMAZON',
-      customerOrderId: 'CUST-ORD-001',
       manifest: { connect: { id: manifest.id } },
     },
   });
@@ -34,10 +33,9 @@ async function main() {
     data: {
       lpn: 'LPN001',
       sku: 'SKU-A',
-      orderId: order.platformOrderId,
+      orderId: 'CUST-ORD-001',
       returnReason: 'Damaged',
       condition: null,
-      customerOrderId: 'CUST-ORD-001',
     },
   });
 
@@ -45,10 +43,9 @@ async function main() {
     data: {
       lpn: 'LPN002',
       sku: 'SKU-B',
-      orderId: order.platformOrderId,
+      orderId: 'CUST-ORD-001',
       returnReason: 'Wrong Item',
       condition: null,
-      customerOrderId: 'CUST-ORD-001',
     },
   });
 

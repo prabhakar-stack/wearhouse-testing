@@ -52,82 +52,64 @@ async function main() {
       totalAmount: 13894.00, // Sum of 499 + 399 + (4599*2) + (1899*2)
       fulfillmentChannel: 'FBA',
       manifestId: manifestMulti.id,
-      customerOrderId: '406-1698600-6821160',
+      trackingNumber: '52103257345',
     }
   });
 
-  // Create 6 ReturnItems (LPNs) associated with this Order
+  // Create 6 ReturnItems (LPNs)
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'CUBE-PRO-LITE',
       lpn: 'LPN-MULTI-001',
-      returnReason: 'Quality not as expected',
-      itemPrice: 499.00,
+      reason: 'Quality not as expected',
       productName: 'Cubelelo Pro Lite 3x3 Speed Cube',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'CUBE-DRIFT-3X3',
       lpn: 'LPN-MULTI-002',
-      returnReason: 'Performance issue',
-      itemPrice: 399.00,
+      reason: 'Performance issue',
       productName: 'Cubelelo Drift 3x3 Magnetic Cube',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
   // GAN-11-PRO (2 units -> 2 distinct LPNs)
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'GAN-11-PRO',
       lpn: 'LPN-MULTI-003',
-      returnReason: 'Scratched exterior',
-      itemPrice: 4599.00,
+      reason: 'Scratched exterior',
       productName: 'GAN 11 M Pro UV 3x3',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'GAN-11-PRO',
       lpn: 'LPN-MULTI-004',
-      returnReason: 'Scratched exterior',
-      itemPrice: 4599.00,
+      reason: 'Scratched exterior',
       productName: 'GAN 11 M Pro UV 3x3',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
   // MOYU-SUPER-RS3M (2 units -> 2 distinct LPNs)
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'MOYU-SUPER-RS3M',
       lpn: 'LPN-MULTI-005',
-      returnReason: 'Missing accessories',
-      itemPrice: 1899.00,
+      reason: 'Missing accessories',
       productName: 'MoYu Super RS3M Ball-Core',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
   await prisma.returnItem.create({
     data: {
-      orderId: order.platformOrderId,
       sku: 'MOYU-SUPER-RS3M',
       lpn: 'LPN-MULTI-006',
-      returnReason: 'Defective tensioning system',
-      itemPrice: 1899.00,
+      reason: 'Defective tensioning system',
       productName: 'MoYu Super RS3M Ball-Core',
-      customerOrderId: '406-1698600-6821160',
     }
   });
 

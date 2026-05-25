@@ -43,7 +43,6 @@ async function main() {
       totalAmount: 13894.00,
       fulfillmentChannel: 'FBA',
       manifestId: manifest.id,
-      customerOrderId: '406-1698600-6821160',
     }
   });
 
@@ -54,61 +53,55 @@ async function main() {
   const returnItemsData = [
     // SKU 1 - 1 quantity (1 LPN)
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'CUBE-PRO-LITE',
       lpn: `LPN-${lpnSuffix}-1`,
       returnReason: 'Quality not as expected',
       itemPrice: 499.00,
       productName: 'Cubelelo Pro Lite 3x3 Speed Cube',
-      customerOrderId: '406-1698600-6821160',
     },
     // SKU 2 - 1 quantity (1 LPN)
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'CUBE-DRIFT-3X3',
       lpn: `LPN-${lpnSuffix}-2`,
       returnReason: 'Performance issue',
       itemPrice: 399.00,
       productName: 'Cubelelo Drift 3x3 Magnetic Cube',
-      customerOrderId: '406-1698600-6821160',
     },
     // SKU 3 - 2 quantities (2 LPNs)
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'GAN-11-PRO',
       lpn: `LPN-${lpnSuffix}-3`,
       returnReason: 'Scratched exterior',
       itemPrice: 4599.00,
       productName: 'GAN 11 M Pro UV 3x3',
-      customerOrderId: '406-1698600-6821160',
     },
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'GAN-11-PRO',
       lpn: `LPN-${lpnSuffix}-4`,
       returnReason: 'Scratched exterior',
       itemPrice: 4599.00,
       productName: 'GAN 11 M Pro UV 3x3',
-      customerOrderId: '406-1698600-6821160',
     },
     // SKU 4 - 2 quantities (2 LPNs)
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'MOYU-SUPER-RS3M',
       lpn: `LPN-${lpnSuffix}-5`,
       returnReason: 'Missing accessories',
       itemPrice: 1899.00,
       productName: 'MoYu Super RS3M Ball-Core',
-      customerOrderId: '406-1698600-6821160',
     },
     {
-      orderId: order.platformOrderId,
+      orderId: '406-1698600-6821160',
       sku: 'MOYU-SUPER-RS3M',
       lpn: `LPN-${lpnSuffix}-6`,
       returnReason: 'Defective tensioning system',
       itemPrice: 1899.00,
       productName: 'MoYu Super RS3M Ball-Core',
-      customerOrderId: '406-1698600-6821160',
     }
   ];
 

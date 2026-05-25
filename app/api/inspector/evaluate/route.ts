@@ -21,21 +21,7 @@ function resolveCondition(rawCondition: unknown) {
   return 'PRODUCT_DAMAGED'; // 'bad' maps to PRODUCT_DAMAGED
 }
 
-async function resolveFnskuForSku(sku: string): Promise<string | null> {
-  const ret = await prisma.aMZCustomerReturn.findFirst({
-    where: { sku },
-    select: { fnsku: true }
-  });
-  if (ret?.fnsku) return ret.fnsku;
 
-  const rem = await prisma.aMZRemovalOrder.findFirst({
-    where: { sku },
-    select: { fnsku: true }
-  });
-  if (rem?.fnsku) return rem.fnsku;
-
-  return null;
-}
 
 export async function POST(req: Request) {
   try {
@@ -67,13 +53,7 @@ export async function POST(req: Request) {
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
       include: {
-        orders: {
-          include: {
-            returnItems: {
-              select: { lpn: true, condition: true }
-            }
-          }
-        }
+        orders: true
       }
     });
 
@@ -119,24 +99,30 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch expected removal shipments to determine expected quantities per SKU/FNSKU
-    const shipments = await prisma.removalShipment.findMany({
-      where: { removalOrderId: scopedOrderId }
-    });
+    // 1. Fetch expected removal shipments to determine expected quantities per FNSKU robustly
+    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
+    const trackingNumbers = [
+      manifest.trackingId,
+      ...(manifest.orders || []).map(o => o.trackingNumber)
+    ].filter((t): t is string => !!t);
 
-    const expectedSkuQuantities = new Map<string, number>();
-    for (const s of shipments) {
-      if (s.sku && s.shippedQuantity) {
-        expectedSkuQuantities.set(s.sku, (expectedSkuQuantities.get(s.sku) || 0) + s.shippedQuantity);
+    const shipments = await prisma.aMZRemovalShipment.findMany({
+      where: {
+        OR: [
+          { orderId: { in: orderIds } },
+          { trackingNumber: { in: trackingNumbers } }
+        ]
       }
-    }
+    });
 
     const expectedFnskuQuantities = new Map<string, number>();
     let totalExpectedQty = 0;
-    for (const [sku, qty] of expectedSkuQuantities.entries()) {
-      const fnsku = await resolveFnskuForSku(sku) || sku;
-      expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + qty);
-      totalExpectedQty += qty;
+    for (const s of shipments) {
+      if (s.fnsku && s.shippedQuantity) {
+        const fnsku = s.fnsku;
+        expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + s.shippedQuantity);
+        totalExpectedQty += s.shippedQuantity;
+      }
     }
 
     const scannedEntries = lpnConditions && typeof lpnConditions === 'object'
@@ -148,8 +134,8 @@ export async function POST(req: Request) {
       for (const [lpn, rawCondition] of scannedEntries) {
         const normalizedLpnVal = normalizeLpn(lpn);
 
-        // Retrieve from customer returns report database to get product attributes
-        const rawReturn = await tx.aMZCustomerReturn.findUnique({
+        // Retrieve from operational ReturnItem to get product attributes
+        const rawReturn = await tx.returnItem.findUnique({
           where: { lpn: normalizedLpnVal }
         });
 
@@ -162,37 +148,20 @@ export async function POST(req: Request) {
           expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
         }
 
-        const claimReason = resolvedCondition === 'PRODUCT_DAMAGED' ? 'PRODUCT_DAMAGE' : null;
-        const claimSubReason = resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : null;
-
-        // Dynamically create or update ReturnItem
+        // Dynamically upsert ReturnItem without deprecated fields
         await tx.returnItem.upsert({
           where: { lpn: normalizedLpnVal },
-          update: {
-            orderId: scopedOrderId,
-            sku: rawReturn?.sku || 'UNKNOWN_SKU',
-            asin: rawReturn?.asin || null,
-            fnsku: rawReturn?.fnsku || null,
-            productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
-            returnReason: rawReturn?.reason || 'Removal Order Shipment',
-            customerComments: rawReturn?.customerComments || null,
-            amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
-            customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
-            condition: resolvedCondition as any,
-          },
+          update: {},
           create: {
             lpn: normalizedLpnVal,
-            orderId: scopedOrderId,
-            sku: rawReturn?.sku || 'UNKNOWN_SKU',
+            sku: rawReturn?.sku || "UNKNOWN_SKU",
             asin: rawReturn?.asin || null,
             fnsku: rawReturn?.fnsku || null,
-            productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
-            returnReason: rawReturn?.reason || 'Removal Order Shipment',
+            productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
+
             customerComments: rawReturn?.customerComments || null,
-            amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
-            customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
-            condition: resolvedCondition as any,
-          }
+
+          },
         });
 
         const recoveryType = lpnRecoveryTypes && lpnRecoveryTypes[lpn] ? lpnRecoveryTypes[lpn] : null;
@@ -236,7 +205,6 @@ export async function POST(req: Request) {
               orderDriveLink: evidenceUrl || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
-              returnItemId: normalizedLpnVal,
             },
             create: {
               lpn: normalizedLpnVal,
@@ -247,7 +215,6 @@ export async function POST(req: Request) {
               orderDriveLink: evidenceUrl || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
-              returnItemId: normalizedLpnVal,
             }
           });
         }
@@ -334,14 +301,14 @@ export async function POST(req: Request) {
       // If ANY item is BAD or RECOVERY, or if we have missing shortage items → CLAIMS_STAGING. Otherwise → INSPECTED
       const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING', 'PACKAGING_DAMAGED'];
       
-      const latestItems = await tx.returnItem.findMany({
-        where: { orderId: scopedOrderId },
-        select: { condition: true }
-      });
-
-      const hasClaimableItems = latestItems.some(
-        item => item.condition && claimableConditions.includes(item.condition)
-      );
+      let hasClaimableItems = false;
+      for (const [lpn, rawCondition] of scannedEntries) {
+        const resolvedCondition = resolveCondition(rawCondition);
+        if (resolvedCondition !== 'GOOD_SELLABLE') {
+          hasClaimableItems = true;
+          break;
+        }
+      }
 
       const targetStatus = (hasClaimableItems || missingCount > 0) ? 'CLAIMS_STAGING' : 'INSPECTED';
 
