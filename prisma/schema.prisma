@@ -41,24 +41,6 @@ enum ItemCondition {
   BAD_FAKE_PRODUCT
 }
 
-// Mirrors Amazon IDR portal defect types — inspector selects when marking BAD
-enum InspectorDefectType {
-  WAREHOUSE_DAMAGE
-  CARRIER_DAMAGE
-  CUSTOMER_DAMAGE
-  DEFECTIVE
-  EXPIRED
-  WRONG_ITEM_RECEIVED
-  MISSING_PARTS_ACCESSORIES
-  NOT_AS_DESCRIBED
-  FAKE_COUNTERFEIT
-}
-
-enum HandshakeType {
-  COURIER_TO_RECEIVER
-  RECEIVER_TO_INSPECTOR
-}
-
 enum AlertLevel {
   L1
   L2
@@ -68,15 +50,9 @@ enum AlertLevel {
 
 enum EvidenceType {
   RECEIVER_REJECTION
+  INSPECTOR_REJECTION
   INSPECTION_VIDEO
   PRODUCT_DAMAGE_PHOTO
-}
-
-model ProductStatus {
-  id         String       @id @default("current")
-  lpn        String
-  condition  ItemCondition
-  updatedAt  DateTime     @updatedAt
 }
 
 model User {
@@ -89,10 +65,6 @@ model User {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  handshakesSent   Handshake[]  @relation("Sender")
-  handshakesRecv   Handshake[]  @relation("Receiver")
-  inspections      Inspection[]
-  evidences        Evidence[]
   alertsTargeted   Alert[]      @relation("AlertTarget")
   alertsResolved   Alert[]      @relation("AlertResolver")
 }
@@ -106,55 +78,27 @@ model Manifest {
   removalOrderId   String?        // Amazon removal order ID linking to RemovalShipment
   expectedDate     DateTime?
   receivedAt       DateTime?
+  receivedBy       String?        // Receiver's email
+  inspectedBy      String?        // Inspector's email
+  customerOrderId  String?        // Original purchase customer order ID
+  claimId          String?        // Claims identifier
   createdAt        DateTime     @default(now())
 
-  handshakes       Handshake[]
-  inspection       Inspection?
   orders           Order[]
-  disputes         Dispute[]
   evidences        Evidence[]
   alerts           Alert[]
   removalShipments RemovalShipment[]
 }
 
-model Handshake {
-  id               String        @id @default(uuid())
-  manifestId       String
-  senderId         String?
-  receiverId       String
-  type             HandshakeType
-  timestamp        DateTime
-
-  manifest         Manifest      @relation(fields: [manifestId], references: [id])
-  sender           User?         @relation("Sender", fields: [senderId], references: [id])
-  receiver         User          @relation("Receiver", fields: [receiverId], references: [id])
-}
-
-model Inspection {
-  id                 String    @id @default(uuid())
-  manifestId         String    @unique
-  inspectorId        String
-  totalItemsExpected Int
-  totalItemsScanned  Int
-  isMissingItems     Boolean
-  evidenceUrl        String?
-  completedAt        DateTime
-
-  manifest           Manifest  @relation(fields: [manifestId], references: [id])
-  inspector          User      @relation(fields: [inspectorId], references: [id])
-}
-
 model Order {
   marketplace        Marketplace
-  platformOrderId    String       @id // Amazon order-id or Shopify order_id
-  purchaseDate       DateTime
-  customerName       String?
-  totalAmount        Float?
-  fulfillmentChannel String?      // FBA / FBM / Shopify
-  imageUrl           String?      // Product image URL
+  platformOrderId    String       @id // Amazon removal order-id
+  requestDate        DateTime?    // Amazon removal request date
+  totalAmount        Float?       // Amazon removal fee
+  fulfillmentChannel String?      // FBA / FBM / AMAZON_REMOVAL
   manifestId         String?
-  manifest           Manifest?   @relation(fields: [manifestId], references: [id])
-  claimId               String?   // claim identifier after claim processing
+  manifest           Manifest?    @relation(fields: [manifestId], references: [id])
+  customerOrderId    String?      // Original customer purchase order ID
 
   returnItems        ReturnItem[]
 }
@@ -162,19 +106,18 @@ model Order {
 model ReturnItem {
   orderId              String
   sku                  String
-  lpn                  String              @id // From AMZ_customer_returns.license-plate-number
+  lpn                  String              @id // License plate number
   asin                 String?             // From AMZ_customer_returns.asin
   fnsku                String?             // From AMZ_customer_returns.fnsku
-  productName          String?             // Added to support product name per LPN
-  quantity             Int
+  productName          String?             // Product name per LPN
   returnReason         String              // From AMZ_customer_returns.reason
   customerComments     String?             // From AMZ_customer_returns.customer-comments
   amazonDisposition    String?             // From AMZ_customer_returns.detailed-disposition (SELLABLE, DAMAGED, etc.)
   condition            ItemCondition?      // Inspector's grade (GOOD_SELLABLE, PRODUCT_DAMAGED, etc.)
-  inspectorDefectType  InspectorDefectType? // Amazon claim defect type dropdown — set when marking BAD
   claimReason          String?
   claimSubReason       String?
   itemPrice            Float?              // Per-unit price for reimbursement calculation
+  customerOrderId      String?             // Required original customer purchase order ID
 
   order                Order               @relation(fields: [orderId], references: [platformOrderId])
   reimbursement        Reimbursement?
@@ -195,17 +138,6 @@ model Reimbursement {
   returnItem              ReturnItem @relation(fields: [returnItemId], references: [lpn])
 }
 
-model Dispute {
-  id            String    @id @default(uuid())
-  manifestId    String
-  type          String    // e.g. "L1_DOCK_ALERT", "L3_MISSING_ITEM"
-  evidenceUrl   String?
-  resolved      Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-
-  manifest      Manifest  @relation(fields: [manifestId], references: [id])
-}
-
 model RemovalShipment {
   id               String    @id @default(uuid())
   removalOrderId   String
@@ -222,24 +154,22 @@ model RemovalShipment {
 }
 
 model Evidence {
-  id             String       @id @default(uuid())
-  lpn            String       @unique
-  orderId        String?
-  orderDriveLink String?
-  lpnDriveLink   String?
-  type           EvidenceType
-  reason         String?
-  rawReference   String?
-  uploadedById   String?
-  manifestId     String?
-  returnItemId   String?
-  claimReason    String?
-  claimSubReason String?
-  createdAt      DateTime     @default(now())
+  id              String       @id @default(uuid())
+  lpn             String       @unique
+  orderId         String?
+  orderDriveLink  String?
+  lpnDriveLink    String?
+  type            EvidenceType
+  rawReference    String?
+  uploadedByEmail String?      // Email of user who uploaded
+  manifestId      String?
+  returnItemId    String?
+  claimReason     String?
+  claimSubReason  String?
+  createdAt       DateTime     @default(now())
 
   manifest     Manifest?   @relation(fields: [manifestId], references: [id])
   returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
-  user         User?       @relation(fields: [uploadedById], references: [id])
 }
 
 model Alert {
@@ -261,14 +191,23 @@ model Alert {
   resolvedBy   User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
 }
 
-model AlertSopStep {
-  id          String   @id @default(uuid())
-  alertType   String   // matches Alert.type, e.g. "SLA_BREACH"
-  stepOrder   Int
-  instruction String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model ItemStatus {
+  lpn          String   @id
+  status       String   // "GOOD" or "RECOVERY"
+  recoveryType String?  // "barcode not clear" or "product packaging box replacement required"
+  createdAt    DateTime @default(now())
 }
+
+model MissingItem {
+  id              String   @id @default(uuid())
+  orderId         String   // platformOrderId
+  fnsku           String
+  missingQuantity Int
+  createdAt       DateTime @default(now())
+
+  @@unique([orderId, fnsku])
+}
+
 
 // Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {

@@ -17,7 +17,6 @@ export async function GET(req: NextRequest) {
         ? { id: manifestId }
         : { trackingId: trackingId! },
       include: {
-        inspection: true,
         orders: {
           include: {
             returnItems: {
@@ -30,7 +29,6 @@ export async function GET(req: NextRequest) {
                     orderDriveLink: true,
                     lpnDriveLink: true,
                     type: true,
-                    reason: true,
                     claimReason: true,
                     claimSubReason: true,
                     createdAt: true
@@ -48,17 +46,10 @@ export async function GET(req: NextRequest) {
             orderDriveLink: true,
             lpnDriveLink: true,
             type: true,
-            reason: true,
             claimReason: true,
             claimSubReason: true,
             createdAt: true
           }
-        },
-        disputes: {
-          select: { id: true, type: true, evidenceUrl: true, resolved: true, createdAt: true }
-        },
-        handshakes: {
-          select: { id: true, type: true, timestamp: true, receiverId: true }
         }
       }
     });
@@ -74,7 +65,7 @@ export async function GET(req: NextRequest) {
         order: {
           marketplace: order.marketplace,
           platformOrderId: order.platformOrderId,
-          customerName: order.customerName,
+          customerOrderId: order.customerOrderId,
         }
       }))
     );
@@ -93,32 +84,25 @@ export async function GET(req: NextRequest) {
         courierName: manifest.courierName,
         expectedDate: manifest.expectedDate,
         receivedAt: manifest.receivedAt,
+        receivedBy: manifest.receivedBy,
+        inspectedBy: manifest.inspectedBy,
       },
-      inspection: manifest.inspection ? {
-        id: manifest.inspection.id,
-        totalItemsExpected: manifest.inspection.totalItemsExpected,
-        totalItemsScanned: manifest.inspection.totalItemsScanned,
-        isMissingItems: manifest.inspection.isMissingItems,
-        evidenceUrl: manifest.inspection.evidenceUrl,
-        completedAt: manifest.inspection.completedAt,
-      } : null,
       returnItems: flattenedReturnItems.map(ri => ({
         id: ri.id,
         lpn: ri.lpn,
         sku: ri.sku,
-        quantity: ri.quantity,
+        quantity: 1, // Quantity is always 1 per LPN row
         condition: ri.condition,
         returnReason: ri.returnReason,
         customerComments: ri.customerComments,
         marketplace: ri.order?.marketplace,
         platformOrderId: ri.order?.platformOrderId,
+        customerOrderId: ri.order?.customerOrderId,
         evidences: ri.evidences,
         claimReason: ri.claimReason,
         claimSubReason: ri.claimSubReason,
       })),
       orderEvidences: manifest.evidences,
-      disputes: manifest.disputes,
-      handshakes: manifest.handshakes,
       // Pre-built text for clipboard copy
       claimSummary: buildClaimSummary(manifestWithFlattenedItems),
     };
@@ -136,22 +120,15 @@ function buildClaimSummary(manifest: any): string {
   lines.push(`Tracking ID: ${manifest.trackingId}`);
   lines.push(`Status: ${manifest.status}`);
   lines.push(`Courier: ${manifest.courierName || 'Unknown'}`);
+  lines.push(`Received By: ${manifest.receivedBy || 'N/A'}`);
   lines.push(`Received At: ${manifest.receivedAt ? new Date(manifest.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : 'N/A'}`);
+  lines.push(`Inspected By: ${manifest.inspectedBy || 'N/A'}`);
   lines.push('');
-
-  if (manifest.inspection) {
-    lines.push(`--- INSPECTION ---`);
-    lines.push(`Items Expected: ${manifest.inspection.totalItemsExpected}`);
-    lines.push(`Items Scanned: ${manifest.inspection.totalItemsScanned}`);
-    lines.push(`Missing Items: ${manifest.inspection.isMissingItems ? 'YES' : 'NO'}`);
-    lines.push(`Evidence Folder: ${manifest.inspection.evidenceUrl || 'N/A'}`);
-    lines.push('');
-  }
 
   if (manifest.returnItems?.length > 0) {
     lines.push(`--- RETURN ITEMS (${manifest.returnItems.length}) ---`);
     for (const ri of manifest.returnItems) {
-      lines.push(`  LPN: ${ri.lpn || 'N/A'} | SKU: ${ri.sku} | Qty: ${ri.quantity} | Condition: ${ri.condition || 'N/A'} | Reason: ${ri.returnReason}`);
+      lines.push(`  LPN: ${ri.lpn || 'N/A'} | SKU: ${ri.sku} | Condition: ${ri.condition || 'N/A'} | Reason: ${ri.returnReason}`);
       if (ri.claimReason) {
         lines.push(`    - Claim Reasons: ${ri.claimReason} > ${ri.claimSubReason || 'None'}`);
       }

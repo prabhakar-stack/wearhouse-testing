@@ -27,13 +27,9 @@ export async function POST(req: NextRequest) {
         orders: {
           include: {
             returnItems: {
-              select: { lpn: true, sku: true, quantity: true }
+              select: { lpn: true, sku: true }
             }
           }
-        },
-        handshakes: {
-          where: { type: 'RECEIVER_TO_INSPECTOR' },
-          select: { id: true }
         }
       }
     });
@@ -57,13 +53,12 @@ export async function POST(req: NextRequest) {
       (o.returnItems || []).map(ri => ({
         id: ri.lpn,
         lpn: ri.lpn,
-        sku: ri.sku,
-        quantity: ri.quantity
+        sku: ri.sku
       }))
     );
 
     // Check if already taken over
-    if (manifest.handshakes.length > 0) {
+    if (manifest.inspectedBy) {
       return NextResponse.json({
         error: 'This package has already been taken over by an inspector',
         manifest: {
@@ -76,52 +71,41 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    // Transaction: create handshake + update status
-    const result = await prisma.$transaction(async (tx) => {
-      // Create RECEIVER_TO_INSPECTOR handshake
-      const handshake = await tx.handshake.create({
-        data: {
-          manifestId: manifest.id,
-          receiverId: userId,
-          type: 'RECEIVER_TO_INSPECTOR',
-          timestamp: new Date(),
-        }
-      });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const userEmail = user?.email || 'inspector@cubelelo.com';
 
-      // Update manifest status to IN_INSPECTION
+    // Transaction: update status and inspectedBy
+    const result = await prisma.$transaction(async (tx) => {
+      // Update manifest status to IN_INSPECTION and set inspectedBy
       const updated = await tx.manifest.update({
         where: { id: manifest.id },
-        data: { status: 'IN_INSPECTION' },
+        data: { 
+          status: 'IN_INSPECTION',
+          inspectedBy: userEmail
+        },
         include: {
           orders: {
             include: {
               returnItems: {
-                select: { lpn: true, sku: true, quantity: true }
+                select: { lpn: true, sku: true }
               }
             }
           }
         }
       });
 
-      return { handshake, manifest: updated };
+      return { manifest: updated };
     });
 
     const updatedReturnItems = (result.manifest.orders || []).flatMap(o =>
       (o.returnItems || []).map(ri => ({
         id: ri.lpn,
         lpn: ri.lpn,
-        sku: ri.sku,
-        quantity: ri.quantity
+        sku: ri.sku
       }))
     );
 
-    // Calculate expected item count from LPNs
-    // Each returnItem with an LPN counts as 1 item to inspect
-    // If no LPNs exist, fall back to total quantity sum
-    const itemsWithLpn = updatedReturnItems.filter(ri => ri.lpn);
-    const expectedItemCount = itemsWithLpn.length > 0
-      ? itemsWithLpn.length
-      : updatedReturnItems.reduce((sum, ri) => sum + ri.quantity, 0);
+    const expectedItemCount = updatedReturnItems.length;
 
     console.log(`[Inspector Takeover] Inspector ${userId} took custody of Tracking ID: ${trackingId}. Expected items: ${expectedItemCount}`);
 
@@ -134,8 +118,7 @@ export async function POST(req: NextRequest) {
         status: result.manifest.status,
         itemCount: expectedItemCount,
         returnItems: updatedReturnItems,
-      },
-      handshakeId: result.handshake.id,
+      }
     });
   } catch (error: any) {
     console.error('Inspector Takeover Error:', error);

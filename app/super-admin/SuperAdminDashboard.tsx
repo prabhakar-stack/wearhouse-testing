@@ -94,7 +94,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
 
 export default function SuperAdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'users' | 'timeline' | 'claims' | 'alerts'>('alerts');
+  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts'>('alerts');
   const [alertCount, setAlertCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -193,7 +193,6 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
           <TabButton id="users"    icon={<Users size={14} />}       label="Users"          activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           <TabButton id="alerts"   icon={<Bell size={14} />}        label="Alerts"         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} />
-          <TabButton id="timeline" icon={<Clock size={14} />}       label="Time Overrides" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           <TabButton id="claims"   icon={<FileWarning size={14} />} label="Claims"         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
         </nav>
 
@@ -254,7 +253,6 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
         <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
           {activeTab === 'users'    && <UsersTab role={role} />}
           {activeTab === 'alerts'   && <AlertsTab />}
-          {activeTab === 'timeline' && <TimelineTab role={role} />}
           {activeTab === 'claims'   && <ClaimsTab />}
         </div>
       </main>
@@ -446,168 +444,6 @@ function UsersTab({ role }: { role: string }) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function TimelineTab({ role }: { role: string }) {
-  const [awb, setAwb] = useState('');
-  const [manifest, setManifest] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const [editModal, setEditModal] = useState<any>(null);
-  const [editDate, setEditDate] = useState('');
-  const [editTime, setEditTime] = useState('');
-  
-  const handleSearch = async (e: any) => {
-    e.preventDefault();
-    if (!awb.trim()) return;
-    setLoading(true); setManifest(null); setError('');
-    try {
-      const res = await fetch(`/api/manifest/${awb.trim()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setManifest(data.manifest);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openEditor = (recordId: string, recordType: string, currentVal: string) => {
-    const d = new Date(currentVal);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const date = String(d.getDate()).padStart(2, '0');
-    setEditDate(`${year}-${month}-${date}`);
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    setEditTime(`${hours}:${minutes}`);
-    setEditModal({ recordId, recordType });
-  };
-
-  const handleUpdateTimestamp = async () => {
-    try {
-      const dt = new Date(`${editDate}T${editTime}:00`);
-      const res = await fetch('/api/manifest/timestamp', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          recordId: editModal.recordId, 
-          recordType: editModal.recordType, 
-          newTimestamp: dt.toISOString() 
-        })
-      });
-      if (res.ok) {
-        setEditModal(null);
-        handleSearch({ preventDefault: () => {} });
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to update');
-      }
-    } catch(err) {
-      alert('Error updating timestamp');
-    }
-  };
-
-  let events: any[] = [];
-  if (manifest) {
-    if (manifest.expectedDate) events.push({ type: 'Manifest_Expected', id: manifest.id, time: manifest.expectedDate, title: 'Expected from Marketplace' });
-    if (manifest.receivedAt) events.push({ type: 'Manifest_Received', id: manifest.id, time: manifest.receivedAt, title: 'Received at Dock' });
-    manifest.handshakes.forEach((h: any) => events.push({ type: 'Handshake', id: h.id, time: h.timestamp, title: `Handshake: ${h.type.replace(/_/g, ' ')}` }));
-    const i = manifest.inspection;
-    if (i) events.push({ type: 'Inspection', id: i.id, time: i.completedAt, title: `Inspected - Missing: ${i.isMissingItems}` });
-    manifest.returnItems?.forEach((d: any) => events.push({ type: 'ReturnItem', id: d.id, time: new Date().toISOString(), title: `Return Item: ${d.sku} - ${d.condition}` }));
-    events.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-  }
-
-  return (
-    <div className="flex flex-col h-full relative">
-      <div className="p-8 border-b border-slate-200 shrink-0 bg-slate-50">
-        <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest mb-4">Package Timeline</h2>
-        <form onSubmit={handleSearch} className="flex max-w-xl">
-          <div className="flex-1 flex bg-white border border-slate-300 focus-within:border-[#FF6700] focus-within:ring-1 focus-within:ring-[#FF6700] transition-all rounded-l">
-            <div className="pl-4 flex items-center justify-center text-slate-400"><Search size={16} /></div>
-            <input 
-              type="text" 
-              placeholder="Scan or enter Tracking AWB..." 
-              value={awb} onChange={e => setAwb(e.target.value)}
-              className="w-full bg-transparent border-none text-slate-800 px-4 py-3 text-sm focus:outline-none font-mono placeholder-slate-400" 
-            />
-          </div>
-          <button type="submit" disabled={loading} className="px-8 bg-slate-100 border-y border-r border-slate-300 hover:bg-[#FF6700] hover:text-white text-slate-600 transition-colors uppercase tracking-widest text-[11px] font-bold rounded-r">
-            Track
-          </button>
-        </form>
-        {error && <p className="text-xs text-red-600 mt-3 font-medium">{error}</p>}
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-white">
-        {loading ? (
-          <div className="text-center text-slate-500 text-xs uppercase tracking-widest font-medium">Searching records...</div>
-        ) : manifest ? (
-          <div className="max-w-2xl mx-auto py-4">
-            <div className="mb-12 flex justify-between items-end border-b border-slate-200 pb-6">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Marketplace / Order</p>
-                <p className="text-lg text-slate-800 font-medium">{manifest.marketplace} <span className="text-slate-300 mx-2">/</span> <span className="font-mono text-sm text-slate-600">{manifest.orderId}</span></p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Status</p>
-                <p className="text-[#FF6700] text-xs tracking-wider uppercase font-bold">{manifest.status.replace(/_/g, ' ')}</p>
-              </div>
-            </div>
-            <div className="relative border-l-2 border-slate-200 ml-4 space-y-12 pb-12">
-              {events.map((ev, i) => (
-                <div key={i} className="relative pl-8 group">
-                  <div className="absolute -left-[9px] top-1.5 w-4 h-4 bg-white border-2 border-[#FF6700] rounded-full shadow-sm group-hover:bg-[#FF6700]/5 transition-all"></div>
-                  <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">{ev.title}</h4>
-                  <div className="flex items-center space-x-3 mt-1.5">
-                    <p className="text-xs font-mono text-slate-500">{new Date(ev.time).toLocaleString()}</p>
-                    <button onClick={() => openEditor(ev.id, ev.type, ev.time)} className="p-1 px-3 bg-white border border-slate-200 text-[#FF6700] hover:bg-[#FF6700]/5 hover:border-[#FF6700]/20 transition-all text-[10px] uppercase tracking-widest font-bold flex items-center space-x-1 rounded-sm shadow-sm" title="Amend Timestamp">
-                      <Pencil size={10} /> <span>Override</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {events.length === 0 && <p className="pl-8 text-xs text-slate-500 font-medium">No history recorded.</p>}
-            </div>
-          </div>
-        ) : (
-          !error && <div className="text-center text-slate-400 text-xs uppercase tracking-widest h-full flex items-center justify-center font-bold">Awaiting query parameters</div>
-        )}
-      </div>
-
-      {editModal && (
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center z-50">
-          <div className="bg-white border border-slate-200 p-8 w-[400px] shadow-2xl rounded-md">
-            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-[#FF6700]">Amend Timestamp</h3>
-              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-800"><X size={16} /></button>
-            </div>
-            <p className="text-[10px] uppercase text-slate-500 font-bold mb-6 leading-relaxed">
-              WARNING: Manually mutating timestamps alters the immutable timeline. This action is logged.
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Date</label>
-                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] outline-none rounded" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Time (24H)</label>
-                <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] outline-none rounded" />
-              </div>
-              <button onClick={handleUpdateTimestamp} className="w-full mt-4 bg-[#FF6700]/5 border border-[#FF6700]/20 hover:bg-[#FF6700]/10 text-[#FF6700] px-4 py-3 text-xs uppercase tracking-widest font-bold transition-colors flex justify-center items-center space-x-2 rounded">
-                <Save size={14} /> <span>Execute Override</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

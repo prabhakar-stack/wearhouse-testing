@@ -9,22 +9,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch manifests that are IN_INSPECTION or AT_DOCK with a RECEIVER_TO_INSPECTOR handshake to this inspector
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Fetch manifests that are IN_INSPECTION (taken over by this inspector) or AT_DOCK (available for takeover)
     const ledger = await prisma.manifest.findMany({
       where: {
         OR: [
           {
-            // Packages this inspector has taken over
             status: 'IN_INSPECTION',
-            handshakes: {
-              some: {
-                receiverId: userId,
-                type: 'RECEIVER_TO_INSPECTOR',
-              }
-            }
+            inspectedBy: user.email,
           },
           {
-            // Also show packages at dock that haven't been taken over yet (available for takeover)
             status: 'AT_DOCK',
           }
         ]
@@ -34,6 +32,7 @@ export async function GET(req: NextRequest) {
         trackingId: true,
         status: true,
         receivedAt: true,
+        inspectedBy: true,
         orders: {
           select: {
             marketplace: true,
@@ -41,20 +40,9 @@ export async function GET(req: NextRequest) {
             returnItems: {
               select: {
                 lpn: true,
-                sku: true,
-                quantity: true
+                sku: true
               }
             }
-          }
-        },
-        handshakes: {
-          where: { type: 'RECEIVER_TO_INSPECTOR' },
-          select: { receiverId: true, timestamp: true }
-        },
-        inspection: {
-          select: {
-            totalItemsScanned: true,
-            totalItemsExpected: true,
           }
         }
       },
@@ -66,22 +54,16 @@ export async function GET(req: NextRequest) {
       const firstOrder = item.orders?.[0];
       const marketplace = firstOrder?.marketplace || 'UNKNOWN';
       const orderId = firstOrder?.platformOrderId || item.trackingId;
-      const isInspecting = item.status === 'IN_INSPECTION' &&
-        item.handshakes.some(h => h.receiverId === userId);
+      const isInspecting = item.status === 'IN_INSPECTION' && item.inspectedBy === user.email;
 
       // Flatten return items across all orders
       const flatReturnItems = (item.orders || []).flatMap(o =>
         (o.returnItems || []).map(ri => ({
-          lpn: ri.lpn,
-          quantity: ri.quantity
+          lpn: ri.lpn
         }))
       );
 
-      // Count expected items by LPN count
-      const itemsWithLpn = flatReturnItems.filter(ri => ri.lpn);
-      const itemsExpected = itemsWithLpn.length > 0
-        ? itemsWithLpn.length
-        : flatReturnItems.reduce((sum, ri) => sum + ri.quantity, 0);
+      const itemsExpected = flatReturnItems.length;
 
       return {
         id: item.id,
@@ -90,8 +72,8 @@ export async function GET(req: NextRequest) {
         marketplace,
         status: isInspecting ? 'INSPECTING' : 'PENDING_INSPECTION',
         receivedAt: item.receivedAt?.toISOString() || new Date().toISOString(),
-        itemsExpected: item.inspection?.totalItemsExpected || itemsExpected || 0,
-        itemsInspected: item.inspection?.totalItemsScanned || 0,
+        itemsExpected: itemsExpected,
+        itemsInspected: 0,
       };
     });
 

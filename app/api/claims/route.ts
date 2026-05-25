@@ -4,10 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request) {
   try {
     const claims = await prisma.manifest.findMany({
-      where: { status: 'CLAIMS_STAGING' },
-      include: {
-        inspection: true
-      }
+      where: { status: 'CLAIMS_STAGING' }
     });
     return NextResponse.json({ claims });
   } catch (error) {

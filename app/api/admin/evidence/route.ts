@@ -7,7 +7,6 @@ export async function GET(req: Request) {
       include: {
         manifest: true,
         returnItem: true,
-        user: true,
       },
       orderBy: {
         createdAt: 'desc',

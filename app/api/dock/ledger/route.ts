@@ -9,15 +9,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     const ledger = await prisma.manifest.findMany({
       where: {
         status: 'AT_DOCK',
-        handshakes: {
-          some: {
-            receiverId: userId,
-            type: 'COURIER_TO_RECEIVER'
-          }
-        }
+        receivedBy: user.email,
       },
       select: {
         id: true,

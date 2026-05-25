@@ -15,7 +15,6 @@ async function main() {
       trackingId: 'TRK123',
       status: 'IN_INSPECTION',
       marketplace: 'AMAZON',
-      handshakes: { create: [] },
     },
   });
 
@@ -23,34 +22,34 @@ async function main() {
   const order = await prisma.order.create({
     data: {
       platformOrderId: 'ORD001',
-      purchaseDate: new Date('2024-01-01'),
+      requestDate: new Date('2024-01-01'),
       marketplace: 'AMAZON',
-      // Connect to manifest via relation field
+      customerOrderId: 'CUST-ORD-001',
       manifest: { connect: { id: manifest.id } },
-      returnItems: { create: [] },
     },
   });
 
   // Create ReturnItems (LPN wise)
-  await prisma.returnItem.createMany({
-    data: [
-      {
-        lpn: 'LPN001',
-        sku: 'SKU-A',
-        orderId: order.platformOrderId,
-        quantity: 1,
-        returnReason: 'Damaged',
-        condition: null,
-      },
-      {
-        lpn: 'LPN002',
-        sku: 'SKU-B',
-        orderId: order.platformOrderId,
-        quantity: 2,
-        returnReason: 'Wrong Item',
-        condition: null,
-      },
-    ],
+  await prisma.returnItem.create({
+    data: {
+      lpn: 'LPN001',
+      sku: 'SKU-A',
+      orderId: order.platformOrderId,
+      returnReason: 'Damaged',
+      condition: null,
+      customerOrderId: 'CUST-ORD-001',
+    },
+  });
+
+  await prisma.returnItem.create({
+    data: {
+      lpn: 'LPN002',
+      sku: 'SKU-B',
+      orderId: order.platformOrderId,
+      returnReason: 'Wrong Item',
+      condition: null,
+      customerOrderId: 'CUST-ORD-001',
+    },
   });
 
   console.log('Seed data inserted');

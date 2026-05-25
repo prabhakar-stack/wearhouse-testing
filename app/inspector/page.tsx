@@ -1029,11 +1029,14 @@ function InspectTab({ userId }: { userId?: string }) {
     string | null
   >(null);
   const [showDefectDropdown, setShowDefectDropdown] = useState(false);
+  const [showRecoveryDropdown, setShowRecoveryDropdown] = useState(false);
 
   const [missingAcknowledged, setMissingAcknowledged] = useState(false);
 
   // Dynamic expected items — fetched from DB on order start
   const [expectedItems, setExpectedItems] = useState(0);
+  const [expectedFnskuQuantities, setExpectedFnskuQuantities] = useState<Record<string, number>>({});
+  const [isValidatingLpn, setIsValidatingLpn] = useState(false);
   const [startError, setStartError] = useState("");
   const [manifestId, setManifestId] = useState("");
   const [activeOrderPlatformId, setActiveOrderPlatformId] = useState("");
@@ -1055,6 +1058,7 @@ function InspectTab({ userId }: { userId?: string }) {
     { type: "box" | "lpn" | "product"; id?: string; step?: number; blob: Blob }[]
   >([]);
   const lpnConditionsRef = useRef<Record<string, string>>({});
+  const lpnRecoveryTypesRef = useRef<Record<string, string>>({});
   const scannedLpnsRef = useRef<Set<string>>(new Set());
   const reqAnimRef = useRef<number>(0);
   const isOrderCompleteRef = useRef(false);
@@ -1076,6 +1080,8 @@ function InspectTab({ userId }: { userId?: string }) {
     setManifestId("");
     setActiveOrderPlatformId("");
     setExpectedLpnItems([]);
+    setExpectedFnskuQuantities({});
+    setIsValidatingLpn(false);
     setLpnScanError("");
     setBoxStep(1);
     setItemStep(1);
@@ -1087,11 +1093,13 @@ function InspectTab({ userId }: { userId?: string }) {
     setSelectedClaimReason(null);
     setSelectedClaimSubReason(null);
     setShowDefectDropdown(false);
+    setShowRecoveryDropdown(false);
     setExpectedItems(0);
     setStartError("");
     isOrderCompleteRef.current = false;
     capturedImagesRef.current = [];
     lpnConditionsRef.current = {};
+    lpnRecoveryTypesRef.current = {};
     scannedLpnsRef.current = new Set();
   };
 
@@ -1170,6 +1178,7 @@ function InspectTab({ userId }: { userId?: string }) {
                 const activePlatformOrderId = activeOrderPlatformId;
                 const capturedImages = [...capturedImagesRef.current];
                 const lpnConditions = { ...lpnConditionsRef.current };
+                const lpnRecoveryTypes = { ...lpnRecoveryTypesRef.current };
                 const itemsScanned = itemsProcessed;
                 const itemsExpected = expectedItems;
                 const isMissingItemFlagged = itemsProcessed < expectedItems;
@@ -1272,6 +1281,7 @@ function InspectTab({ userId }: { userId?: string }) {
                           itemsExpected,
                           isMissingItemFlagged,
                           lpnConditions,
+                          lpnRecoveryTypes,
                           evidenceUrl: folderLink || null
                         })
                       });
@@ -1493,6 +1503,7 @@ function InspectTab({ userId }: { userId?: string }) {
                         uploadedById: cleanUserId,
                         reason: "Complete Order Inspection Folder",
                         lpnConditions,
+                        lpnRecoveryTypes,
                       }),
                     });
                   } catch (e) {
@@ -1718,19 +1729,18 @@ function InspectTab({ userId }: { userId?: string }) {
             })),
         );
 
-        if (scopedReturnItems.length > 0) {
-          const itemsWithLpn = scopedReturnItems.filter((ri: any) => ri.lpn);
-          const count =
-            itemsWithLpn.length > 0
-              ? itemsWithLpn.length
-              : scopedReturnItems.reduce(
-                  (sum: number, ri: any) => sum + (ri.quantity || 1),
-                  0,
-                );
-          setExpectedItems(Math.max(count, 1));
-        } else {
-          setExpectedItems(1);
+        const totalExpected = manifest.totalExpectedQuantity || 1;
+        setExpectedItems(totalExpected);
+
+        const fnskuMap: Record<string, number> = {};
+        if (manifest.expectedFnskus && Array.isArray(manifest.expectedFnskus)) {
+          for (const item of manifest.expectedFnskus) {
+            if (item.fnsku) {
+              fnskuMap[String(item.fnsku).trim().toUpperCase()] = item.quantity || 0;
+            }
+          }
         }
+        setExpectedFnskuQuantities(fnskuMap);
       } else {
         setStartError("This Order ID / Tracking ID is not found in the system.");
         return;
@@ -1754,8 +1764,11 @@ function InspectTab({ userId }: { userId?: string }) {
     }
   };
 
-  const nextItemStep = () => {
-    if (itemStep === 1 && !confirmCurrentLpn()) return;
+  const nextItemStep = async () => {
+    if (itemStep === 1) {
+      const ok = await confirmCurrentLpn();
+      if (!ok) return;
+    }
     triggerXp(30);
     if (itemStep < 6) {
       setItemStep((prev) => prev + 1);
@@ -1766,37 +1779,65 @@ function InspectTab({ userId }: { userId?: string }) {
 
   const normalizeLpn = (value: string) => value.trim().toUpperCase();
 
-  const findExpectedLpn = (value: string) => {
-    const normalized = normalizeLpn(value);
-    return expectedLpnItems.find((item) => normalizeLpn(item.lpn) === normalized);
-  };
-
-  const confirmCurrentLpn = () => {
-    const scannedLpn = currentLpn.trim();
+  const confirmCurrentLpn = async () => {
+    const scannedLpn = currentLpn.trim().toUpperCase();
     if (!scannedLpn) {
       setLpnScanError("Scan or type the LPN before continuing.");
       return false;
     }
 
-    const expectedItem = findExpectedLpn(scannedLpn);
-    if (!expectedItem) {
-      setLpnScanError(
-        activeOrderPlatformId
-          ? `This LPN does not belong to order ${activeOrderPlatformId}.`
-          : "This LPN does not belong to the current inspection order.",
-      );
-      return false;
-    }
-
-    const normalized = normalizeLpn(expectedItem.lpn);
-    if (scannedLpnsRef.current.has(normalized)) {
+    if (scannedLpnsRef.current.has(scannedLpn)) {
       setLpnScanError("This LPN has already been scanned for this order.");
       return false;
     }
 
-    setCurrentLpn(expectedItem.lpn);
+    setIsValidatingLpn(true);
     setLpnScanError("");
-    return true;
+
+    try {
+      const res = await fetch(
+        `/api/product/status?lpn=${encodeURIComponent(scannedLpn)}&orderId=${encodeURIComponent(activeOrderPlatformId)}`
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setLpnScanError(data.error || "LPN validation failed.");
+        setIsValidatingLpn(false);
+        return false;
+      }
+
+      const itemInfo = await res.json();
+      const resolvedFnsku = String(itemInfo.fnsku || "").trim().toUpperCase();
+
+      const remainingQty = expectedFnskuQuantities[resolvedFnsku] ?? 0;
+
+      if (!(resolvedFnsku in expectedFnskuQuantities)) {
+        setLpnScanError(`This item (FNSKU: ${resolvedFnsku}) is not expected in this removal order.`);
+        setIsValidatingLpn(false);
+        return false;
+      }
+
+      if (remainingQty <= 0) {
+        setLpnScanError(`All expected units of this item (FNSKU: ${resolvedFnsku}) have already been scanned.`);
+        setIsValidatingLpn(false);
+        return false;
+      }
+
+      // Decrement the local remaining quantity for this FNSKU
+      setExpectedFnskuQuantities(prev => ({
+        ...prev,
+        [resolvedFnsku]: remainingQty - 1
+      }));
+
+      setCurrentLpn(scannedLpn);
+      setLpnScanError("");
+      setIsValidatingLpn(false);
+      return true;
+    } catch (err) {
+      setLpnScanError("Connection error while validating LPN.");
+      setIsValidatingLpn(false);
+      return false;
+    }
   };
 
   const CLAIM_REASONS = [
@@ -1857,14 +1898,28 @@ function InspectTab({ userId }: { userId?: string }) {
     setCurrentCategory(cat);
     if (cat === "BAD") {
       setShowDefectDropdown(true);
+      setShowRecoveryDropdown(false);
+      setSelectedClaimReason(null);
+      setSelectedClaimSubReason(null);
+    } else if (cat === "RECOVERY") {
+      setShowDefectDropdown(false);
+      setShowRecoveryDropdown(true);
       setSelectedClaimReason(null);
       setSelectedClaimSubReason(null);
     } else {
       setShowDefectDropdown(false);
+      setShowRecoveryDropdown(false);
       setSelectedClaimReason(null);
       setSelectedClaimSubReason(null);
+      delete lpnRecoveryTypesRef.current[currentLpn];
       nextItemStep();
     }
+  };
+
+  const handleRecoverySelected = (recoveryType: string) => {
+    lpnRecoveryTypesRef.current[currentLpn] = recoveryType;
+    setShowRecoveryDropdown(false);
+    nextItemStep();
   };
 
   const handleDefectSelected = (reason: string, subReason: string) => {
@@ -1890,6 +1945,7 @@ function InspectTab({ userId }: { userId?: string }) {
           lpn: finalizedLpn,
           condition: finalizedCondition,
           orderPlatformId: activeOrderPlatformId,
+          recoveryType: finalizedLpn ? lpnRecoveryTypesRef.current[finalizedLpn] : undefined,
         }),
       }).catch((error) =>
         console.error("[Live Product Status] failed:", error),
@@ -2326,10 +2382,14 @@ function InspectTab({ userId }: { userId?: string }) {
                             )}
                             <button
                               onClick={nextItemStep}
-                              disabled={!currentLpn.trim()}
-                              className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-colors"
+                              disabled={!currentLpn.trim() || isValidatingLpn}
+                              className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-colors flex items-center justify-center space-x-2"
                             >
-                              LPN Confirmed →
+                              {isValidatingLpn ? (
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <span>LPN Confirmed →</span>
+                              )}
                             </button>
                           </div>
                         )}
@@ -2399,7 +2459,7 @@ function InspectTab({ userId }: { userId?: string }) {
                           </button>
                         )}
 
-                        {step.id === 5 && !showDefectDropdown && (
+                        {step.id === 5 && !showDefectDropdown && !showRecoveryDropdown && (
                           <div className="flex flex-col space-y-2">
                             <button
                               onClick={() => handleCategory("GOOD")}
@@ -2421,6 +2481,54 @@ function InspectTab({ userId }: { userId?: string }) {
                             >
                               <AlertOctagon size={18} />{" "}
                               <span>Bad — Unsalvageable</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {step.id === 5 && showRecoveryDropdown && (
+                          <div className="flex flex-col space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                              <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">
+                                Select Recovery Type
+                              </p>
+                              <p className="text-[10px] text-orange-700 leading-relaxed font-bold">
+                                Select the required recovery/refurbishment process for LPN {currentLpn}
+                              </p>
+                            </div>
+                            <div className="space-y-1.5">
+                              <button
+                                onClick={() => handleRecoverySelected("barcode not clear")}
+                                className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                              >
+                                <span className="flex-1 pr-2">
+                                  Barcode not clear
+                                </span>
+                                <ArrowRight
+                                  size={14}
+                                  className="text-orange-400 shrink-0"
+                                />
+                              </button>
+                              <button
+                                onClick={() => handleRecoverySelected("product packaging box replacement required")}
+                                className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                              >
+                                <span className="flex-1 pr-2">
+                                  Product packaging box replacement required
+                                </span>
+                                <ArrowRight
+                                  size={14}
+                                  className="text-orange-400 shrink-0"
+                                />
+                              </button>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setShowRecoveryDropdown(false);
+                                setCurrentCategory(null);
+                              }}
+                              className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                            >
+                              ← Back to Grade Selection
                             </button>
                           </div>
                         )}

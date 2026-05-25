@@ -4,8 +4,46 @@ import { prisma } from '@/lib/prisma';
 // Alert level access policy:
 //   ADMIN       → L1 (in-app), L2 (email/push), L3 (banner) — operational issues
 //   SUPER_ACCESS → all levels including L4 (critical: phone + WhatsApp to leadership)
-const ADMIN_VISIBLE_LEVELS = ['L1', 'L2', 'L3'];
+const ADMIN_VISIBLE_LEVELS = ['L1', 'L2', 'L3', 'L4'];
 const ALL_LEVELS            = ['L1', 'L2', 'L3', 'L4'];
+
+const DEFAULT_SOP_STEPS: Record<string, string[]> = {
+  SLA_BREACH: [
+    "Verify if the package was physically placed in the dock area.",
+    "Contact the receiver of the manifest to confirm package custody.",
+    "Force handover the package status to 'IN_INSPECTION' manually if found.",
+    "Escalate to operations head if package is missing."
+  ],
+  CLAIM_STALLED: [
+    "Open the Google Drive folder for the order and inspect evidence images.",
+    "Locate the corresponding Amazon LPN return reason and customer comments.",
+    "Access the Amazon seller central claims portal (IDR) and file the dispute case.",
+    "Update the Manifest claimId with the filed Amazon case ID.",
+    "Log dispute status as 'Filed' under reimbursement tracker."
+  ],
+  CLAIM_NUDGE: [
+    "Verify that the Google Drive evidence is complete and clear.",
+    "Confirm that return item pricing is correct.",
+    "Inform the assigned claims specialist to begin filing the claim."
+  ],
+  GHOST_DELIVERY: [
+    "Check tracking status on the courier's public website (UPS/Delhivery/etc.).",
+    "Search the receiving dock area physically for any unscanned boxes.",
+    "Contact courier support to open an inquiry about missing delivery.",
+    "If confirmed lost, file FBA warehouse lost inbound claim."
+  ],
+  MISSING_ITEMS: [
+    "Re-verify the expected item list from AMZRemovalShipments and customer return records.",
+    "Search the surrounding inspection table for any misplaced product items.",
+    "Review inspection unboxing video to confirm if the box arrived short-shipped.",
+    "File a claim on Amazon FBA for short-shipped/missing items, attaching the video link as evidence."
+  ],
+  INTAKE_REJECTION: [
+    "Ensure that the unboxing visual damage photos are clearly uploaded to the Google Drive folder.",
+    "Contact the courier driver to report damaged package intake rejection.",
+    "File a freight damage or return shipment damage claim with the carrier."
+  ]
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,18 +80,19 @@ export async function GET(req: NextRequest) {
       ]
     });
 
-    // Fetch SOP steps for all unique alert types in the result set
+    // Construct SOP steps dynamically from hardcoded map
     const alertTypes = [...new Set(alerts.map(a => a.type))];
-    const sopSteps = await prisma.alertSopStep.findMany({
-      where: { alertType: { in: alertTypes } },
-      orderBy: { stepOrder: 'asc' }
-    });
-
-    // Group SOP steps by alertType
     const sopMap: Record<string, { id: string; stepOrder: number; instruction: string }[]> = {};
-    for (const step of sopSteps) {
-      if (!sopMap[step.alertType]) sopMap[step.alertType] = [];
-      sopMap[step.alertType].push({ id: step.id, stepOrder: step.stepOrder, instruction: step.instruction });
+    for (const type of alertTypes) {
+      const steps = DEFAULT_SOP_STEPS[type] || [
+        "Inspect manifest status and check associated evidences.",
+        "Take necessary corrective actions to resolve the operational alert."
+      ];
+      sopMap[type] = steps.map((inst, idx) => ({
+        id: `${type}_sop_${idx}`,
+        stepOrder: idx + 1,
+        instruction: inst
+      }));
     }
 
     // Count by level (only visible levels)
@@ -95,16 +134,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Missing alertId' }, { status: 400 });
     }
 
-    // ADMIN cannot resolve L4 alerts — only SUPER_ACCESS can
-    if (role === 'ADMIN') {
-      const existing = await prisma.alert.findUnique({ where: { id: alertId }, select: { level: true } });
-      if (existing?.level === 'L4') {
-        return NextResponse.json(
-          { error: 'L4 Critical alerts can only be resolved by Super Access.' },
-          { status: 403 }
-        );
-      }
-    }
+    // ADMIN can resolve L4 alerts as well now.
 
     const alert = await prisma.alert.update({
       where: { id: alertId },

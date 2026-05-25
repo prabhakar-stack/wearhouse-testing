@@ -17,10 +17,26 @@ function normalizeLpn(value: string) {
   return value.trim().toUpperCase();
 }
 
+async function resolveFnskuForSku(sku: string): Promise<string | null> {
+  const ret = await prisma.aMZCustomerReturn.findFirst({
+    where: { sku },
+    select: { fnsku: true }
+  });
+  if (ret?.fnsku) return ret.fnsku;
+
+  const rem = await prisma.aMZRemovalOrder.findFirst({
+    where: { sku },
+    select: { fnsku: true }
+  });
+  if (rem?.fnsku) return rem.fnsku;
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { orderId, folderLink, orderFolderId, type, uploadedById, reason, manifestId, orderPlatformId, lpnConditions } = body;
+    const { orderId, folderLink, orderFolderId, type, uploadedById, reason, manifestId, orderPlatformId, lpnConditions, lpnRecoveryTypes } = body;
 
     const trackingId = orderId || manifestId;
     if (!trackingId) {
@@ -190,14 +206,14 @@ export async function POST(req: NextRequest) {
     const headerUserId = req.headers.get('x-user-id');
     const rawUploadedById = uploadedById || headerUserId || null;
 
-    let resolvedUploadedById: string | null = null;
+    let resolvedUploadedByEmail: string | null = null;
     if (rawUploadedById && typeof rawUploadedById === 'string' && rawUploadedById.trim() !== '' && rawUploadedById !== 'undefined' && rawUploadedById !== 'null') {
       try {
-        const userExists = await prisma.user.findUnique({
+        const user = await prisma.user.findUnique({
           where: { id: rawUploadedById }
         });
-        if (userExists) {
-          resolvedUploadedById = rawUploadedById;
+        if (user) {
+          resolvedUploadedByEmail = user.email;
         } else {
           console.warn(`[Finalize] Provided uploadedById "${rawUploadedById}" does not exist in User table. Falling back to null.`);
         }
@@ -245,7 +261,6 @@ export async function POST(req: NextRequest) {
 
     if (isRejection) {
       // 5. RECEIVER REJECTION - recorded at the order level.
-      // To maintain the @unique constraint on lpn, write the trackingId to lpn
       const ev = await prisma.evidence.upsert({
         where: { lpn: trackingId },
         update: {
@@ -253,9 +268,10 @@ export async function POST(req: NextRequest) {
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
-          reason: reason || 'Package failed visual inspection',
-          uploadedById: resolvedUploadedById,
+          uploadedByEmail: resolvedUploadedByEmail,
           manifestId: manifest.id,
+          claimReason: 'DOCK_DAMAGE',
+          claimSubReason: reason || 'Package failed visual inspection',
         },
         create: {
           lpn: trackingId,
@@ -263,9 +279,10 @@ export async function POST(req: NextRequest) {
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
-          reason: reason || 'Package failed visual inspection',
-          uploadedById: resolvedUploadedById,
+          uploadedByEmail: resolvedUploadedByEmail,
           manifestId: manifest.id,
+          claimReason: 'DOCK_DAMAGE',
+          claimSubReason: reason || 'Package failed visual inspection',
         }
       });
       console.log(`[Database Rejection Evidence] Upserted rejection evidence for Tracking ID: ${trackingId}`);
@@ -278,37 +295,32 @@ export async function POST(req: NextRequest) {
         recovery: 'PACKAGING_DAMAGED',
         bad: 'PRODUCT_DAMAGED',
       };
-      const expectedByLpn = new Map(
-        expectedItems
-          .filter(item => item.lpn)
-          .map(item => [normalizeLpn(item.lpn), item]),
-      );
+      // 1. Fetch expected removal shipments to determine expected quantities per SKU/FNSKU
+      const shipments = await prisma.removalShipment.findMany({
+        where: { removalOrderId: scopedOrderId }
+      });
 
-      if (lpnConditions && typeof lpnConditions === 'object') {
-        const invalidLpns = Object.keys(lpnConditions).filter(
-          lpn => !expectedByLpn.has(normalizeLpn(lpn)),
-        );
-
-        if (invalidLpns.length > 0) {
-          return NextResponse.json(
-            {
-              error: 'One or more scanned LPNs do not belong to this order.',
-              invalidLpns,
-              orderId: scopedOrderId,
-            },
-            { status: 400 },
-          );
+      const expectedSkuQuantities = new Map<string, number>();
+      for (const s of shipments) {
+        if (s.sku && s.shippedQuantity) {
+          expectedSkuQuantities.set(s.sku, (expectedSkuQuantities.get(s.sku) || 0) + s.shippedQuantity);
         }
+      }
+
+      const expectedFnskuQuantities = new Map<string, number>();
+      for (const [sku, qty] of expectedSkuQuantities.entries()) {
+        const fnsku = await resolveFnskuForSku(sku) || sku;
+        expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + qty);
       }
 
       // A. Process all scanned LPNs from dashboard conditions payload
       if (lpnConditions) {
         for (const [lpn, rawCondition] of Object.entries(lpnConditions)) {
           if (!lpn) continue;
-          scannedLpns.add(normalizeLpn(lpn));
+          const normalizedLpnVal = normalizeLpn(lpn);
+          scannedLpns.add(normalizedLpnVal);
 
           let resolvedCondition = 'PRODUCT_DAMAGED';
-          let inspectorDefectType: string | null = null;
           let claimReason: string | null = null;
           let claimSubReason: string | null = null;
 
@@ -321,26 +333,8 @@ export async function POST(req: NextRequest) {
               const parts = payload.split('::');
               claimReason = parts[0] || null;
               claimSubReason = parts[1] || null;
-
-              // Backward compatibility mapping to InspectorDefectType enum
-              const lowerSub = claimSubReason?.toLowerCase() || '';
-              if (lowerSub.includes('heavily damaged') || lowerSub.includes('minor damages')) {
-                inspectorDefectType = 'CUSTOMER_DAMAGE';
-              } else if (lowerSub.includes('packaging damaged')) {
-                inspectorDefectType = 'WAREHOUSE_DAMAGE';
-              } else if (lowerSub.includes('different') || lowerSub.includes('junk')) {
-                inspectorDefectType = 'WRONG_ITEM_RECEIVED';
-              } else if (lowerSub.includes('empty box') || lowerSub.includes('missing')) {
-                inspectorDefectType = 'MISSING_PARTS_ACCESSORIES';
-              } else if (lowerSub.includes('fake') || lowerSub.includes('replica') || lowerSub.includes('counterfeit')) {
-                inspectorDefectType = 'FAKE_COUNTERFEIT';
-              } else if (lowerSub.includes('lost') || lowerSub.includes('dispute')) {
-                inspectorDefectType = 'CARRIER_DAMAGE';
-              } else {
-                inspectorDefectType = 'DEFECTIVE';
-              }
             } else {
-              inspectorDefectType = payload || null;
+              claimReason = payload || null;
             }
           } else {
             resolvedCondition = ALLOWED_CONDITIONS.has(conditionStr)
@@ -348,111 +342,173 @@ export async function POST(req: NextRequest) {
               : conditionMap[conditionStr] || 'PRODUCT_DAMAGED';
           }
 
-          // Find if this LPN exists as an expected item for the scoped order.
-          const matchingExpectedItem = expectedByLpn.get(normalizeLpn(lpn));
+          // Lookup from customer returns database to get details
+          const rawReturn = await prisma.aMZCustomerReturn.findUnique({
+            where: { lpn: normalizedLpnVal }
+          });
 
-          let linkedReturnItemId: string | null = null;
-          let evidenceReason = `Product defect folder/photos for LPN ${lpn}`;
+          const scannedFnsku = rawReturn?.fnsku || rawReturn?.sku || 'UNKNOWN_FNSKU';
 
-          if (matchingExpectedItem) {
-            linkedReturnItemId = matchingExpectedItem.lpn;
-            // Update condition
-            await prisma.returnItem.update({
-              where: { lpn: matchingExpectedItem.lpn },
-              data: {
-                condition: resolvedCondition as any,
-                inspectorDefectType: inspectorDefectType as any,
-                claimReason: claimReason,
-                claimSubReason: claimSubReason,
-              },
-            });
-            console.log(`[Database Update] Updated ReturnItem ${matchingExpectedItem.lpn} condition: ${resolvedCondition}`);
+          // Consume FNSKU expected quantity
+          const expectedQty = expectedFnskuQuantities.get(scannedFnsku) || 0;
+          if (expectedQty > 0) {
+            expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
           }
 
-          // Upsert unique Evidence record for this LPN
-          const lpnDriveLink = lpnToDriveLinkMap[lpn] || null;
-          const orderDriveLink = folderLink || null;
-
-          const ev = await prisma.evidence.upsert({
-            where: { lpn },
+          // Dynamically upsert the ReturnItem
+          await prisma.returnItem.upsert({
+            where: { lpn: normalizedLpnVal },
             update: {
-              orderId: trackingId,
-              orderDriveLink,
-              lpnDriveLink,
-              type: 'PRODUCT_DAMAGE_PHOTO',
-              reason: evidenceReason,
-              claimReason,
-              claimSubReason,
-              uploadedById: resolvedUploadedById,
-              manifestId: manifest.id,
-              returnItemId: linkedReturnItemId,
+              orderId: scopedOrderId,
+              sku: rawReturn?.sku || 'UNKNOWN_SKU',
+              asin: rawReturn?.asin || null,
+              fnsku: rawReturn?.fnsku || null,
+              productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
+              returnReason: rawReturn?.reason || 'Removal Order Shipment',
+              customerComments: rawReturn?.customerComments || null,
+              amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
+              customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
+              condition: resolvedCondition as any,
+              claimReason: claimReason,
+              claimSubReason: claimSubReason,
             },
             create: {
-              lpn,
-              orderId: trackingId,
-              orderDriveLink,
-              lpnDriveLink,
-              type: 'PRODUCT_DAMAGE_PHOTO',
-              reason: evidenceReason,
-              claimReason,
-              claimSubReason,
-              uploadedById: resolvedUploadedById,
-              manifestId: manifest.id,
-              returnItemId: linkedReturnItemId,
+              lpn: normalizedLpnVal,
+              orderId: scopedOrderId,
+              sku: rawReturn?.sku || 'UNKNOWN_SKU',
+              asin: rawReturn?.asin || null,
+              fnsku: rawReturn?.fnsku || null,
+              productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
+              returnReason: rawReturn?.reason || 'Removal Order Shipment',
+              customerComments: rawReturn?.customerComments || null,
+              amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
+              customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
+              condition: resolvedCondition as any,
+              claimReason: claimReason,
+              claimSubReason: claimSubReason,
             }
           });
-          console.log(`[Database Evidence Scanned] Upserted Evidence for LPN: ${lpn} (Linked: ${linkedReturnItemId !== null})`);
-          evidenceRecordsCreated.push(ev);
+
+          const lpnDriveLink = lpnToDriveLinkMap[lpn] || null;
+          const orderDriveLink = folderLink || null;
+          const recoveryType = lpnRecoveryTypes && lpnRecoveryTypes[lpn] ? lpnRecoveryTypes[lpn] : null;
+
+          if (resolvedCondition === 'GOOD_SELLABLE') {
+            await prisma.itemStatus.upsert({
+              where: { lpn: normalizedLpnVal },
+              update: { status: 'GOOD', recoveryType: null },
+              create: { lpn: normalizedLpnVal, status: 'GOOD', recoveryType: null }
+            });
+            await prisma.evidence.deleteMany({
+              where: { lpn: normalizedLpnVal }
+            });
+          } else if (resolvedCondition === 'PACKAGING_DAMAGED') {
+            await prisma.itemStatus.upsert({
+              where: { lpn: normalizedLpnVal },
+              update: { status: 'RECOVERY', recoveryType: recoveryType },
+              create: { lpn: normalizedLpnVal, status: 'RECOVERY', recoveryType: recoveryType }
+            });
+            await prisma.evidence.deleteMany({
+              where: { lpn: normalizedLpnVal }
+            });
+          } else {
+            await prisma.itemStatus.deleteMany({
+              where: { lpn: normalizedLpnVal }
+            });
+
+            const ev = await prisma.evidence.upsert({
+              where: { lpn: normalizedLpnVal },
+              update: {
+                orderId: trackingId,
+                orderDriveLink,
+                lpnDriveLink,
+                type: 'INSPECTOR_REJECTION',
+                claimReason: claimReason || 'PRODUCT_DAMAGE',
+                claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
+                uploadedByEmail: resolvedUploadedByEmail,
+                manifestId: manifest.id,
+                returnItemId: normalizedLpnVal,
+              },
+              create: {
+                lpn: normalizedLpnVal,
+                orderId: trackingId,
+                orderDriveLink,
+                lpnDriveLink,
+                type: 'INSPECTOR_REJECTION',
+                claimReason: claimReason || 'PRODUCT_DAMAGE',
+                claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
+                uploadedByEmail: resolvedUploadedByEmail,
+                manifestId: manifest.id,
+                returnItemId: normalizedLpnVal,
+              }
+            });
+            evidenceRecordsCreated.push(ev);
+          }
         }
       }
 
-      // B. Process missing LPNs (expected in ReturnItem but not scanned in inspector dashboard)
-      const missingItems = expectedItems.filter(item => item.lpn && !scannedLpns.has(normalizeLpn(item.lpn)));
-      for (const item of missingItems) {
-        if (!item.lpn) continue;
+      // B. Process missing items (expected FNSKUs remaining unscanned)
+      for (const [fnsku, missingQty] of expectedFnskuQuantities.entries()) {
+        if (missingQty > 0) {
+          // Store shortage details in MissingItem table
+          await prisma.missingItem.upsert({
+            where: {
+              orderId_fnsku: {
+                orderId: scopedOrderId,
+                fnsku: fnsku
+              }
+            },
+            update: {
+              missingQuantity: missingQty
+            },
+            create: {
+              orderId: scopedOrderId,
+              fnsku: fnsku,
+              missingQuantity: missingQty
+            }
+          });
 
-        // Update ReturnItem condition to MISSING
-        await prisma.returnItem.update({
-          where: { lpn: item.lpn },
-          data: {
-            condition: 'MISSING',
-            claimReason: null,
-            claimSubReason: null,
-          }
-        });
-        console.log(`[Database Update] Marked ReturnItem ${item.lpn} as MISSING`);
+          // Create Evidence for claims for this shortage under a virtual LPN key
+          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
+          const ev = await prisma.evidence.upsert({
+            where: { lpn: missingLpn },
+            update: {
+              orderId: trackingId,
+              orderDriveLink: folderLink || null,
+              lpnDriveLink: null,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: 'MISSING',
+              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
+              uploadedByEmail: resolvedUploadedByEmail,
+              manifestId: manifest.id,
+            },
+            create: {
+              lpn: missingLpn,
+              orderId: trackingId,
+              orderDriveLink: folderLink || null,
+              lpnDriveLink: null,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: 'MISSING',
+              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
+              uploadedByEmail: resolvedUploadedByEmail,
+              manifestId: manifest.id,
+            }
+          });
+          evidenceRecordsCreated.push(ev);
+        } else {
+          // Delete from MissingItem
+          await prisma.missingItem.deleteMany({
+            where: {
+              orderId: scopedOrderId,
+              fnsku: fnsku
+            }
+          });
 
-        // Upsert unique Evidence record for this missing LPN
-        const ev = await prisma.evidence.upsert({
-          where: { lpn: item.lpn },
-          update: {
-            orderId: trackingId,
-            orderDriveLink: folderLink || null,
-            lpnDriveLink: null,
-            type: 'PRODUCT_DAMAGE_PHOTO',
-            reason: 'missing',
-            claimReason: null,
-            claimSubReason: null,
-            uploadedById: resolvedUploadedById,
-            manifestId: manifest.id,
-            returnItemId: item.lpn,
-          },
-          create: {
-            lpn: item.lpn,
-            orderId: trackingId,
-            orderDriveLink: folderLink || null,
-            lpnDriveLink: null,
-            type: 'PRODUCT_DAMAGE_PHOTO',
-            reason: 'missing',
-            claimReason: null,
-            claimSubReason: null,
-            uploadedById: resolvedUploadedById,
-            manifestId: manifest.id,
-            returnItemId: item.lpn,
-          }
-        });
-        console.log(`[Database Evidence Missing] Upserted missing Evidence for LPN: ${item.lpn}`);
-        evidenceRecordsCreated.push(ev);
+          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
+          await prisma.evidence.deleteMany({
+            where: { lpn: missingLpn }
+          });
+        }
       }
 
       // C. Upsert standard order inspection video evidence (overall folder link)
@@ -463,9 +519,10 @@ export async function POST(req: NextRequest) {
           orderId: trackingId,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
-          type: 'INSPECTION_VIDEO',
-          reason: reason || 'Complete Order Inspection Folder',
-          uploadedById: resolvedUploadedById,
+          type: 'INSPECTOR_REJECTION',
+          claimReason: 'VIDEO_RECORDING',
+          claimSubReason: reason || 'Complete Order Inspection Folder',
+          uploadedByEmail: resolvedUploadedByEmail,
           manifestId: manifest.id,
         },
         create: {
@@ -473,13 +530,13 @@ export async function POST(req: NextRequest) {
           orderId: trackingId,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
-          type: 'INSPECTION_VIDEO',
-          reason: reason || 'Complete Order Inspection Folder',
-          uploadedById: resolvedUploadedById,
+          type: 'INSPECTOR_REJECTION',
+          claimReason: 'VIDEO_RECORDING',
+          claimSubReason: reason || 'Complete Order Inspection Folder',
+          uploadedByEmail: resolvedUploadedByEmail,
           manifestId: manifest.id,
         }
       });
-      console.log(`[Database Single Evidence Video] Upserted inspection video Evidence for: ${videoLpnKey}`);
       evidenceRecordsCreated.push(ev);
     }
 

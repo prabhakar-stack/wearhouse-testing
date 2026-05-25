@@ -15,12 +15,26 @@ function normalizeLpn(value: string) {
 }
 
 function resolveCondition(rawCondition: unknown) {
-  const condition = typeof rawCondition === 'string' ? rawCondition.trim() : '';
-  if (ALLOWED_CONDITIONS.has(condition)) return condition;
-  if (condition === 'good') return 'GOOD_SELLABLE';
-  if (condition === 'recovery') return 'PACKAGING_DAMAGED';
-  if (condition === 'bad' || condition.startsWith('bad:')) return 'PRODUCT_DAMAGED';
-  return 'PRODUCT_DAMAGED';
+  const condition = typeof rawCondition === 'string' ? rawCondition.trim().toLowerCase() : '';
+  if (condition === 'good' || condition === 'good_sellable') return 'GOOD_SELLABLE';
+  if (condition === 'recovery' || condition === 'packaging_damaged') return 'PACKAGING_DAMAGED';
+  return 'PRODUCT_DAMAGED'; // 'bad' maps to PRODUCT_DAMAGED
+}
+
+async function resolveFnskuForSku(sku: string): Promise<string | null> {
+  const ret = await prisma.aMZCustomerReturn.findFirst({
+    where: { sku },
+    select: { fnsku: true }
+  });
+  if (ret?.fnsku) return ret.fnsku;
+
+  const rem = await prisma.aMZRemovalOrder.findFirst({
+    where: { sku },
+    select: { fnsku: true }
+  });
+  if (rem?.fnsku) return rem.fnsku;
+
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -41,9 +55,9 @@ export async function POST(req: Request) {
       orderPlatformId,
       itemsScanned,
       itemsExpected,
-      isMissingItemFlagged,
       evidenceUrl,
-      lpnConditions,
+      lpnConditions, // Record of scanned items: { [lpn]: 'good' | 'bad' | 'recovery' }
+      lpnRecoveryTypes, // Record of recovery types: { [lpn]: string }
     } = body;
 
     if (!manifestId) {
@@ -53,14 +67,6 @@ export async function POST(req: Request) {
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
       include: {
-        handshakes: {
-          where: { type: 'RECEIVER_TO_INSPECTOR' },
-          orderBy: { timestamp: 'desc' },
-          select: { receiverId: true, timestamp: true },
-        },
-        inspection: {
-          select: { id: true, completedAt: true },
-        },
         orders: {
           include: {
             returnItems: {
@@ -81,18 +87,13 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    const latestInspectorHandshake = manifest.handshakes[0];
-    if (!latestInspectorHandshake || latestInspectorHandshake.receiverId !== userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const userEmail = user?.email || 'inspector@cubelelo.com';
+
+    if (manifest.inspectedBy !== userEmail) {
       return NextResponse.json(
         { error: 'This manifest is not in your inspector stack.' },
         { status: 403 },
-      );
-    }
-
-    if (manifest.inspection?.completedAt) {
-      return NextResponse.json(
-        { error: 'This manifest has already been inspected.' },
-        { status: 409 },
       );
     }
 
@@ -118,165 +119,221 @@ export async function POST(req: Request) {
       );
     }
 
-    const expectedReturnItems = manifest.orders
-      .filter(order => order.platformOrderId === scopedOrderId)
-      .flatMap(order =>
-        (order.returnItems || []).map(item => ({
-          ...item,
-          orderId: order.platformOrderId,
-        })),
-      );
-    const expectedByLpn = new Map(
-      expectedReturnItems
-        .filter(item => item.lpn)
-        .map(item => [normalizeLpn(item.lpn), item]),
-    );
+    // 1. Fetch expected removal shipments to determine expected quantities per SKU/FNSKU
+    const shipments = await prisma.removalShipment.findMany({
+      where: { removalOrderId: scopedOrderId }
+    });
+
+    const expectedSkuQuantities = new Map<string, number>();
+    for (const s of shipments) {
+      if (s.sku && s.shippedQuantity) {
+        expectedSkuQuantities.set(s.sku, (expectedSkuQuantities.get(s.sku) || 0) + s.shippedQuantity);
+      }
+    }
+
+    const expectedFnskuQuantities = new Map<string, number>();
+    let totalExpectedQty = 0;
+    for (const [sku, qty] of expectedSkuQuantities.entries()) {
+      const fnsku = await resolveFnskuForSku(sku) || sku;
+      expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + qty);
+      totalExpectedQty += qty;
+    }
+
     const scannedEntries = lpnConditions && typeof lpnConditions === 'object'
       ? Object.entries(lpnConditions as Record<string, unknown>)
       : [];
-    const invalidLpns = scannedEntries
-      .map(([lpn]) => lpn)
-      .filter(lpn => !expectedByLpn.has(normalizeLpn(lpn)));
 
-    if (invalidLpns.length > 0) {
-      return NextResponse.json(
-        {
-          error: 'One or more scanned LPNs do not belong to this order.',
-          invalidLpns,
-          orderId: scopedOrderId,
-        },
-        { status: 400 },
-      );
-    }
+    await prisma.$transaction(async (tx) => {
+      // A. Process all scanned return items
+      for (const [lpn, rawCondition] of scannedEntries) {
+        const normalizedLpnVal = normalizeLpn(lpn);
 
-    const scannedLpnSet = new Set(scannedEntries.map(([lpn]) => normalizeLpn(lpn)));
-    const missingReturnItems = expectedReturnItems.filter(
-      item => item.lpn && !scannedLpnSet.has(normalizeLpn(item.lpn)),
-    );
-
-    // Rule - Missing Item (L3 Alert)
-    if (isMissingItemFlagged) {
-      await prisma.$transaction(async (tx) => {
-        const existingInspection = await tx.inspection.findUnique({
-          where: { manifestId: manifest.id },
-          select: { id: true },
+        // Retrieve from customer returns report database to get product attributes
+        const rawReturn = await tx.aMZCustomerReturn.findUnique({
+          where: { lpn: normalizedLpnVal }
         });
 
-        for (const [lpn, rawCondition] of scannedEntries) {
-          const expectedItem = expectedByLpn.get(normalizeLpn(lpn));
-          if (!expectedItem) continue;
-          await tx.returnItem.update({
-            where: { lpn: expectedItem.lpn },
-            data: { condition: resolveCondition(rawCondition) as any },
-          });
+        const scannedFnsku = rawReturn?.fnsku || rawReturn?.sku || 'UNKNOWN_FNSKU';
+        const resolvedCondition = resolveCondition(rawCondition);
+
+        // Consume FNSKU expected quantity
+        const expectedQty = expectedFnskuQuantities.get(scannedFnsku) || 0;
+        if (expectedQty > 0) {
+          expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
         }
 
-        for (const item of missingReturnItems) {
-          await tx.returnItem.update({
-            where: { lpn: item.lpn },
-            data: { condition: 'MISSING' },
-          });
-        }
+        const claimReason = resolvedCondition === 'PRODUCT_DAMAGED' ? 'PRODUCT_DAMAGE' : null;
+        const claimSubReason = resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : null;
 
-        await tx.inspection.upsert({
-          where: { manifestId: manifest.id },
+        // Dynamically create or update ReturnItem
+        await tx.returnItem.upsert({
+          where: { lpn: normalizedLpnVal },
           update: {
-            isMissingItems: true,
-            totalItemsScanned: itemsScanned || 0,
-            evidenceUrl: evidenceUrl || null,
-            completedAt: new Date()
+            orderId: scopedOrderId,
+            sku: rawReturn?.sku || 'UNKNOWN_SKU',
+            asin: rawReturn?.asin || null,
+            fnsku: rawReturn?.fnsku || null,
+            productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
+            returnReason: rawReturn?.reason || 'Removal Order Shipment',
+            customerComments: rawReturn?.customerComments || null,
+            amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
+            customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
+            condition: resolvedCondition as any,
           },
           create: {
-            manifestId: manifest.id,
-            inspectorId: userId,
-            totalItemsExpected: itemsExpected || 0,
-            totalItemsScanned: itemsScanned || 0,
-            isMissingItems: true,
-            evidenceUrl: evidenceUrl || null,
-            completedAt: new Date()
+            lpn: normalizedLpnVal,
+            orderId: scopedOrderId,
+            sku: rawReturn?.sku || 'UNKNOWN_SKU',
+            asin: rawReturn?.asin || null,
+            fnsku: rawReturn?.fnsku || null,
+            productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || 'UNKNOWN'}`,
+            returnReason: rawReturn?.reason || 'Removal Order Shipment',
+            customerComments: rawReturn?.customerComments || null,
+            amazonDisposition: rawReturn?.detailedDisposition || 'SELLABLE',
+            customerOrderId: rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER',
+            condition: resolvedCondition as any,
           }
         });
 
-        const existingDispute = await tx.dispute.findFirst({
-          where: {
-            manifestId: manifest.id,
-            type: 'L3_MISSING_ITEM',
-            resolved: false,
-          },
-        });
-        if (!existingDispute) {
-          await tx.dispute.create({
-            data: {
+        const recoveryType = lpnRecoveryTypes && lpnRecoveryTypes[lpn] ? lpnRecoveryTypes[lpn] : null;
+
+        if (resolvedCondition === 'GOOD_SELLABLE') {
+          // 1. Upsert 'GOOD' in ItemStatus
+          await tx.itemStatus.upsert({
+            where: { lpn: normalizedLpnVal },
+            update: { status: 'GOOD', recoveryType: null },
+            create: { lpn: normalizedLpnVal, status: 'GOOD', recoveryType: null }
+          });
+          // 2. Delete Evidence for this LPN if it exists
+          await tx.evidence.deleteMany({
+            where: { lpn: normalizedLpnVal }
+          });
+        } else if (resolvedCondition === 'PACKAGING_DAMAGED') {
+          // 3. Upsert 'RECOVERY' in ItemStatus
+          await tx.itemStatus.upsert({
+            where: { lpn: normalizedLpnVal },
+            update: { status: 'RECOVERY', recoveryType: recoveryType },
+            create: { lpn: normalizedLpnVal, status: 'RECOVERY', recoveryType: recoveryType }
+          });
+          // 4. Delete Evidence for this LPN if it exists
+          await tx.evidence.deleteMany({
+            where: { lpn: normalizedLpnVal }
+          });
+        } else {
+          // 5. If marked BAD, delete from ItemStatus if exists
+          await tx.itemStatus.deleteMany({
+            where: { lpn: normalizedLpnVal }
+          });
+
+          // Create/update Evidence if visually bad
+          await tx.evidence.upsert({
+            where: { lpn: normalizedLpnVal },
+            update: {
+              orderId: scopedOrderId,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: resolvedCondition,
+              claimSubReason: resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : 'Packaging damaged',
+              orderDriveLink: evidenceUrl || null,
+              uploadedByEmail: userEmail,
               manifestId: manifest.id,
-              type: 'L3_MISSING_ITEM',
-              evidenceUrl: evidenceUrl || null
+              returnItemId: normalizedLpnVal,
+            },
+            create: {
+              lpn: normalizedLpnVal,
+              orderId: scopedOrderId,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: resolvedCondition,
+              claimSubReason: resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : 'Packaging damaged',
+              orderDriveLink: evidenceUrl || null,
+              uploadedByEmail: userEmail,
+              manifestId: manifest.id,
+              returnItemId: normalizedLpnVal,
             }
           });
         }
+      }
 
-        // Missing items always go to CLAIMS_STAGING
-        await tx.manifest.update({
-          where: { id: manifest.id },
-          data: { status: 'CLAIMS_STAGING' }
-        });
+      // B. Process missing items (expected FNSKUs remaining unscanned)
+      let missingCount = 0;
+      for (const [fnsku, missingQty] of expectedFnskuQuantities.entries()) {
+        if (missingQty > 0) {
+          missingCount += missingQty;
 
-        // Increment inspector's itemsProcessed
-        if (!existingInspection) {
-          await tx.user.update({
-            where: { id: userId },
-            data: { itemsProcessed: { increment: itemsScanned || 1 } }
+          // Store shortage details in MissingItem table
+          await tx.missingItem.upsert({
+            where: {
+              orderId_fnsku: {
+                orderId: scopedOrderId,
+                fnsku: fnsku
+              }
+            },
+            update: {
+              missingQuantity: missingQty
+            },
+            create: {
+              orderId: scopedOrderId,
+              fnsku: fnsku,
+              missingQuantity: missingQty
+            }
+          });
+
+          // Create Evidence for claims for this shortage under a virtual LPN key
+          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
+          await tx.evidence.upsert({
+            where: { lpn: missingLpn },
+            update: {
+              orderId: scopedOrderId,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: 'MISSING',
+              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
+              orderDriveLink: evidenceUrl || null,
+              uploadedByEmail: userEmail,
+              manifestId: manifest.id,
+            },
+            create: {
+              lpn: missingLpn,
+              orderId: scopedOrderId,
+              type: 'INSPECTOR_REJECTION',
+              claimReason: 'MISSING',
+              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
+              orderDriveLink: evidenceUrl || null,
+              uploadedByEmail: userEmail,
+              manifestId: manifest.id,
+            }
+          });
+        } else {
+          // If no longer missing, delete any shortage ledger entry
+          await tx.missingItem.deleteMany({
+            where: {
+              orderId: scopedOrderId,
+              fnsku: fnsku
+            }
+          });
+
+          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
+          await tx.evidence.deleteMany({
+            where: { lpn: missingLpn }
           });
         }
-      });
+      }
 
-      return NextResponse.json({ 
-        success: true, 
-        message: 'L3 Alert raised for missing items.', 
-        l3Alert: true 
-      }, { status: 200 });
-    }
-
-    // Default Success Path
-    await prisma.$transaction(async (tx) => {
-      const existingInspection = await tx.inspection.findUnique({
-        where: { manifestId: manifest.id },
-        select: { id: true },
-      });
-
-      for (const [lpn, rawCondition] of scannedEntries) {
-        const expectedItem = expectedByLpn.get(normalizeLpn(lpn));
-        if (!expectedItem) continue;
-        await tx.returnItem.update({
-          where: { lpn: expectedItem.lpn },
-          data: { condition: resolveCondition(rawCondition) as any },
+      // Raise Level L3 Alert for missing items if shortages exist
+      if (missingCount > 0) {
+        await tx.alert.create({
+          data: {
+            level: 'L3',
+            type: 'MISSING_ITEMS',
+            title: `Missing Items Detected`,
+            description: `Inspection of tracking ID ${manifest.trackingId} found missing items. Expected: ${itemsExpected || totalExpectedQty}, Scanned: ${itemsScanned || scannedEntries.length}, Missing Shortages: ${missingCount}.`,
+            manifestId: manifest.id,
+          }
         });
       }
 
-      await tx.inspection.upsert({
-        where: { manifestId: manifest.id },
-        update: {
-          isMissingItems: false,
-          totalItemsScanned: itemsScanned || 0,
-          evidenceUrl: evidenceUrl || null,
-          completedAt: new Date()
-        },
-        create: {
-          manifestId: manifest.id,
-          inspectorId: userId,
-          totalItemsExpected: itemsExpected || 0,
-          totalItemsScanned: itemsScanned || 0,
-          isMissingItems: false,
-          evidenceUrl: evidenceUrl || null,
-          completedAt: new Date()
-        }
-      });
-
-      // Determine target status based on return item conditions
-      // If ANY item is BAD (PRODUCT_DAMAGED, WRONG_ITEM, BAD_FAKE_PRODUCT) → CLAIMS_STAGING
-      // Otherwise → INSPECTED (can go to RECOVERED_TO_INVENTORY)
-      const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING'];
+      // Determine manifest status based on return item conditions
+      // If ANY item is BAD or RECOVERY, or if we have missing shortage items → CLAIMS_STAGING. Otherwise → INSPECTED
+      const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING', 'PACKAGING_DAMAGED'];
       
-      // Re-fetch scoped return items to get the latest conditions updated above.
       const latestItems = await tx.returnItem.findMany({
         where: { orderId: scopedOrderId },
         select: { condition: true }
@@ -286,22 +343,20 @@ export async function POST(req: Request) {
         item => item.condition && claimableConditions.includes(item.condition)
       );
 
-      const targetStatus = hasClaimableItems ? 'CLAIMS_STAGING' : 'INSPECTED';
+      const targetStatus = (hasClaimableItems || missingCount > 0) ? 'CLAIMS_STAGING' : 'INSPECTED';
 
       await tx.manifest.update({
         where: { id: manifest.id },
         data: { status: targetStatus }
       });
 
-      // Increment inspector's itemsProcessed
-      if (!existingInspection) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { itemsProcessed: { increment: itemsScanned || 1 } }
-        });
-      }
+      // Increment inspector's itemsProcessed count
+      await tx.user.update({
+        where: { id: userId },
+        data: { itemsProcessed: { increment: itemsScanned || scannedEntries.length } }
+      });
 
-      console.log(`[Inspector Evaluate] Manifest ${manifest.trackingId} → ${targetStatus}. ${hasClaimableItems ? 'BAD items found, routing to claims.' : 'All items OK.'}`);
+      console.log(`[Inspector Evaluate] Manifest ${manifest.trackingId} finished → ${targetStatus}. Scanned: ${scannedEntries.length}, Missing: ${missingCount}.`);
     });
 
     return NextResponse.json({ success: true, message: 'Inspection completed successfully' });

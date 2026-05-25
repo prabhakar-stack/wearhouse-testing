@@ -46,9 +46,7 @@ export async function GET(req: Request) {
       where: {
         status: 'AT_DOCK',
         receivedAt: { lt: today },
-        handshakes: {
-          none: { type: 'RECEIVER_TO_INSPECTOR' }
-        }
+        inspectedBy: null // Handshake is replaced by direct inspectedBy indicator
       }
     });
 
@@ -65,15 +63,14 @@ export async function GET(req: Request) {
 
     // 2. Claims Nudges & Escalations
     const claimsManifests = await prisma.manifest.findMany({
-      where: { status: 'CLAIMS_STAGING' },
-      include: { inspection: true }
+      where: { status: 'CLAIMS_STAGING' }
     });
 
     const hours48 = 48 * 60 * 60 * 1000;
     const hours72 = 72 * 60 * 60 * 1000;
 
     for (const manifest of claimsManifests) {
-      const startTime = manifest.inspection?.completedAt || manifest.receivedAt || manifest.createdAt;
+      const startTime = manifest.receivedAt || manifest.createdAt;
       if (!startTime) continue;
       const timeStaged = now.getTime() - new Date(startTime).getTime();
 
@@ -82,7 +79,7 @@ export async function GET(req: Request) {
           level: 'L3',
           type: 'CLAIM_STALLED',
           title: `Claim Stalled Over 72 Hours`,
-          description: `Claim for tracking ID ${manifest.trackingId} has been in staging for over 72 hours without action. Inspection completed at: ${new Date(startTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
+          description: `Claim for tracking ID ${manifest.trackingId} has been in staging for over 72 hours without action. Staging started at: ${new Date(startTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
           manifestId: manifest.id,
         });
         if (alert) results.escalations++;
@@ -120,9 +117,10 @@ export async function GET(req: Request) {
     }
 
     // 4. Missing Items from Inspection (L3 Alert)
-    const missingInspections = await prisma.inspection.findMany({
+    // Scan consolidated Evidence table for missing item claims
+    const missingEvidence = await prisma.evidence.findMany({
       where: {
-        isMissingItems: true,
+        claimReason: 'MISSING',
         manifest: {
           alerts: {
             none: { type: 'MISSING_ITEMS', resolved: false }
@@ -132,14 +130,16 @@ export async function GET(req: Request) {
       include: { manifest: true }
     });
 
-    for (const insp of missingInspections) {
-      await createAlertIfNew({
-        level: 'L3',
-        type: 'MISSING_ITEMS',
-        title: `Missing Items Detected in Inspection`,
-        description: `Inspection of tracking ID ${insp.manifest.trackingId} found missing items. Expected: ${insp.totalItemsExpected}, Scanned: ${insp.totalItemsScanned}.`,
-        manifestId: insp.manifestId,
-      });
+    for (const ev of missingEvidence) {
+      if (ev.manifest) {
+        await createAlertIfNew({
+          level: 'L3',
+          type: 'MISSING_ITEMS',
+          title: `Missing Items Detected in Inspection`,
+          description: `Inspection of tracking ID ${ev.manifest.trackingId} found missing items.`,
+          manifestId: ev.manifestId!,
+        });
+      }
     }
 
     console.log(`[Cron Escalations] Results:`, results);

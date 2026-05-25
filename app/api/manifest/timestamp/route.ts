@@ -20,10 +20,6 @@ export async function PATCH(req: Request) {
       result = await prisma.manifest.update({ where: { id: recordId }, data: { receivedAt: date } });
     } else if (recordType === 'Manifest_Expected') {
       result = await prisma.manifest.update({ where: { id: recordId }, data: { expectedDate: date } });
-    } else if (recordType === 'Handshake') {
-      result = await prisma.handshake.update({ where: { id: recordId }, data: { timestamp: date } });
-    } else if (recordType === 'Inspection') {
-      result = await prisma.inspection.update({ where: { id: recordId }, data: { completedAt: date } });
     } else {
       return NextResponse.json({ error: 'Invalid record type specified.' }, { status: 400 });
     }
