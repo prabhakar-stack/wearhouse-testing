@@ -1,3 +1,5 @@
-2026/05/22-11:51:55.332 2f34 Reusing MANIFEST E:\Returns-process\claims-process\amazon-profile\Default\Site Characteristics Database/MANIFEST-000001
-2026/05/22-11:51:55.334 2f34 Recovering log #3
-2026/05/22-11:51:55.334 2f34 Reusing old log E:\Returns-process\claims-process\amazon-profile\Default\Site Characteristics Database/000003.log 
+2026/05/25-13:21:51.966 47dc Log #3: 17 ops saved to Table #4 OK
+2026/05/25-13:21:51.967 47dc Archiving E:\Returns-process\claims-process\amazon-profile\Default\Site Characteristics Database/000003.log: OK
+2026/05/25-13:21:51.967 47dc Table #4: 17 entries OK
+2026/05/25-13:21:51.967 47dc Archiving E:\Returns-process\claims-process\amazon-profile\Default\Site Characteristics Database/MANIFEST-000001: OK
+2026/05/25-13:21:51.972 47dc **** Repaired leveldb E:\Returns-process\claims-process\amazon-profile\Default\Site Characteristics Database; recovered 1 files; 489 bytes. Some data may have been lost. ****

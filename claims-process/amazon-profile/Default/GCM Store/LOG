@@ -1,3 +1,2 @@
-2026/05/22-13:03:54.492 5f50 Reusing MANIFEST E:\Returns-process\claims-process\amazon-profile\Default\GCM Store/MANIFEST-000001
-2026/05/22-13:03:54.492 5f50 Recovering log #3
-2026/05/22-13:03:54.493 5f50 Reusing old log E:\Returns-process\claims-process\amazon-profile\Default\GCM Store/000003.log 
+2026/05/25-13:21:56.104 325c Creating DB E:\Returns-process\claims-process\amazon-profile\Default\GCM Store since it was missing.
+2026/05/25-13:21:56.113 325c Reusing MANIFEST E:\Returns-process\claims-process\amazon-profile\Default\GCM Store/MANIFEST-000001

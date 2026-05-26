@@ -9,6 +9,26 @@ import "dotenv/config";
 // Lazy initialization for PostgreSQL Pool
 let pool: pg.Pool | null = null;
 
+let mockSampleRecovery = [
+  { lpn: "LPN001", sku: "1120100", damage_type: "barcode_damage", is_refurbished: false, status: "pending" },
+  { lpn: "LPN002", sku: "1120200", damage_type: "box_damage", is_refurbished: false, status: "pending" },
+  { lpn: "LPN003", sku: "4829102", damage_type: "barcode_damage", is_refurbished: false, status: "pending" },
+  { lpn: "LPN004", sku: "1092837", damage_type: "box_damage", is_refurbished: false, status: "pending" },
+  { lpn: "LPN005", sku: "SKU-REP-990", damage_type: "box_damage", is_refurbished: false, status: "pending" },
+];
+
+
+let mockItemStatus: any[] = [];
+let mockReturnItems: any[] = [
+  { lpn: "LPN001", sku: "1120100" },
+  { lpn: "LPN002", sku: "1120200" },
+  { lpn: "LPN003", sku: "4829102" },
+  { lpn: "LPN004", sku: "1092837" },
+  { lpn: "LPN005", sku: "SKU-REP-990" },
+  { lpn: "LPN101", sku: "SKU-NEW-101" },
+  { lpn: "LPN102", sku: "SKU-NEW-102" }
+];
+
 async function setupDatabaseSchema(db: pg.Pool) {
   try {
     console.log("Checking and setting up AMZ_filed_claims table...");
@@ -19,6 +39,98 @@ async function setupDatabaseSchema(db: pg.Pool) {
         case_id text
       );
     `);
+
+        console.log("Checking and setting up sample_recovery table...");
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "sample_recovery" (
+        lpn text PRIMARY KEY,
+        sku text NOT NULL,
+        damage_type text NOT NULL,
+        is_refurbished boolean DEFAULT false,
+        status text DEFAULT 'pending'
+      );
+    `);
+    
+    console.log("Checking and setting up ItemStatus and ReturnItem tables...");
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "ItemStatus" (
+        lpn text PRIMARY KEY,
+        status text NOT NULL,
+        "recoveryType" text,
+        "createdAt" timestamp with time zone DEFAULT now()
+      );
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "ReturnItem" (
+        lpn text PRIMARY KEY,
+        sku text NOT NULL
+      );
+    `);
+
+    // Seed ReturnItem
+    const countReturnItems = await db.query('SELECT COUNT(*) FROM "ReturnItem"');
+    if (parseInt(countReturnItems.rows[0].count) === 0) {
+      console.log("Seeding ReturnItem with default records...");
+      await db.query(`
+        INSERT INTO "ReturnItem" (lpn, sku) VALUES
+        ('LPN001', '1120100'),
+        ('LPN002', '1120200'),
+        ('LPN003', '4829102'),
+        ('LPN004', '1092837'),
+        ('LPN005', 'SKU-REP-990'),
+        ('LPN101', 'SKU-NEW-101'),
+        ('LPN102', 'SKU-NEW-102')
+        ON CONFLICT (lpn) DO NOTHING;
+      `);
+    }
+
+    // Database trigger to sync ItemStatus to sample_recovery
+    console.log("Setting up sync trigger on ItemStatus table...");
+    await db.query(`
+      CREATE OR REPLACE FUNCTION sync_item_status_to_recovery()
+      RETURNS TRIGGER AS $$
+      DECLARE
+        found_sku text;
+        mapped_damage_type text;
+     BEGIN
+        IF NEW.status = 'RECOVERY' THEN
+          SELECT sku INTO found_sku FROM "ReturnItem" WHERE lpn = NEW.lpn;
+          
+          IF found_sku IS NULL THEN
+            RAISE WARNING 'Relational mapping failed: SKU not found for LPN %', NEW.lpn;
+          ELSE
+            -- Map physical damage types to standard codes
+            IF NEW."recoveryType" = 'Barcode Damaged' OR NEW."recoveryType" = 'barcode_damage' THEN
+              mapped_damage_type := 'barcode_damage';
+            ELSIF NEW."recoveryType" = 'Packaging Damaged' OR NEW."recoveryType" = 'box_damage' THEN
+              mapped_damage_type := 'box_damage';
+            ELSE
+              mapped_damage_type := COALESCE(NEW."recoveryType", 'box_damage');
+            END IF;
+
+            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+            VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
+            ON CONFLICT (lpn) DO UPDATE SET
+              sku = EXCLUDED.sku,
+              damage_type = EXCLUDED.damage_type,
+              status = 'inspected';
+          END IF;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    await db.query(`
+      DROP TRIGGER IF EXISTS trg_sync_item_status ON "ItemStatus";
+      CREATE TRIGGER trg_sync_item_status
+      AFTER INSERT OR UPDATE ON "ItemStatus"
+      FOR EACH ROW
+      EXECUTE FUNCTION sync_item_status_to_recovery();
+    `);
+    const countRes = await db.query('SELECT COUNT(*) FROM "sample_recovery"');
+
 
     console.log("Checking and setting up claims_AMZ view...");
 
@@ -39,7 +151,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
 
     // Check if the base returns table exists
     if (existingTables.has(returnsTable.toLowerCase())) {
-      console.log(`Table "${returnsTable}" found. Proceeding with database-backed "claims_AMZ" view...`);
+      console.log(`Table "${returnsTable}" found. Proceeding with database-backed "claims_amz" view...`);
       
       // Drop any existing table/view named "claims_AMZ" to avoid conflicts
       await db.query(`DROP VIEW IF EXISTS "claims_AMZ" CASCADE;`);
@@ -55,7 +167,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
       const hasReimbursements = existingTables.has('amz_reimbursements');
 
       const viewSql = `
-        CREATE OR REPLACE VIEW "claims_AMZ" AS
+        CREATE OR REPLACE VIEW "claims_amz" AS
         WITH base_returns AS (
           SELECT 
             "license-plate-number" AS lpn,
@@ -220,13 +332,13 @@ async function setupDatabaseSchema(db: pg.Pool) {
       `;
       
       await db.query(viewSql);
-      console.log('✅ "claims_AMZ" view successfully created or replaced in PostgreSQL.');
+      console.log('✅ "claims_amz" view successfully created or replaced in PostgreSQL.');
     } else {
-      console.warn(`⚠️ Base table "${returnsTable}" was not found! Creating a dynamic mock table for "claims_AMZ"...`);
-      await db.query(`DROP VIEW IF EXISTS "claims_AMZ" CASCADE;`);
-      await db.query(`DROP TABLE IF EXISTS "claims_AMZ" CASCADE;`);
+      console.warn(`⚠️ Base table "${returnsTable}" was not found! Creating a dynamic mock table for "claims_amz"...`);
+      await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE;`);
+      await db.query(`DROP TABLE IF EXISTS "claims_amz" CASCADE;`);
       await db.query(`
-        CREATE TABLE "claims_AMZ" (
+        CREATE TABLE "claims_amz" (
           lpn text PRIMARY KEY,
           "orderId" text,
           "trackingId" text,
@@ -250,7 +362,9 @@ async function setupDatabaseSchema(db: pg.Pool) {
           claim_id text
         );
       `);
-      console.log('✅ Fallback table "claims_AMZ" created.');
+      console.log('✅ Fallback table "claims_amz" created.');
+      
+    
     }
   } catch (err: any) {
     console.error('❌ setupDatabaseSchema error:', err.message);
@@ -373,10 +487,18 @@ function toCamelCase(obj: any) {
   return newObj;
 }
 
+import { updateClaimsStatus } from "./scripts/update_claims_status.js";
+
 async function startServer() {
   const app = express();
   app.use(express.json());
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Start periodic status updates
+  setInterval(() => {
+    updateClaimsStatus().catch(err => console.error("[CRON ERROR] Failed to update claims status:", err.message));
+  }, 60 * 1000 * 10); // Check every 10 minute
+
 
   // Mock Claims Database (Fallback)
   const mockClaims = [
@@ -428,7 +550,273 @@ async function startServer() {
   let lastBotRunFinishedAt: number | null = null;
   const COOLING_PERIOD_MS = 1 * 60 * 1000; // 1 minute for testability
 
+  /**
+   * Backend database synchronization flow handler for ItemStatus -> sample_recovery.
+   * Ties together three tables: "ItemStatus", "ReturnItem", and "sample_recovery".
+   */
+  async function syncItemStatusToRecoveryFlow(
+    lpn: string,
+    status: string,
+    recoveryType: string
+  ): Promise<{ success: boolean; message: string; errorType?: string }> {
+    const cleanLpn = (lpn || "").trim();
+    const cleanStatus = (status || "").trim();
+    const cleanRecoveryType = (recoveryType || "").trim() || "box_damage";
+
+    console.log(`[Sync Flow] Initiating sync flow for LPN: "${cleanLpn}", Status: "${cleanStatus}", RecoveryType: "${cleanRecoveryType}"`);
+
+    if (!cleanLpn) {
+      return { success: false, message: "Missing LPN identifier", errorType: "ValidationError" };
+    }
+    
+    // Map according to exact mapping convention:
+    // 'Barcode Damaged' -> 'barcode_damage'
+    // 'Packaging Damaged' -> 'box_damage'
+    let mappedDamageType = "box_damage";
+    if (cleanRecoveryType === "Barcode Damaged" || cleanRecoveryType === "barcode_damage") {
+      mappedDamageType = "barcode_damage";
+    } else if (cleanRecoveryType === "Packaging Damaged" || cleanRecoveryType === "box_damage") {
+      mappedDamageType = "box_damage";
+    } else {
+      mappedDamageType = cleanRecoveryType;
+    }
+
+    const pool = getDbPool();
+    if (pool) {
+      try {
+        // Begin transaction
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          // Insert or update ItemStatus table
+          await client.query(`
+            INSERT INTO "ItemStatus" (lpn, status, "recoveryType", "createdAt")
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (lpn) DO UPDATE SET
+              status = $2,
+              "recoveryType" = $3,
+              "createdAt" = now()
+          `, [cleanLpn, cleanStatus, cleanRecoveryType]);
+
+          // Listen to changes on ItemStatus: only when status = 'RECOVERY'
+          if (cleanStatus === "RECOVERY") {
+            // Relational SKU lookup in ReturnItem table where ReturnItem.lpn === ItemStatus.lpn
+            const returnItemRes = await client.query('SELECT sku FROM "ReturnItem" WHERE LOWER(lpn) = LOWER($1)', [cleanLpn]);
+            if (returnItemRes.rows.length === 0) {
+              const errorMsg = `Relational mapping failed: SKU not found for LPN ${cleanLpn}`;
+              // Log the specific error as instructed
+              console.error(`❌ [Sync Flow] ${errorMsg}`);
+              await client.query("ROLLBACK");
+              return { success: false, message: errorMsg, errorType: "RelationalMappingFailed" };
+            }
+
+            const sku = returnItemRes.rows[0].sku;
+
+            // gracefull insertions handling edge cases (ON CONFLICT)
+            await client.query(`
+              INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+              VALUES ($1, $2, $3, false, 'inspected')
+              ON CONFLICT (lpn) DO UPDATE SET
+                sku = EXCLUDED.sku,
+                damage_type = EXCLUDED.damage_type,
+                status = 'inspected'
+            `, [cleanLpn, sku, mappedDamageType]);
+
+            console.log(`[Sync Flow] Successfully synchronized LPN ${cleanLpn} to sample_recovery with SKU ${sku}`);
+          }
+
+          await client.query("COMMIT");
+          return { success: true, message: `Successfully synchronized and stored ItemStatus config for LPN ${cleanLpn}.` };
+        } catch (err: any) {
+          await client.query("ROLLBACK");
+          console.error(`[Sync Flow] Transaction rollback for ${cleanLpn}:`, err);
+          throw err;
+        } finally {
+          client.release();
+        }
+      } catch (err: any) {
+        return { success: false, message: `Database synchronization handler failed: ${err.message}` };
+      }
+    } else {
+      // Mock Fallback Model
+      const existingIdx = mockItemStatus.findIndex((item) => item.lpn.toLowerCase() === cleanLpn.toLowerCase());
+      if (existingIdx !== -1) {
+        mockItemStatus[existingIdx].status = cleanStatus;
+        mockItemStatus[existingIdx].recoveryType = cleanRecoveryType;
+      } else {
+        mockItemStatus.push({
+          lpn: cleanLpn,
+          status: cleanStatus,
+          recoveryType: cleanRecoveryType,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      if (cleanStatus === "RECOVERY") {
+        const foundReturnItem = mockReturnItems.find((item) => item.lpn.toLowerCase() === cleanLpn.toLowerCase());
+        if (!foundReturnItem) {
+          const errorMsg = `Relational mapping failed: SKU not found for LPN ${cleanLpn}`;
+          console.error(`❌ [Sync Flow Mock] ${errorMsg}`);
+          return { success: false, message: errorMsg, errorType: "RelationalMappingFailed" };
+        }
+
+        const sku = foundReturnItem.sku;
+
+        // Sync into mockSampleRecovery
+        const existingRecoveryIdx = mockSampleRecovery.findIndex((item) => item.lpn.toLowerCase() === cleanLpn.toLowerCase());
+        const recoveryRecord = {
+          lpn: cleanLpn,
+          sku,
+          damage_type: mappedDamageType,
+          is_refurbished: false,
+          status: "inspected" as any
+        };
+
+        if (existingRecoveryIdx !== -1) {
+          mockSampleRecovery[existingRecoveryIdx] = recoveryRecord;
+        } else {
+          mockSampleRecovery.push(recoveryRecord);
+        }
+        console.log(`[Sync Flow Mock] Successfully synchronized LPN ${cleanLpn} to mock sample_recovery with SKU ${sku}`);
+      }
+
+      return { success: true, message: "Successfully executed mock sync flow." };
+    }
+  }
+
   // API Routes
+  app.get("/api/item-status", async (req, res, next) => {
+    try {
+      const pool = getDbPool();
+      if (pool) {
+        const result = await pool.query('SELECT * FROM "ItemStatus" ORDER BY "createdAt" DESC');
+        return res.json(result.rows);
+      } else {
+        return res.json(mockItemStatus);
+      }
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/item-status", async (req, res, next) => {
+    try {
+      const { lpn, status, recoveryType } = req.body;
+      const result = await syncItemStatusToRecoveryFlow(lpn, status, recoveryType);
+      if (!result.success) {
+        if (result.errorType === "RelationalMappingFailed") {
+          return res.status(404).json({ status: "Error", message: result.message });
+        }
+        return res.status(400).json({ status: "Error", message: result.message });
+      }
+      return res.json({ status: "Success", message: result.message });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get("/api/return-item", async (req, res, next) => {
+    try {
+      const pool = getDbPool();
+      if (pool) {
+        const result = await pool.query('SELECT * FROM "ReturnItem"');
+        return res.json(result.rows);
+      } else {
+        return res.json(mockReturnItems);
+      }
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/return-item", async (req, res, next) => {
+    try {
+      const { lpn, sku } = req.body;
+      if (!lpn || !sku) {
+        return res.status(400).json({ status: "Error", message: "Missing lpn or sku" });
+      }
+      const pool = getDbPool();
+      if (pool) {
+        await pool.query('INSERT INTO "ReturnItem" (lpn, sku) VALUES ($1, $2) ON CONFLICT (lpn) DO UPDATE SET sku = EXCLUDED.sku', [lpn.trim(), sku.trim()]);
+      } else {
+        const idx = mockReturnItems.findIndex(item => item.lpn.toLowerCase() === lpn.trim().toLowerCase());
+        if (idx !== -1) {
+          mockReturnItems[idx].sku = sku.trim();
+        } else {
+          mockReturnItems.push({ lpn: lpn.trim(), sku: sku.trim() });
+        }
+      }
+      return res.json({ status: "Success", message: "Successfully added ReturnItem lookup record." });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get("/api/recovery/query", async (req, res, next) => {
+    try {
+      const search = (req.query.search as string || "").trim();
+      if (!search) {
+        return res.status(400).json({ status: "Error", message: "Missing search identifier" });
+      }
+      const pool = getDbPool();
+      if (pool) {
+        const result = await pool.query(
+          'SELECT * FROM "sample_recovery" WHERE LOWER(lpn) = LOWER($1) OR LOWER(sku) = LOWER($1) LIMIT 1',
+          [search]
+        );
+        if (result.rows.length > 0) {
+          return res.json(toCamelCase(result.rows[0]));
+        }
+      } else {
+        const found = mockSampleRecovery.find(
+          item => item.lpn.toLowerCase() === search.toLowerCase() || item.sku.toLowerCase() === search.toLowerCase()
+        );
+        if (found) {
+          return res.json(found);
+        }
+      }
+      return res.status(404).json({ status: "Error", message: "Item not found in database" });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/recovery/update", async (req, res, next) => {
+    try {
+      const { lpn, sku, damageType, isRefurbished, status } = req.body;
+      if (!lpn) {
+        return res.status(400).json({ status: "Error", message: "Missing LPN identifier" });
+      }
+
+      const damage_type = damageType || "barcode_damage";
+      const is_refurbished = !!isRefurbished;
+      const recordStatus = status || "recovered";
+
+      const pool = getDbPool();
+      if (pool) {
+
+        await pool.query(`
+          UPDATE "sample_recovery"
+          SET is_refurbished = $2, status = $3
+          WHERE LOWER(lpn) = LOWER($1)
+        `, [lpn, is_refurbished, recordStatus]);
+
+        console.log(`[DB] Successfully updated the recovery items database for ${lpn}`);
+      } else {
+        const idx = mockSampleRecovery.findIndex(item => item.lpn.toLowerCase() === lpn.toLowerCase());
+        if (idx !== -1) {
+          mockSampleRecovery[idx].is_refurbished = is_refurbished;
+          mockSampleRecovery[idx].status = recordStatus;
+        }
+      }
+
+      return res.json({ status: "Success", message: "Item successfully updated in database." });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.get("/api/claims", async (req, res, next) => {
     try {
       const pool = getDbPool();
@@ -436,10 +824,10 @@ async function startServer() {
 
       if (pool) {
         try {
-          const result = await pool.query('SELECT * FROM "claims_AMZ"');
+          const result = await pool.query('SELECT * FROM "claims_amz"');
           rawRows = result.rows;
         } catch (error: any) {
-          console.log(`SQL error with "claims_AMZ" view: ${error.message}. Retrying with fallback tables...`);
+          console.log(`SQL error with "claims_amz" view: ${error.message}. Retrying with fallback tables...`);
           try {
             const fallbackResult = await pool.query('SELECT * FROM claims');
             rawRows = fallbackResult.rows;
@@ -556,7 +944,7 @@ async function startServer() {
         if (!tid) throw new Error("No ID provided");
 
         // Try table names: quoted '"claims_AMZ"', lowercase 'claims', and quoted '"Claims"'
-        const tables = ['"claims_AMZ"', 'claims', '"Claims"'];
+        const tables = ['"claims_amz"'];
         for (const table of tables) {
           // Get column names for this table to avoid "column does not exist" errors
           const colRes = await db.query(`
@@ -652,7 +1040,7 @@ async function startServer() {
           
           // 2. Also try to update status directly in the fallback table claims_AMZ if it's not a view
           db.query(
-            `UPDATE "claims_AMZ" SET status = 'Claimed' WHERE lpn = $1`,
+            `UPDATE "claims_amz" SET status = 'Claimed' WHERE lpn = $1`,
             [claimData.lpn || '']
           ).catch(() => {});
         }
