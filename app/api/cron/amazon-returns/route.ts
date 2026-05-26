@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { runSync } from '@/scripts/syncAmzReturns';
+import { createRequire } from 'module';
+
+export const runtime = 'nodejs';
+
+const require = createRequire(import.meta.url);
+const { main: runAmazonRawSync } = require('../../../../scripts/fetch_amz_raw_reports.js');
 
 export async function GET(req: Request) {
   try {
@@ -10,8 +15,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await runSync();
-    return NextResponse.json({ success: true, message: 'Amazon returns sync completed' });
+    await runAmazonRawSync();
+    return NextResponse.json({ success: true, message: 'Amazon raw report fetch and sync completed' });
   } catch (error: any) {
     console.error('[Cron Amazon Returns] Error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });

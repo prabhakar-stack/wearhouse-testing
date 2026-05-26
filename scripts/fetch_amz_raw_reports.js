@@ -978,8 +978,14 @@ async function main() {
   console.log("======================================");
 }
 
-main()
-  .catch((e) => console.error("[FATAL ERROR] Sync process failed:", e))
-  .finally(async () => {
-    await prisma.$disconnect().catch(() => {});
-  });
+if (require.main === module) {
+  main()
+    .catch((e) => console.error("[FATAL ERROR] Sync process failed:", e))
+    .finally(async () => {
+      await prisma.$disconnect().catch(() => {});
+    });
+}
+
+module.exports = {
+  main,
+};
