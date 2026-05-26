@@ -23,6 +23,7 @@ enum Marketplace {
 
 enum PackageState {
   EXPECTED
+  IN_TRANSIT
   LOST_IN_TRANSIT
   AT_DOCK
   IN_INSPECTION
@@ -87,6 +88,7 @@ model Manifest {
   orders           Order[]
   evidences        Evidence[]
   alerts           Alert[]
+  trackingSnapshots ShipmentTracking[]
 }
 
 model Order {
@@ -101,11 +103,30 @@ model Order {
   trackingNumber     String?      // Carrier tracking number associated with the removal order
 }
 
+model ShipmentTracking {
+  trackingNumber    String     @id
+  manifestId        String?
+  courierName       String?
+  courierSlug       String?
+  latestStatus      String?
+  latestLocation    String?
+  scheduledDelivery DateTime?
+  checkpointCount   Int        @default(0)
+  checkpoints       Json?
+  rawText           String?
+  fetchedAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  manifest          Manifest?  @relation(fields: [manifestId], references: [id])
+
+  @@index([manifestId])
+}
+
 model Reimbursement {
   id                      String     @id @default(uuid())
   // Fields referencing ReturnItem removed
-  // returnItemId            String     @unique
-  // platformReimbursementId String?    @unique
+  returnItemId            String     @unique
+  platformReimbursementId String?    @unique
   amountReimbursed        Float
   currency                String
   reimbursementReason     String?
@@ -124,7 +145,7 @@ model Evidence {
   rawReference    String?
   uploadedByEmail String?      // Email of user who uploaded
   manifestId      String?
-  // returnItemId    String?
+  returnItemId    String?
   claimReason     String?
   claimSubReason  String?
   createdAt       DateTime     @default(now())
@@ -270,6 +291,8 @@ model ReturnItem {
   customerComments        String? @map("customer-comments")
   removalOrderType        String? @map("removal-order-type")
   marketplace             String? @default("amazon")
+  orderId                String?
+  itemPrice           Float?
   @@map("ReturnItem")
 }
 

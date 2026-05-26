@@ -3,9 +3,6 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const expected = await prisma.manifest.findMany({
       where: {
         status: 'EXPECTED',
@@ -19,7 +16,18 @@ export async function GET(req: NextRequest) {
         orders: {
           select: {
             marketplace: true,
-            platformOrderId: true
+            platformOrderId: true,
+            trackingNumber: true,
+          }
+        },
+        trackingSnapshots: {
+          select: {
+            trackingNumber: true,
+            latestStatus: true,
+            latestLocation: true,
+            scheduledDelivery: true,
+            checkpointCount: true,
+            fetchedAt: true,
           }
         }
       },
@@ -32,8 +40,18 @@ export async function GET(req: NextRequest) {
       const returnItems = (m.orders || []).map(o => ({
         order: {
           marketplace: o.marketplace,
-          platformOrderId: o.platformOrderId
+          platformOrderId: o.platformOrderId,
+          trackingNumber: o.trackingNumber,
         }
+      }));
+
+      const trackingData = (m.trackingSnapshots || []).map(snapshot => ({
+        trackingNumber: snapshot.trackingNumber,
+        latestStatus: snapshot.latestStatus,
+        latestLocation: snapshot.latestLocation,
+        scheduledDelivery: snapshot.scheduledDelivery,
+        checkpointCount: snapshot.checkpointCount,
+        fetchedAt: snapshot.fetchedAt,
       }));
 
       return {
@@ -43,6 +61,7 @@ export async function GET(req: NextRequest) {
         status: m.status,
         expectedDate: m.expectedDate,
         returnItems
+        trackingData,
       };
     });
 

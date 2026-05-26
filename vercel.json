@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/amazon-returns",
       "schedule": "0 0 */5 * *"
+    },
+    {
+      "path": "/api/cron/expected-tracking",
+      "schedule": "0 * * * *"
     }
   ]
 }
