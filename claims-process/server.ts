@@ -494,10 +494,15 @@ async function startServer() {
   app.use(express.json());
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Start periodic status updates
-  setInterval(() => {
-    updateClaimsStatus().catch(err => console.error("[CRON ERROR] Failed to update claims status:", err.message));
-  }, 60 * 1000 * 10); // Check every 10 minute
+  const enableClaimsStatusCron = process.env.ENABLE_CLAIMS_STATUS_CRON === "true";
+  if (enableClaimsStatusCron) {
+    // Optional background scheduler; keep disabled unless explicitly enabled.
+    setInterval(() => {
+      updateClaimsStatus().catch(err => console.error("[CRON ERROR] Failed to update claims status:", err.message));
+    }, 60 * 1000 * 10); // Check every 10 minute
+  } else {
+    console.log("[CRON] Claims status scheduler is disabled. Run updateClaimsStatus() manually when needed.");
+  }
 
 
   // Mock Claims Database (Fallback)
