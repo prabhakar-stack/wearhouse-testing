@@ -13,7 +13,9 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/product/status")
+    pathname.startsWith("/api/product/status") ||
+    pathname.startsWith("/api/cron") ||       // Cron jobs use CRON_SECRET header
+    pathname.startsWith("/api/alerts/seed")   // Test seed uses CRON_SECRET header
   ) {
     return NextResponse.next();
   }

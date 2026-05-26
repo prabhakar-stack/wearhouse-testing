@@ -517,9 +517,33 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
 
   // Mark step & auto-advance
   const handleStepMark = (step: number, value: CheckState) => {
-    if (step === 1) { setTapeState(value); if (activeStep === 1) setActiveStep(2); }
-    if (step === 2) { setBoxState(value);  if (activeStep === 2) setActiveStep(3); }
-    if (step === 3) { setTamperState(value); setActiveStep(4); }
+    if (step === 1) {
+      setTapeState(value);
+      if (value === 'damaged') {
+        setAllChecked(true);
+        setShowEvidencePanel(true);
+      } else if (activeStep === 1) {
+        setActiveStep(2);
+      }
+    }
+    if (step === 2) {
+      setBoxState(value);
+      if (value === 'damaged') {
+        setAllChecked(true);
+        setShowEvidencePanel(true);
+      } else if (activeStep === 2) {
+        setActiveStep(3);
+      }
+    }
+    if (step === 3) {
+      setTamperState(value);
+      if (value === 'damaged') {
+        setAllChecked(true);
+        setShowEvidencePanel(true);
+      } else {
+        setActiveStep(4);
+      }
+    }
   };
 
   // Capture evidence → silent background upload → show "done" screen immediately
@@ -710,7 +734,14 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
 
       {/* Accordion steps */}
       <div className="space-y-2">
-        {steps.map(step => {
+        {steps
+          .filter(step => {
+            if (isDamaged) {
+              return step.state !== 'null';
+            }
+            return true;
+          })
+          .map(step => {
           const isActive    = activeStep === step.id && !allChecked;
           const isCompleted = step.state !== 'null';
           const isLocked    = !isActive && !isCompleted;

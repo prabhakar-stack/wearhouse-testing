@@ -14,11 +14,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const whereCondition: any = {
+      status: 'AT_DOCK',
+    };
+
+    if (user.role !== 'SUPER_ACCESS' && user.role !== 'ADMIN') {
+      whereCondition.receivedBy = user.email;
+    }
+
     const ledger = await prisma.manifest.findMany({
-      where: {
-        status: 'AT_DOCK',
-        receivedBy: user.email,
-      },
+      where: whereCondition,
       select: {
         id: true,
         trackingId: true,

@@ -503,6 +503,42 @@ function StepVisualGuide({
     );
   };
 
+  const renderBoxContentsPlaceholder = () => {
+    return (
+      <svg viewBox="0 0 200 110" className="w-48 h-24 text-[#313079]/30">
+        <rect
+          x="40"
+          y="20"
+          width="120"
+          height="70"
+          rx="6"
+          fill="none"
+          stroke="#FF6700"
+          strokeWidth="2"
+          strokeDasharray="4,4"
+        />
+        <text
+          x="100"
+          y="50"
+          textAnchor="middle"
+          fill="#FF6700"
+          className="text-[10px] font-black tracking-widest font-mono uppercase"
+        >
+          [ Open Box ]
+        </text>
+        <text
+          x="100"
+          y="68"
+          textAnchor="middle"
+          fill="#e2e8f0"
+          className="text-[8px] font-bold uppercase tracking-wider opacity-75"
+        >
+          Contents Placeholder
+        </text>
+      </svg>
+    );
+  };
+
   const renderSvgGuide = (id: number) => {
     switch (id) {
       case 3:
@@ -516,7 +552,7 @@ function StepVisualGuide({
       case 7:
         return renderDeliveryLabel();
       case 8:
-        return renderOrderSlip();
+        return renderBoxContentsPlaceholder();
       default:
         return null;
     }
@@ -761,25 +797,6 @@ function InspectorDashboard({ role }: { role: string }) {
           <div className="max-w-lg mx-auto space-y-6 pt-6 px-4 pb-10">
             <div className="space-y-4">
               <button
-                onClick={() => setActiveTab("ledger")}
-                className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden shadow-sm rounded-xl"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="relative z-10">
-                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
-                    Custody Ledger
-                  </h3>
-                  <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                    Packages pending inspection
-                  </p>
-                </div>
-                <FileText
-                  size={32}
-                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
-                />
-              </button>
-
-              <button
                 onClick={() => setActiveTab("takeover")}
                 className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden shadow-sm rounded-xl"
               >
@@ -793,6 +810,25 @@ function InspectorDashboard({ role }: { role: string }) {
                   </p>
                 </div>
                 <LinkIcon
+                  size={32}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
+                />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("ledger")}
+                className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden shadow-sm rounded-xl"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative z-10">
+                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
+                    Custody Ledger
+                  </h3>
+                  <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
+                    Packages pending inspection
+                  </p>
+                </div>
+                <FileText
                   size={32}
                   className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
                 />
@@ -1184,6 +1220,8 @@ function InspectTab({ userId }: { userId?: string }) {
   const [startError, setStartError] = useState("");
   const [manifestId, setManifestId] = useState("");
   const [activeOrderPlatformId, setActiveOrderPlatformId] = useState("");
+  const [displayTrackingId, setDisplayTrackingId] = useState("");
+  const [displayOrderId, setDisplayOrderId] = useState("");
   const [expectedLpnItems, setExpectedLpnItems] = useState<InspectorReturnItem[]>([]);
   const [lpnScanError, setLpnScanError] = useState("");
 
@@ -1223,6 +1261,8 @@ function InspectTab({ userId }: { userId?: string }) {
     setOrderId("");
     setManifestId("");
     setActiveOrderPlatformId("");
+    setDisplayTrackingId("");
+    setDisplayOrderId("");
     setExpectedLpnItems([]);
     setExpectedFnskuQuantities({});
     setIsValidatingLpn(false);
@@ -1826,6 +1866,8 @@ function InspectTab({ userId }: { userId?: string }) {
         }
 
         setManifestId(manifest.id);
+        setDisplayTrackingId(manifest.trackingId || "");
+        setDisplayOrderId(manifest.removalOrderId || "");
 
         const resolvedOrderId = manifest.matchedOrderId || "";
         const manifestOrderIds = Array.from(
@@ -2128,8 +2170,8 @@ function InspectTab({ userId }: { userId?: string }) {
     },
     {
       id: 8,
-      title: "Remove Slip",
-      desc: "Remove the ORDER DETAILS SLIP from inside the box and hold it to the camera. This is your paper audit trail.",
+      title: "Open Box & Contents",
+      desc: "Open the box completely and capture a clear image of the contents inside the box. Ensure all items are visible.",
       sampleImg: null,
     },
   ];
@@ -2239,7 +2281,7 @@ function InspectTab({ userId }: { userId?: string }) {
                 Tracking ID
               </p>
               <p className="text-sm font-black font-mono text-[#313079]">
-                {manifestId ? orderId : "—"}
+                {manifestId ? displayTrackingId : "—"}
               </p>
             </div>
           </div>
@@ -2249,7 +2291,7 @@ function InspectTab({ userId }: { userId?: string }) {
                 Order ID
               </p>
               <p className="text-sm font-black font-mono text-[#FF6700]">
-                {activeOrderPlatformId || "—"}
+                {manifestId ? displayOrderId : "—"}
               </p>
             </div>
             <div className="bg-[#FF6700]/10 p-1.5 rounded text-[#FF6700]">

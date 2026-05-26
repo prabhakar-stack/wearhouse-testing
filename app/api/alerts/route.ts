@@ -1,49 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { SOP_MAP } from '@/lib/alertRules';
 
 // Alert level access policy:
-//   ADMIN       → L1 (in-app), L2 (email/push), L3 (banner) — operational issues
+//   ADMIN       → L1–L4 (all operational levels)
 //   SUPER_ACCESS → all levels including L4 (critical: phone + WhatsApp to leadership)
+//   RECEIVER    → L1, L2 only
 const ADMIN_VISIBLE_LEVELS = ['L1', 'L2', 'L3', 'L4'];
 const ALL_LEVELS            = ['L1', 'L2', 'L3', 'L4'];
-
-const DEFAULT_SOP_STEPS: Record<string, string[]> = {
-  SLA_BREACH: [
-    "Verify if the package was physically placed in the dock area.",
-    "Contact the receiver of the manifest to confirm package custody.",
-    "Force handover the package status to 'IN_INSPECTION' manually if found.",
-    "Escalate to operations head if package is missing."
-  ],
-  CLAIM_STALLED: [
-    "Open the Google Drive folder for the order and inspect evidence images.",
-    "Locate the corresponding Amazon LPN return reason and customer comments.",
-    "Access the Amazon seller central claims portal (IDR) and file the dispute case.",
-    "Update the Manifest claimId with the filed Amazon case ID.",
-    "Log dispute status as 'Filed' under reimbursement tracker."
-  ],
-  CLAIM_NUDGE: [
-    "Verify that the Google Drive evidence is complete and clear.",
-    "Confirm that return item pricing is correct.",
-    "Inform the assigned claims specialist to begin filing the claim."
-  ],
-  GHOST_DELIVERY: [
-    "Check tracking status on the courier's public website (UPS/Delhivery/etc.).",
-    "Search the receiving dock area physically for any unscanned boxes.",
-    "Contact courier support to open an inquiry about missing delivery.",
-    "If confirmed lost, file FBA warehouse lost inbound claim."
-  ],
-  MISSING_ITEMS: [
-    "Re-verify the expected item list from AMZRemovalShipments and customer return records.",
-    "Search the surrounding inspection table for any misplaced product items.",
-    "Review inspection unboxing video to confirm if the box arrived short-shipped.",
-    "File a claim on Amazon FBA for short-shipped/missing items, attaching the video link as evidence."
-  ],
-  INTAKE_REJECTION: [
-    "Ensure that the unboxing visual damage photos are clearly uploaded to the Google Drive folder.",
-    "Contact the courier driver to report damaged package intake rejection.",
-    "File a freight damage or return shipment damage claim with the carrier."
-  ]
-};
 
 export async function GET(req: NextRequest) {
   try {
@@ -65,7 +29,7 @@ export async function GET(req: NextRequest) {
       },
       include: {
         manifest: {
-          select: { trackingId: true, status: true }
+          select: { trackingId: true, status: true, claimId: true }
         },
         targetUser: {
           select: { email: true, name: true, role: true }
@@ -80,11 +44,11 @@ export async function GET(req: NextRequest) {
       ]
     });
 
-    // Construct SOP steps dynamically from hardcoded map
+    // Construct SOP steps from central alertRules registry (all 42 types included)
     const alertTypes = [...new Set(alerts.map(a => a.type))];
     const sopMap: Record<string, { id: string; stepOrder: number; instruction: string }[]> = {};
     for (const type of alertTypes) {
-      const steps = DEFAULT_SOP_STEPS[type] || [
+      const steps = SOP_MAP[type] || [
         "Inspect manifest status and check associated evidences.",
         "Take necessary corrective actions to resolve the operational alert."
       ];
@@ -119,6 +83,72 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// ─── Data-driven resolution check ────────────────────────────────────────────
+// Before an alert is marked resolved, we verify the underlying issue is fixed.
+function checkResolvable(
+  alertType: string,
+  manifestStatus: string | null,
+  claimId: string | null,
+  trackingId: string | null
+): { canResolve: boolean; reason?: string } {
+  if (!manifestStatus) return { canResolve: true }; // No manifest linked → allow manual resolve
+
+  const t = alertType;
+  const id = trackingId || 'this package';
+
+  const PAST_DOCK       = ['IN_INSPECTION', 'INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
+  const FULLY_PROCESSED = ['INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
+
+  // Delivery breaches / ghost delivery → package must have arrived
+  if (t.startsWith('DELIVERY_ETA_BREACH') || t.startsWith('GHOST_DELIVERY')) {
+    if (manifestStatus === 'EXPECTED') {
+      return { canResolve: false, reason: `${id} is still in 'Expected' status. Ensure the delivery is received or a transit claim is filed first.` };
+    }
+  }
+
+  // Receive update pending → must be past AT_DOCK
+  if (t.startsWith('RECEIVE_UPDATE_PENDING')) {
+    if (manifestStatus === 'AT_DOCK') {
+      return { canResolve: false, reason: `${id} is still at the dock. Complete receiver acceptance in the system first.` };
+    }
+  }
+
+  // Receiver→Inspector handshake → must be in inspection or beyond
+  if (t.startsWith('RECV_INSP_HANDSHAKE')) {
+    if (!PAST_DOCK.includes(manifestStatus)) {
+      return { canResolve: false, reason: `${id} has not been handed over to inspection yet (status: ${manifestStatus}). Complete the handover first.` };
+    }
+  }
+
+  // Inspection pending → must be inspected
+  if (t.startsWith('INSPECTION_PENDING')) {
+    if (!FULLY_PROCESSED.includes(manifestStatus)) {
+      return { canResolve: false, reason: `Inspection for ${id} is not complete yet (status: ${manifestStatus}). Complete the inspection first.` };
+    }
+  }
+
+  // Inspection QC failed / Recovery rejections / QC rejections → claim must be filed
+  if (t.startsWith('INSPECTION_QC_FAILED') || t.includes('REJECTION')) {
+    if (!claimId) {
+      return { canResolve: false, reason: `No claim has been filed for ${id}. File the claim in Amazon Seller Central and add the Claim ID to the manifest before resolving.` };
+    }
+  }
+
+  // Inventorisation / Recovery-QC / Inspector-QC / Inspector-Recovery handshakes → must be inventorised
+  if (
+    t.startsWith('INVENTORISATION_PENDING') ||
+    t.startsWith('RECOVERY_QC_HANDSHAKE') ||
+    t.startsWith('INSP_QC_HANDSHAKE') ||
+    t.startsWith('INSP_RECOVERY_HANDSHAKE')
+  ) {
+    if (manifestStatus !== 'RECOVERED_TO_INVENTORY') {
+      return { canResolve: false, reason: `${id} has not been inventorised yet (status: ${manifestStatus}). Complete inventorisation first.` };
+    }
+  }
+
+  return { canResolve: true };
+}
+
 export async function PATCH(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
@@ -128,25 +158,84 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { alertId, resolution } = body;
+    const { alertId, resolution, forceResolve } = body;
 
     if (!alertId) {
       return NextResponse.json({ error: 'Missing alertId' }, { status: 400 });
     }
 
-    // ADMIN can resolve L4 alerts as well now.
+    // Handle bulk resolves: if alertId is an array, resolve all
+    const ids: string[] = Array.isArray(alertId) ? alertId : [alertId];
 
-    const alert = await prisma.alert.update({
-      where: { id: alertId },
-      data: {
-        resolved: true,
-        resolvedById: userId || undefined,
-        resolvedAt: new Date(),
-        resolution: resolution || 'Marked resolved by admin',
+    const resolved = [];
+    const blocked = [];
+
+    for (const id of ids) {
+      // Fetch the alert with manifest for data check
+      const alertRecord = await prisma.alert.findUnique({
+        where: { id },
+        include: {
+          manifest: { select: { status: true, claimId: true, trackingId: true } }
+        }
+      });
+
+      if (!alertRecord) { blocked.push({ id, reason: 'Alert not found' }); continue; }
+      if (alertRecord.resolved) { resolved.push({ id, skipped: true }); continue; }
+
+      // Skip data check if forceResolve=true (super-admin override) or no manifest
+      if (!forceResolve) {
+        const check = checkResolvable(
+          alertRecord.type,
+          alertRecord.manifest?.status || null,
+          alertRecord.manifest?.claimId || null,
+          alertRecord.manifest?.trackingId || null
+        );
+        if (!check.canResolve) {
+          blocked.push({ id, reason: check.reason, dataIssue: true, trackingId: alertRecord.manifest?.trackingId });
+          continue;
+        }
       }
-    });
 
-    return NextResponse.json({ success: true, alert });
+      const updateData: any = {
+        resolved: true,
+        resolvedAt: new Date(),
+        resolution: resolution || 'Resolved by admin',
+      };
+
+      if (userId) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        });
+        if (dbUser) {
+          updateData.resolvedById = dbUser.id;
+        } else {
+          updateData.resolvedById = null;
+        }
+      } else {
+        updateData.resolvedById = null;
+      }
+
+      const updated = await prisma.alert.update({
+        where: { id },
+        data: updateData
+      });
+      resolved.push(updated);
+    }
+
+    // Single alert resolve — return the original shape for backwards compat
+    if (ids.length === 1) {
+      if (blocked.length > 0) {
+        return NextResponse.json(
+          { error: blocked[0].reason, dataIssue: (blocked[0] as any).dataIssue || false },
+          { status: (blocked[0] as any).dataIssue ? 422 : 400 }
+        );
+      }
+      return NextResponse.json({ success: true, alert: resolved[0] });
+    }
+
+    // Bulk resolve response
+    return NextResponse.json({ success: true, resolved: resolved.length, blocked: blocked.length, blockedDetails: blocked });
   } catch (error: any) {
     console.error('Alerts PATCH error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });

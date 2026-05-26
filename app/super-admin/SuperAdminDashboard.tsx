@@ -729,6 +729,11 @@ function AlertsTab() {
   const [editingSopType, setEditingSopType] = useState<string | null>(null);
   const [editingSopSteps, setEditingSopSteps] = useState<{ stepOrder: number; instruction: string }[]>([]);
   const [savingSop, setSavingSop] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkResolutionText, setBulkResolutionText] = useState('');
+  const [bulkResolving, setBulkResolving] = useState(false);
+  const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
+  const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
 
   const fetchAlerts = async () => {
     setLoading(true);
@@ -781,6 +786,73 @@ function AlertsTab() {
     } finally { setSavingSop(false); }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(alerts.map((a: any) => a.id)));
+  const selectNone = () => setSelectedIds(new Set());
+  const selectNext10 = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      alerts.filter((a: any) => !next.has(a.id)).slice(0, 10).forEach((a: any) => next.add(a.id));
+      return next;
+    });
+  };
+
+  const handleBulkResolve = async () => {
+    if (selectedIds.size === 0) return;
+    if (!bulkResolutionText.trim() && !confirm(`Resolve ${selectedIds.size} alert${selectedIds.size > 1 ? 's' : ''} without notes?`)) return;
+    setBulkResolving(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(alertId =>
+          fetch('/api/alerts', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alertId, resolution: bulkResolutionText.trim() || 'Bulk resolved by admin', forceResolve: true }),
+          })
+        )
+      );
+      setSelectedIds(new Set());
+      setBulkResolutionText('');
+      fetchAlerts();
+    } finally {
+      setBulkResolving(false);
+    }
+  };
+
+  const handleQuickResolve = async (alertId: string) => {
+    setQuickResolvingId(alertId);
+    setResolveDataErrors(prev => { const next = { ...prev }; delete next[alertId]; return next; });
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        // Super-admin uses forceResolve — can override data checks
+        body: JSON.stringify({ alertId, resolution: 'Resolved by super-admin', forceResolve: true }),
+      });
+      const data = await res.json();
+      if (res.status === 422 && data.dataIssue) {
+        setResolveDataErrors(prev => ({ ...prev, [alertId]: data.error }));
+      } else if (res.ok) {
+        setExpandedId(null);
+        fetchAlerts();
+      } else {
+        setResolveDataErrors(prev => ({ ...prev, [alertId]: data.error || 'Failed to resolve alert.' }));
+      }
+    } catch {
+      setResolveDataErrors(prev => ({ ...prev, [alertId]: 'Network error. Please try again.' }));
+    } finally {
+      setQuickResolvingId(null);
+    }
+  };
+
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
@@ -807,6 +879,55 @@ function AlertsTab() {
             {showResolved ? 'Show Active' : 'Show Resolved'}
           </button>
         </div>
+
+        {/* Bulk Selection Controls */}
+        {!showResolved && alerts.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            {selectedIds.size > 0 ? (
+              <>
+                <span className="text-xs font-black text-[#FF6700] shrink-0">
+                  {selectedIds.size} / {alerts.length} selected
+                </span>
+                <input
+                  value={bulkResolutionText}
+                  onChange={e => setBulkResolutionText(e.target.value)}
+                  placeholder="Bulk resolution note (optional)..."
+                  className="flex-1 min-w-[200px] bg-white border border-slate-300 px-3 py-1.5 text-xs rounded focus:border-[#FF6700] focus:outline-none focus:ring-1 focus:ring-[#FF6700]"
+                />
+                <button
+                  onClick={handleBulkResolve}
+                  disabled={bulkResolving}
+                  className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded transition-colors shadow-sm shrink-0"
+                >
+                  {bulkResolving ? 'Resolving...' : `✓ Resolve ${selectedIds.size}`}
+                </button>
+                <button
+                  onClick={selectNone}
+                  className="px-3 py-1.5 border border-slate-300 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded hover:border-slate-400 transition-colors shrink-0"
+                >
+                  Deselect All
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">Bulk Select:</span>
+                <button
+                  onClick={() => selectNext10()}
+                  className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded hover:border-[#FF6700] hover:text-[#FF6700] transition-colors"
+                >
+                  + 10 Alerts
+                </button>
+                <button
+                  onClick={selectAll}
+                  className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded hover:border-[#FF6700] hover:text-[#FF6700] transition-colors"
+                >
+                  Select All ({alerts.length})
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {!showResolved && (
           <div className="grid grid-cols-4 gap-3">
             {(['L1', 'L2', 'L3', 'L4'] as const).map(level => {
@@ -842,11 +963,28 @@ function AlertsTab() {
             const isExpanded = expandedId === alert.id;
             const sopSteps = sopMap[alert.type] || [];
             return (
-              <div key={alert.id} className={`bg-white border ${cfg.borderColor} rounded-lg overflow-hidden shadow-sm transition-all ${alert.level === 'L4' ? 'ring-1 ring-red-200' : ''}`}>
-                <button
-                  onClick={() => { setExpandedId(isExpanded ? null : alert.id); setResolutionText(''); }}
-                  className={`w-full flex items-center justify-between px-5 py-4 ${cfg.bgColor} hover:brightness-95 transition-all text-left`}
-                >
+              <div key={alert.id} className={`bg-white border ${cfg.borderColor} rounded-lg overflow-hidden shadow-sm transition-all ${alert.level === 'L4' ? 'ring-1 ring-red-200' : ''} ${selectedIds.has(alert.id) ? 'ring-2 ring-[#FF6700]/40' : ''}`}>
+                <div className={`flex items-stretch ${cfg.bgColor}`}>
+                  {/* Checkbox */}
+                  {!showResolved && (
+                    <div
+                      className="flex items-center pl-4 pr-2 shrink-0 border-r border-black/5 cursor-pointer"
+                      onClick={e => { e.stopPropagation(); toggleSelect(alert.id); }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(alert.id)}
+                        onChange={() => toggleSelect(alert.id)}
+                        className="w-4 h-4 cursor-pointer accent-[#FF6700] rounded"
+                        onClick={e => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
+                  {/* Expand Button */}
+                  <button
+                    onClick={() => { setExpandedId(isExpanded ? null : alert.id); setResolutionText(''); }}
+                    className={`flex-1 flex items-center justify-between ${!showResolved ? 'pl-3 pr-5' : 'px-5'} py-4 hover:brightness-95 transition-all text-left`}
+                  >
                   <div className="flex items-center space-x-3 min-w-0">
                     <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${cfg.bgColor} border ${cfg.borderColor}`}>{cfg.icon}</div>
                     <div className="min-w-0">
@@ -868,7 +1006,37 @@ function AlertsTab() {
                     <span className="text-[10px] text-slate-400 font-bold">{timeAgo(alert.createdAt)}</span>
                     {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
                   </div>
-                </button>
+                  </button>
+                  {/* Quick Resolve Button */}
+                  {!alert.resolved && !showResolved && (
+                    <div
+                      className="flex items-center px-3 shrink-0 border-l border-black/5"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => handleQuickResolve(alert.id)}
+                        disabled={quickResolvingId === alert.id}
+                        title="Quick Resolve (Super-Admin: bypasses data check)"
+                        className="text-[9px] font-black uppercase tracking-widest text-green-600 hover:text-green-800 disabled:opacity-50 border border-green-200 hover:border-green-400 bg-green-50 hover:bg-green-100 px-2.5 py-1 rounded transition-all whitespace-nowrap"
+                      >
+                        {quickResolvingId === alert.id ? '···' : '✓ Resolve'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Data-check error banner */}
+                {resolveDataErrors[alert.id] && (
+                  <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-amber-600 shrink-0">⚠ Data Check:</span>
+                    <p className="text-[10px] text-amber-700 flex-1 leading-snug">{resolveDataErrors[alert.id]}</p>
+                    <button
+                      onClick={() => setResolveDataErrors(prev => { const next = { ...prev }; delete next[alert.id]; return next; })}
+                      className="text-amber-400 hover:text-amber-600 shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200">
                     <p className="text-sm text-slate-600 leading-relaxed">{alert.description}</p>

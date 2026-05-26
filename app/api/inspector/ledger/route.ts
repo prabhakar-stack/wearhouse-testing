@@ -14,18 +14,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Fetch manifests that are IN_INSPECTION (taken over by this inspector) or AT_DOCK (available for takeover)
+    // Fetch manifests that are IN_INSPECTION (taken over by this inspector)
     const ledger = await prisma.manifest.findMany({
       where: {
-        OR: [
-          {
-            status: 'IN_INSPECTION',
-            inspectedBy: user.email,
-          },
-          {
-            status: 'AT_DOCK',
-          }
-        ]
+        status: 'IN_INSPECTION',
+        inspectedBy: user.email,
       },
       select: {
         id: true,
