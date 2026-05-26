@@ -4,7 +4,7 @@ import { createRequire } from 'module';
 export const runtime = 'nodejs';
 
 const require = createRequire(import.meta.url);
-const { main: runAmazonRawSync } = require('../../../../scripts/fetch_amz_raw_reports.js');
+const { main: runAmazonRawSync } = require('../../../../scripts/fetch_amz_raw_reports.cjs');
 
 export async function GET(req: Request) {
   try {

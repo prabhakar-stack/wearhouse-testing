@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         courierName: m.courierName,
         status: m.status,
         expectedDate: m.expectedDate,
-        returnItems
+        returnItems,
         trackingData,
       };
     });
