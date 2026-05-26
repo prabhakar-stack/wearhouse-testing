@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/amazon-returns",
+      "schedule": "0 0 */5 * *"
+    }
+  ]
+}

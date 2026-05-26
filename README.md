@@ -20,8 +20,6 @@ View your app in AI Studio: https://ai.studio/apps/27cbe715-031e-457e-9614-e2343
 
 ## Amazon Live Sync
 
-The Amazon sync script uses live Amazon Selling Partner API credentials and writes the fetched reports into the existing Postgres/Supabase database.
-
 1. Add these variables to `.env.local` or `.env`:
    `REGION`, `REFRESH_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, `MARKETPLACE_ID`, `DATABASE_URL`
 2. Run the sync:

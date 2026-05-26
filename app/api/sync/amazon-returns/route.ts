@@ -1,7 +1,6 @@
 // app/api/sync/amazon-returns/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { runSync } from '@/scripts/syncAmzReturns';
 
 export async function POST(req: NextRequest) {
