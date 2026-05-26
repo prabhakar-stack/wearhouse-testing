@@ -12,14 +12,16 @@ import {
   ShieldAlert,
   PanelLeftClose,
   PanelLeftOpen,
-  Bot
+  Bot,
+  Wrench
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navItems = [
   { name: 'Dashboard Overview', path: '/', icon: LayoutDashboard },
-  { name: 'Triage Queue', path: '/triage', icon: ListFilter, badge: '4' },
+  { name: 'Triage Queue', path: '/triage', icon: ListFilter },
   { name: 'Smart Filing Hub', path: '/filing', icon: Bot },
+   { name: 'Recovery Hub', path: '/recovery', icon: Wrench },
   { name: 'QC Audit', path: '/audit', icon: ShieldCheck },
   { name: 'Performance', path: '/performance', icon: TrendingUp },
 ];
@@ -99,14 +101,14 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-[#FF6700]" : "text-[#FF6700]/70")} />
                   {(!collapsed || mobileOpen) && <span className="animate-in fade-in slide-in-from-left-2 duration-300">{item.name}</span>}
                 </div>
-                {(!collapsed || mobileOpen) && item.badge && (
+                {/* {(!collapsed || mobileOpen) && item.badge && (
                   <span className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold">
                     {item.badge}
                   </span>
                 )}
                 {(collapsed && !mobileOpen) && item.badge && (
                   <div className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-black" />
-                )}
+                )} */}
               </>
             )}
           </NavLink>

@@ -7,6 +7,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { pathToFileURL } from 'url';
 const prisma = new PrismaClient();
 
 // Helper to map aMZCustomerReturn fields to ReturnItem fields
@@ -59,6 +60,11 @@ export async function runSync() {
   }
 }
 
-runSync()
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  runSync()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}
+

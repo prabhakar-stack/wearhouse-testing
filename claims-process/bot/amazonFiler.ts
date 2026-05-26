@@ -260,13 +260,14 @@ export async function getDriveFolderEntries(folderUrl: string, log?: (msg: strin
     let browser;
     try {
       browser = await chromium.launch({
-        headless: true,
+        headless:false,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-stealth-mode',
         ]
       });
       const context = await browser.newContext({
@@ -749,7 +750,8 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
   let context: BrowserContext | null = null;
 
   try {
-    const isHeadless = process.env.NODE_ENV === 'production' || process.env.HEADLESS_MODE !== 'false';
+    // const isHeadless = process.env.NODE_ENV === 'production' || process.env.HEADLESS_MODE !== 'false';
+    const isHeadless = false;
     log(`Launching persistent browser context (headless: ${isHeadless})...`);
     
     context = await chromium.launchPersistentContext('./amazon-profile', {
