@@ -173,6 +173,14 @@ model Alert {
   resolvedBy   User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
 }
 
+model CronJobState {
+  jobKey        String   @id
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  updatedAt     DateTime @updatedAt
+}
+
 model ItemStatus {
   lpn          String   @id
   status       String   // "GOOD" or "RECOVERY"
@@ -229,6 +237,7 @@ model AMZRemovalShipment {
   shippedQuantity   Int?      @map("shipped-quantity")
   carrier           String?   @map("carrier")
   trackingNumber    String?   @map("tracking-number")
+  processedAt       DateTime?
   shipmentStatus    String?   @map("shipment-status")
 
   @@map("AMZ_removal_shipments")

@@ -143,11 +143,16 @@ async function main() {
   console.log('Database repopulation task completed successfully!');
 }
 
-main()
-  .catch(e => {
-    console.error('Fatal repopulation error:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  main()
+    .catch(e => {
+      console.error('Fatal repopulation error:', e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+} else {
+  // Export main for programmatic use (so callers can `require` and invoke)
+  module.exports = { main };
+}

@@ -976,6 +976,44 @@ async function main() {
   );
   console.log(`- ReturnItems: ${syncedCoreReturns} records synced to Core`);
   console.log("======================================");
+
+  // Run the incremental repopulator after the fetch completes so newly fetched
+  // shipment rows are materialized into operational tables.
+  if (!process.env.DISABLE_REPOPULATE) {
+    try {
+      console.log("Triggering incremental repopulation task (repopulate_incremental.js)...");
+      const repopulate = require("./repopulate_incremental.js");
+      if (repopulate && typeof repopulate.main === "function") {
+        await repopulate.main();
+        console.log("Incremental repopulation task finished.");
+      } else {
+        console.log("Incremental repopulation module did not export a main() function.");
+      }
+    } catch (err) {
+      console.error("[WARN] Incremental repopulation task failed:", err?.message || err);
+    }
+  } else {
+    console.log("DISABLE_REPOPULATE is set - skipping repopulation task.");
+  }
+
+  // Run the incremental repopulator after the fetch completes so newly fetched
+  // shipment rows are materialized into operational tables.
+  if (!process.env.DISABLE_REPOPULATE) {
+    try {
+      console.log("Triggering incremental repopulation task (repopulate_incremental.js)...");
+      const repopulate = require("./repopulate_incremental.js");
+      if (repopulate && typeof repopulate.main === "function") {
+        await repopulate.main();
+        console.log("Incremental repopulation task finished.");
+      } else {
+        console.log("Incremental repopulation module did not export a main() function.");
+      }
+    } catch (err) {
+      console.error("[WARN] Incremental repopulation task failed:", err?.message || err);
+    }
+  } else {
+    console.log("DISABLE_REPOPULATE is set - skipping repopulation task.");
+  }
 }
 
 if (require.main === module) {

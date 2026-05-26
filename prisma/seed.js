@@ -34,8 +34,7 @@ async function main() {
       lpn: 'LPN001',
       sku: 'SKU-A',
       orderId: 'CUST-ORD-001',
-      returnReason: 'Damaged',
-      condition: null,
+      reason: 'Damaged',
     },
   });
 
@@ -44,8 +43,7 @@ async function main() {
       lpn: 'LPN002',
       sku: 'SKU-B',
       orderId: 'CUST-ORD-001',
-      returnReason: 'Wrong Item',
-      condition: null,
+      reason: 'Wrong Item',
     },
   });
 

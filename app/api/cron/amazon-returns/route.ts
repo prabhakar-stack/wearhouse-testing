@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import * as amazonRawReports from "../../../../scripts/fetch_amz_raw_reports.js";
+import { runAmazonReturnsJob } from "@/lib/cron";
 
 export const runtime = "nodejs";
-
-const runAmazonRawSync = amazonRawReports.main as () => Promise<void>;
 
 export async function GET(req: Request) {
   try {
@@ -14,7 +12,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await runAmazonRawSync();
+    await runAmazonReturnsJob();
     return NextResponse.json({
       success: true,
       message: "Amazon raw report fetch and sync completed",
