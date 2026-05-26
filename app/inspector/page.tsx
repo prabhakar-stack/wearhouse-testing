@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
@@ -19,6 +19,9 @@ import {
   Zap,
   TrendingUp,
   Check,
+  Bell,
+  ChevronDown,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -562,6 +565,13 @@ function InspectorDashboard({ role }: { role: string }) {
     "home" | "takeover" | "inspect" | "profile" | "ledger"
   >("home");
   const [userData, setUserData] = useState<any>(null);
+  const [alertCount, setAlertCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
+  const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolutionText, setResolutionText] = useState('');
 
   useEffect(() => {
     fetch("/api/users/me")
@@ -572,8 +582,48 @@ function InspectorDashboard({ role }: { role: string }) {
       .catch(console.error);
   }, []);
 
+  const fetchAlerts = useCallback(() => {
+    fetch('/api/alerts')
+      .then(r => r.json())
+      .then(d => {
+        if (d.alerts) {
+          setAlerts(d.alerts);
+          setAlertCount(d.alerts.length);
+        }
+        if (d.sopMap) setSopMap(d.sopMap);
+      })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    fetchAlerts();
+    const iv = setInterval(fetchAlerts, 10000);
+    return () => clearInterval(iv);
+  }, [fetchAlerts]);
+
+  const handleResolve = async (alertId: string) => {
+    if (!resolutionText.trim()) return;
+    setResolvingId(alertId);
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId, resolution: resolutionText }),
+      });
+      if (res.ok) {
+        setResolutionText('');
+        setActiveSopAlertId(null);
+        fetchAlerts();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-white text-[#313079] select-none overscroll-none font-sans overflow-hidden border-4 border-[#313079]/10">
+    <div className="flex flex-col h-screen bg-white text-[#313079] select-none overscroll-none font-sans overflow-hidden border-4 border-[#313079]/10 relative">
       <header className="p-4 md:p-6 border-b border-[#313079]/10 shrink-0 bg-white shadow-sm z-20 flex items-center justify-between">
         <div className="flex items-center">
           {activeTab !== "home" && (
@@ -600,15 +650,111 @@ function InspectorDashboard({ role }: { role: string }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-6">
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)} 
+            className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-[#FF6700]'}`}
+            title="Notifications & Alerts"
+          >
+            <Bell size={26} />
+            {alertCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
+                {alertCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setActiveTab("profile")}
             className={`hover:text-[#313079] transition-colors ${activeTab === "profile" ? "text-[#313079]" : "text-[#FF6700]"}`}
+            title="Profile"
           >
-            <User size={28} />
+            <User size={26} />
           </button>
         </div>
       </header>
+
+      {showNotifications && (
+        <div className="absolute right-4 top-16 md:top-20 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] flex flex-col max-h-[500px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
+            <div className="flex items-center space-x-2">
+              <Bell className="text-[#FF6700]" size={16} />
+              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">Active Alerts</span>
+              {alerts.length > 0 && (
+                <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">{alerts.length}</span>
+              )}
+            </div>
+            <button onClick={() => { setShowNotifications(false); setActiveSopAlertId(null); }} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+              <X size={16} />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar max-h-[440px] bg-slate-50/30">
+            {alerts.length === 0 ? (
+              <div className="text-center py-12 flex flex-col items-center">
+                <CheckCircle2 size={36} className="text-green-500 mb-2 opacity-50" />
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">All Clear — No Pending Alerts</p>
+              </div>
+            ) : (
+              alerts.map(alert => {
+                const isSopOpen = activeSopAlertId === alert.id;
+                const steps = sopMap[alert.type] || [];
+                return (
+                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-2.5 relative pl-4 text-left">
+                    <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
+                    <div className="flex justify-between items-start">
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
+                          {alert.level} - {alert.type}
+                        </span>
+                        <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-normal">{alert.description}</p>
+                      </div>
+                      <button 
+                        onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
+                        className="text-[9px] text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-wider ml-2 shrink-0 border border-[#FF6700]/20 rounded-md px-2 py-0.5"
+                      >
+                        {isSopOpen ? 'Close' : 'SOP'}
+                      </button>
+                    </div>
+
+                    {isSopOpen && (
+                      <div className="mt-2 pt-2 border-t border-slate-100 space-y-3 animate-in fade-in duration-200">
+                        <div className="space-y-1">
+                          <p className="text-[8px] font-black uppercase tracking-wider text-[#FF6700]">SOP Steps:</p>
+                          <ul className="space-y-1">
+                            {steps.map((step: any, idx: number) => (
+                              <li key={step.id || idx} className="text-[10px] text-[#313079]/90 font-medium flex items-start space-x-1.5">
+                                <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
+                                <span className="leading-snug">{step.instruction}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="flex space-x-1.5 items-center pt-1 border-t border-slate-50">
+                          <input 
+                            type="text" 
+                            placeholder="RESOLVE NOTES" 
+                            value={resolutionText}
+                            onChange={e => setResolutionText(e.target.value)}
+                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] uppercase font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
+                          />
+                          <button 
+                            onClick={() => handleResolve(alert.id)}
+                            disabled={!resolutionText.trim() || resolvingId === alert.id}
+                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 text-[9px] font-black uppercase rounded-md"
+                          >
+                            {resolvingId === alert.id ? '...' : 'Resolve'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 relative overflow-y-auto custom-scrollbar bg-[#FF6700]/5">
         {activeTab === "home" && (
@@ -2656,6 +2802,149 @@ function InspectTab({ userId }: { userId?: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Notifications Tab ────────────────────────────────────────────────────────
+function NotificationsTab() {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
+  const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolutionText, setResolutionText] = useState('');
+
+  const fetchAlerts = useCallback(() => {
+    fetch('/api/alerts')
+      .then(r => r.json())
+      .then(d => {
+        if (d.alerts) setAlerts(d.alerts);
+        if (d.sopMap) setSopMap(d.sopMap);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchAlerts();
+    const iv = setInterval(fetchAlerts, 10000);
+    return () => clearInterval(iv);
+  }, [fetchAlerts]);
+
+  const handleResolve = async (alertId: string) => {
+    if (!resolutionText.trim()) return;
+    setResolvingId(alertId);
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId, resolution: resolutionText }),
+      });
+      if (res.ok) {
+        setResolutionText('');
+        setActiveSopAlertId(null);
+        fetchAlerts();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto pb-10 pt-6 px-4">
+      <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">Active Alerts</h2>
+        <span className="bg-white border border-[#FF6700]/20 text-[#FF6700] px-3 py-1 font-mono text-xs rounded-full shadow-sm font-bold">{alerts.length} ALERTS</span>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">Loading Alerts...</div>
+      ) : alerts.length === 0 ? (
+        <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-xl">
+          <CheckCircle2 size={48} className="mx-auto text-green-500 mb-4 opacity-50" />
+          <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">All Systems Normal</h3>
+          <p className="text-xs text-[#313079]/60 mt-1 uppercase tracking-wider">No pending notifications</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {alerts.map((alert) => {
+            const isSopOpen = activeSopAlertId === alert.id;
+            const steps = sopMap[alert.type] || [];
+
+            return (
+              <div key={alert.id} className={`bg-white border ${alert.level === 'L4' || alert.level === 'L3' ? 'border-red-300' : 'border-[#313079]/10'} p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm`}>
+                <div className={`absolute inset-y-0 left-0 w-1.5 ${alert.level === 'L4' || alert.level === 'L3' ? 'bg-red-500 animate-pulse' : 'bg-[#FF6700]'}`} />
+                <div className="flex justify-between items-start pl-3">
+                  <div>
+                    <span className={`inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded ${
+                      alert.level === 'L4' ? 'bg-red-100 text-red-700' :
+                      alert.level === 'L3' ? 'bg-red-50 text-red-600' :
+                      alert.level === 'L2' ? 'bg-orange-100 text-orange-700' :
+                      'bg-slate-100 text-slate-700'
+                    }`}>
+                      {alert.level} - {alert.type}
+                    </span>
+                    <h4 className="font-bold text-[#313079] mt-1 text-sm">{alert.title}</h4>
+                    <p className="text-xs text-[#313079]/70 mt-1">{alert.description}</p>
+                    {alert.manifest?.trackingId && (
+                      <p className="text-[10px] font-mono text-slate-400 mt-2 uppercase">Tracking: {alert.manifest.trackingId}</p>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
+                    className="text-xs text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-widest px-3 py-1 border border-[#FF6700]/20 rounded-lg hover:bg-[#FF6700]/5 transition-all"
+                  >
+                    {isSopOpen ? 'Close SOP' : 'View SOP'}
+                  </button>
+                </div>
+
+                {isSopOpen && (
+                  <div className="mt-3 pl-3 pt-3 border-t border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">Standard Operating Procedure (SOP):</p>
+                      <ul className="space-y-1.5">
+                        {steps.map((step: any, idx: number) => (
+                          <li key={step.id || idx} className="text-xs text-[#313079]/90 font-medium flex items-start space-x-2">
+                            <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
+                            <span>{step.instruction}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-slate-50">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resolve Alert</p>
+                      <div className="flex space-x-2">
+                        <input 
+                          type="text" 
+                          placeholder="ENTER RESOLUTION DETAILS" 
+                          value={resolutionText}
+                          onChange={e => setResolutionText(e.target.value)}
+                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs uppercase tracking-widest font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
+                        />
+                        <button 
+                          onClick={() => handleResolve(alert.id)}
+                          disabled={!resolutionText.trim() || resolvingId === alert.id}
+                          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg flex items-center justify-center min-w-[80px]"
+                        >
+                          {resolvingId === alert.id ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            'Resolve'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

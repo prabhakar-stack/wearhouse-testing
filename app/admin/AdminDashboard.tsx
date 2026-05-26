@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, TrendingUp, Calendar } from 'lucide-react';
 import Link from 'next/link';
@@ -105,6 +105,12 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
+  const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolutionText, setResolutionText] = useState('');
 
   useEffect(() => {
     fetch('/api/users/me')
@@ -113,23 +119,51 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
       .catch(() => {});
   }, []);
 
-  const displayName = userData?.name || (name !== email ? name : '') || email;
+  const displayName = userData?.name || (name !== email ? name : '') || 'Admin';
   const isEmail = displayName.includes('@');
   const initials = isEmail
     ? displayName.slice(0, 2).toUpperCase()
     : displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
-  // Fetch alert count for badge
-  useEffect(() => {
-    const fetchCount = () => {
-      fetch('/api/alerts').then(r => r.json()).then(d => {
-        if (d.counts) setAlertCount(d.counts.total || 0);
-      }).catch(() => {});
-    };
-    fetchCount();
-    const iv = setInterval(fetchCount, 30000);
-    return () => clearInterval(iv);
+  const fetchAlerts = useCallback(() => {
+    fetch('/api/alerts')
+      .then(r => r.json())
+      .then(d => {
+        if (d.alerts) {
+          setAlerts(d.alerts);
+          setAlertCount(d.alerts.length);
+        }
+        if (d.sopMap) setSopMap(d.sopMap);
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchAlerts();
+    const iv = setInterval(fetchAlerts, 10000);
+    return () => clearInterval(iv);
+  }, [fetchAlerts]);
+
+  const handleResolveAlert = async (alertId: string) => {
+    if (!resolutionText.trim()) return;
+    setResolvingId(alertId);
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId, resolution: resolutionText }),
+      });
+      if (res.ok) {
+        setResolutionText('');
+        setActiveSopAlertId(null);
+        fetchAlerts();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   return (
     <div className="h-screen w-screen bg-white text-[#313079] font-sans flex flex-col lg:flex-row overflow-hidden relative">
@@ -142,6 +176,89 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
         />
       )}
 
+      {showNotifications && (
+        <div className="absolute right-4 top-16 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] flex flex-col max-h-[500px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
+            <div className="flex items-center space-x-2">
+              <Bell className="text-[#FF6700]" size={16} />
+              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">Active Alerts</span>
+              {alerts.length > 0 && (
+                <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">{alerts.length}</span>
+              )}
+            </div>
+            <button onClick={() => { setShowNotifications(false); setActiveSopAlertId(null); }} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+              <X size={16} />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar max-h-[440px] bg-slate-50/30">
+            {alerts.length === 0 ? (
+              <div className="text-center py-12 flex flex-col items-center">
+                <CheckCircle2 size={36} className="text-green-500 mb-2 opacity-50" />
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">All Clear — No Pending Alerts</p>
+              </div>
+            ) : (
+              alerts.map(alert => {
+                const isSopOpen = activeSopAlertId === alert.id;
+                const steps = sopMap[alert.type] || [];
+                return (
+                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-2.5 relative pl-4 text-left">
+                    <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
+                    <div className="flex justify-between items-start">
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
+                          {alert.level} - {alert.type}
+                        </span>
+                        <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-normal">{alert.description}</p>
+                      </div>
+                      <button 
+                        onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
+                        className="text-[9px] text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-wider ml-2 shrink-0 border border-[#FF6700]/20 rounded-md px-2 py-0.5"
+                      >
+                        {isSopOpen ? 'Close' : 'SOP'}
+                      </button>
+                    </div>
+
+                    {isSopOpen && (
+                      <div className="mt-2 pt-2 border-t border-slate-100 space-y-3 animate-in fade-in duration-200">
+                        <div className="space-y-1">
+                          <p className="text-[8px] font-black uppercase tracking-wider text-[#FF6700]">SOP Steps:</p>
+                          <ul className="space-y-1">
+                            {steps.map((step: any, idx: number) => (
+                              <li key={step.id || idx} className="text-[10px] text-[#313079]/90 font-medium flex items-start space-x-1.5">
+                                <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
+                                <span className="leading-snug">{step.instruction}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="flex space-x-1.5 items-center pt-1 border-t border-[#313079]/10">
+                          <input 
+                            type="text" 
+                            placeholder="RESOLVE NOTES" 
+                            value={resolutionText}
+                            onChange={e => setResolutionText(e.target.value)}
+                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] uppercase font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
+                          />
+                          <button 
+                            onClick={() => handleResolveAlert(alert.id)}
+                            disabled={!resolutionText.trim() || resolvingId === alert.id}
+                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 text-[9px] font-black uppercase rounded-md"
+                          >
+                            {resolvingId === alert.id ? '...' : 'Resolve'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Mobile Top Header */}
       <header className="lg:hidden bg-black text-white shrink-0 shadow-lg z-20 flex items-center justify-between px-6 h-14 border-b border-white/10 w-full">
         <div className="flex items-center space-x-3">
@@ -149,17 +266,31 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
             <ShieldAlert className="text-white" size={16} />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none truncate max-w-[160px]" title={displayName}>{displayName}</h1>
+            <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none truncate max-w-[120px]" title={displayName}>{displayName}</h1>
             <p className="text-[#FF6700] text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5">{role.replace(/_/g, ' ')}</p>
           </div>
         </div>
         
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-          className="p-1 text-white/70 hover:text-white focus:outline-none"
-        >
-          <Menu size={22} />
-        </button>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)} 
+            className={`relative p-1 hover:text-white transition-colors ${showNotifications ? 'text-white' : 'text-slate-400'}`}
+            title="Notifications & Alerts"
+          >
+            <Bell size={22} />
+            {alertCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-black animate-pulse">
+                {alertCount}
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            className="p-1 text-white/70 hover:text-white focus:outline-none"
+          >
+            <Menu size={22} />
+          </button>
+        </div>
       </header>
 
       {/* Mobile Sidebar Backdrop */}
@@ -254,11 +385,51 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden relative bg-slate-50 p-6">
-        <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
-          {activeTab === 'users'    && <UsersTab role={role} />}
-          {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
-          {activeTab === 'claims'   && <ClaimsTab />}
+      <main className="flex-1 overflow-hidden relative bg-slate-50 flex flex-col">
+        {/* Main Content Top Bar (Desktop only) */}
+        <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200 shrink-0">
+          <div>
+            <h2 className="text-lg font-black uppercase tracking-wider text-[#313079]">
+              {activeTab === 'users' ? 'User Directory' : activeTab === 'claims' ? 'Claims Staging' : 'Operational Alerts'}
+            </h2>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
+              Returns Management App &bull; {role.replace(/_/g, ' ')}
+            </p>
+          </div>
+          
+          <div className="flex items-center space-x-6">
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)} 
+              className={`relative p-1.5 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-slate-400'}`}
+              title="Alerts Center"
+            >
+              <Bell size={24} />
+              {alertCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
+                  {alertCount}
+                </span>
+              )}
+            </button>
+            
+            <button 
+              onClick={() => setShowProfile(true)} 
+              className="flex items-center space-x-2.5 p-1 group border-l border-slate-200 pl-4"
+              title="Profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black group-hover:scale-105 transition-transform duration-300">
+                {initials}
+              </div>
+              <span className="text-xs font-bold text-slate-700 group-hover:text-[#313079] transition-colors">{displayName}</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 p-6 relative overflow-hidden">
+          <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
+            {activeTab === 'users'    && <UsersTab role={role} />}
+            {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
+            {activeTab === 'claims'   && <ClaimsTab />}
+          </div>
         </div>
       </main>
 

@@ -24,6 +24,11 @@ export async function GET(req: NextRequest) {
     });
 
     if (manifest) {
+      if (manifest.status === 'AT_DOCK') {
+        return NextResponse.json({
+          error: 'This package has already been received at the dock and is visible in the Handover Ledger.'
+        }, { status: 400 });
+      }
       const marketplace = manifest.orders?.[0]?.marketplace || 'AMAZON';
       return NextResponse.json({ success: true, marketplace });
     }

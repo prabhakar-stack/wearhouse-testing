@@ -48,7 +48,7 @@ const DEFAULT_SOP_STEPS: Record<string, string[]> = {
 export async function GET(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
-    if (!role || !['ADMIN', 'SUPER_ACCESS'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const showResolved = searchParams.get('resolved') === 'true';
 
     // Determine which levels this role can see
-    const visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : ADMIN_VISIBLE_LEVELS;
+    const visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : role === 'RECEIVER' ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
 
     const alerts = await prisma.alert.findMany({
       where: {
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
     const userId = req.headers.get('x-user-id');
-    if (!role || !['ADMIN', 'SUPER_ACCESS'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
