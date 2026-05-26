@@ -135,7 +135,6 @@ model Reimbursement {
   resolvedAt              DateTime?
 }
 
-
 model Evidence {
   id              String       @id @default(uuid())
   lpn             String       @unique
@@ -178,6 +177,10 @@ model ItemStatus {
   lpn          String   @id
   status       String   // "GOOD" or "RECOVERY"
   recoveryType String?  // "barcode not clear" or "product packaging box replacement required"
+  // New fields for storing drive links and order reference
+  orderId      String?  // orderPlatformId or internal order identifier
+  lpnDriveLink String?  // per‑LPN Google Drive folder URL (folder named after the LPN)
+  orderDriveLink String? // shared order‑level Google Drive folder URL
   createdAt    DateTime @default(now())
 }
 
@@ -190,7 +193,6 @@ model MissingItem {
 
   @@unique([orderId, fnsku])
 }
-
 
 // Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {
@@ -293,7 +295,6 @@ model ReturnItem {
   itemPrice           Float?
   @@map("ReturnItem")
 }
-
 
 // Added to prevent dropping table which has views depending on it
 model AMZFiledClaim {

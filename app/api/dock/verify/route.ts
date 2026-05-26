@@ -15,25 +15,35 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing trackingId' }, { status: 400 });
     }
 
-    // 1. Check if Manifest exists
-    const manifest = await prisma.manifest.findUnique({
-      where: { trackingId },
+    // 1. Check if Manifest exists (Case-Insensitive)
+    const manifest = await prisma.manifest.findFirst({
+      where: {
+        trackingId: {
+          equals: trackingId,
+          mode: 'insensitive'
+        }
+      },
       include: {
         orders: { select: { marketplace: true } }
       }
     });
 
     if (manifest) {
+      if (manifest.status === 'AT_DOCK') {
+        return NextResponse.json({
+          error: 'This package has already been received at the dock and is visible in the Handover Ledger.'
+        }, { status: 400 });
+      }
       const marketplace = manifest.orders?.[0]?.marketplace || 'AMAZON';
       return NextResponse.json({ success: true, marketplace });
     }
 
-    // 2. Check if AMZRemovalShipment exists
+    // 2. Check if AMZRemovalShipment exists (Case-Insensitive)
     const removalShipment = await prisma.aMZRemovalShipment.findFirst({
       where: {
         OR: [
-          { trackingNumber: trackingId },
-          { orderId: trackingId }
+          { trackingNumber: { equals: trackingId, mode: 'insensitive' } },
+          { orderId: { equals: trackingId, mode: 'insensitive' } }
         ]
       }
     });
@@ -42,9 +52,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, marketplace: 'AMAZON' });
     }
 
-    // 3. Check if Order exists
-    const order = await prisma.order.findUnique({
-      where: { platformOrderId: trackingId }
+    // 3. Check if Order exists (Case-Insensitive)
+    const order = await prisma.order.findFirst({
+      where: {
+        platformOrderId: {
+          equals: trackingId,
+          mode: 'insensitive'
+        }
+      }
     });
 
     if (order) {

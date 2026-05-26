@@ -12,6 +12,7 @@ async function main() {
     create: {
       email: 'receiver@cubelelo.com',
       role: 'RECEIVER',
+      name: 'Receiver User',
     },
   });
 
@@ -21,6 +22,37 @@ async function main() {
     create: {
       email: 'inspector@cubelelo.com',
       role: 'INSPECTOR',
+      name: 'Inspector User',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'superaccess@cubelelo.com' },
+    update: {},
+    create: {
+      email: 'superaccess@cubelelo.com',
+      role: 'SUPER_ACCESS',
+      name: 'Super Access User',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'admin@cubelelo.com' },
+    update: {},
+    create: {
+      email: 'admin@cubelelo.com',
+      role: 'ADMIN',
+      name: 'Admin User',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'prabhakar16032004@gmail.com' },
+    update: {},
+    create: {
+      email: 'prabhakar16032004@gmail.com',
+      role: 'SUPER_ACCESS',
+      name: 'Prabhakar SuperAdmin',
     },
   });
 

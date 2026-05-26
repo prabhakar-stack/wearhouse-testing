@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   try {
     const role = req.headers.get('x-user-role');
     const userId = req.headers.get('x-user-id');
-    
+
     if (!role || !['INSPECTOR', 'ADMIN', 'SUPER_ACCESS'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 401 });
     }
@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       itemsScanned,
       itemsExpected,
       evidenceUrl,
+      orderDriveLink, // optional order‑level Google Drive folder URL
       lpnConditions, // Record of scanned items: { [lpn]: 'good' | 'bad' | 'recovery' }
       lpnRecoveryTypes, // Record of recovery types: { [lpn]: string }
     } = body;
@@ -62,8 +63,8 @@ export async function POST(req: Request) {
     }
 
     if (manifest.status !== 'IN_INSPECTION') {
-      return NextResponse.json({ 
-        error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.` 
+      return NextResponse.json({
+        error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.`
       }, { status: 400 });
     }
 
@@ -167,24 +168,52 @@ export async function POST(req: Request) {
         const recoveryType = lpnRecoveryTypes && lpnRecoveryTypes[lpn] ? lpnRecoveryTypes[lpn] : null;
 
         if (resolvedCondition === 'GOOD_SELLABLE') {
-          // 1. Upsert 'GOOD' in ItemStatus
+          // 1. Upsert 'GOOD' in ItemStatus with drive links and order reference
+          // @ts-ignore
           await tx.itemStatus.upsert({
-            where: { lpn: normalizedLpnVal },
-            update: { status: 'GOOD', recoveryType: null },
-            create: { lpn: normalizedLpnVal, status: 'GOOD', recoveryType: null }
-          });
-          // 2. Delete Evidence for this LPN if it exists
+              where: { lpn: normalizedLpnVal },
+              update: {
+                status: 'GOOD',
+                recoveryType: null,
+                orderId: orderPlatformId,
+                lpnDriveLink: evidenceUrl || null,
+                orderDriveLink: orderDriveLink || null,
+              } as any,
+              create: {
+                lpn: normalizedLpnVal,
+                status: 'GOOD',
+                recoveryType: null,
+                orderId: orderPlatformId,
+                lpnDriveLink: evidenceUrl || null,
+                orderDriveLink: orderDriveLink || null,
+              } as any,
+            });
+          // 2. Delete any Evidence for this LPN (no longer needed for GOOD)
           await tx.evidence.deleteMany({
             where: { lpn: normalizedLpnVal }
           });
+        // @ts-ignore
         } else if (resolvedCondition === 'PACKAGING_DAMAGED') {
-          // 3. Upsert 'RECOVERY' in ItemStatus
+          // 3. Upsert 'RECOVERY' in ItemStatus with drive links and order reference
           await tx.itemStatus.upsert({
-            where: { lpn: normalizedLpnVal },
-            update: { status: 'RECOVERY', recoveryType: recoveryType },
-            create: { lpn: normalizedLpnVal, status: 'RECOVERY', recoveryType: recoveryType }
-          });
-          // 4. Delete Evidence for this LPN if it exists
+              where: { lpn: normalizedLpnVal },
+              update: {
+                status: 'RECOVERY',
+                recoveryType: recoveryType,
+                orderId: orderPlatformId,
+                lpnDriveLink: evidenceUrl || null,
+                orderDriveLink: orderDriveLink || null,
+              } as any,
+              create: {
+                lpn: normalizedLpnVal,
+                status: 'RECOVERY',
+                recoveryType: recoveryType,
+                orderId: orderPlatformId,
+                lpnDriveLink: evidenceUrl || null,
+                orderDriveLink: orderDriveLink || null,
+              } as any,
+            });
+          // 4. Delete any Evidence for this LPN (not needed for RECOVERY)
           await tx.evidence.deleteMany({
             where: { lpn: normalizedLpnVal }
           });
@@ -300,7 +329,7 @@ export async function POST(req: Request) {
       // Determine manifest status based on return item conditions
       // If ANY item is BAD or RECOVERY, or if we have missing shortage items → CLAIMS_STAGING. Otherwise → INSPECTED
       const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING', 'PACKAGING_DAMAGED'];
-      
+
       let hasClaimableItems = false;
       for (const [lpn, rawCondition] of scannedEntries) {
         const resolvedCondition = resolveCondition(rawCondition);
