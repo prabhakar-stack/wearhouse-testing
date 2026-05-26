@@ -1,4 +1,49 @@
 request-date	order-id	order-source	order-type	service-speed	order-status	last-updated-date	sku	fnsku	disposition	requested-quantity	cancelled-quantity	disposed-quantity	shipped-quantity	in-process-quantity	removal-fee	currency
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1030478	X001HYK0PL	Unsellable	1	0		0	1		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1630201	X001I5SK8D	Unsellable	2	0		0	2		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1280100a	X001LHLHUV	Unsellable	2	0		0	2		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1280600_EAN	X001PEDWDF	Unsellable	2	0		0	2		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1460501	X001VLOAKL	Unsellable	1	0		0	1		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1460520	X001VZFWNB	Unsellable	1	0		0	1		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1140034	X001WWIYG5	Unsellable	1	0		0	1		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1290300	X00239RFKR	Unsellable	1	0		0	1		
+2026-05-22T10:34:12+02:00	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T18:54:42+02:00	1630210	X00262W227	Unsellable	1	0		0	1		
+2026-05-22T10:34:02+02:00	Xq5m8x9932	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T19:44:17+02:00	1460553	X001WPZI9N	Unsellable	1	0		0	1		
+2026-05-22T10:34:02+02:00	Xq5m8x9932	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T19:44:17+02:00	1290300	X00239RFKR	Unsellable	1	0		0	1		
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1150100	X001F0EEEF	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1050200	X001GM0XER	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1030478	X001HYK0PL	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1630201	X001I5SK8D	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1280600_EAN	X001PEDWDF	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1460100_EAN	X001Q0AFBZ	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1460510	X001VW450P	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1290300	X00239RFKR	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1030651	X0025EZ04D	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1120038a	X002CWQDK3	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:52+02:00	Xq5m8x9931	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T12:14:09+02:00	1630222	X002HPDYRF	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:41+02:00	Xq5m8x9930	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T19:31:00+02:00	1040300	X001G4QY25	Unsellable	1	0		0	1		
+2026-05-22T10:33:31+02:00	Xq5m8x9929	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T04:10:07+02:00	1630210	X00262W227	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:31+02:00	Xq5m8x9929	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T04:10:07+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:24+02:00	Xq5m8x9928	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T16:27:11+02:00	1280100a	X001LHLHUV	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:24+02:00	Xq5m8x9928	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T16:27:11+02:00	1160200	X001ZUU6DD	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:24+02:00	Xq5m8x9928	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T16:27:11+02:00	1630222	X002HPDYRF	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1030400	X0012WM1NR	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1030500	X0018CDFL3	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1040300	X001G4QY25	Unsellable	2	0		2	0	23.60	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1050200	X001GM0XER	Unsellable	2	0		2	0	23.60	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1630201	X001I5SK8D	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1460503	X001VFXJDV	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1460501	X001VLOAKL	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	CLB0502	X001VZMI15	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1140034	X001WWIYG5	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1290300	X00239RFKR	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	CLB0525	X00271Q95N	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1030604	X0027JJHDB	Unsellable	3	0		3	0	35.40	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1030300_EAN	X002C88WLZ	Unsellable	2	0		2	0	23.60	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1040400	X002DFU80F	Unsellable	1	0		1	0	11.80	INR
+2026-05-22T10:33:12+02:00	Xq5m8x9927	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T19:59:40+02:00	1630222	X002HPDYRF	Unsellable	3	0		3	0	35.40	INR
 2026-05-15T10:25:32+02:00	Xq5f8o9449	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-19T15:36:32+02:00	1030500	X0018CDFL3	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:25:32+02:00	Xq5f8o9449	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-19T15:36:32+02:00	1120100	X0019BU32H	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:25:32+02:00	Xq5f8o9449	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-19T15:36:32+02:00	1040300	X001G4QY25	Unsellable	1	0		1	0	11.80	INR
@@ -18,13 +63,13 @@ request-date	order-id	order-source	order-type	service-speed	order-status	last-up
 2026-05-15T10:25:12+02:00	Xq5f8o9447	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T14:05:55+02:00	1030604	X0027JJHDB	Unsellable	2	0		2	0	23.60	INR
 2026-05-15T10:25:12+02:00	Xq5f8o9447	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T14:05:55+02:00	TB03001	X002EI0VUX	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:25:12+02:00	Xq5f8o9447	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T14:05:55+02:00	1630223	X002IIXAZ7	Unsellable	1	0		1	0	11.80	INR
-2026-05-15T10:25:01+02:00	Xq5f8o9446	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-15T13:10:01+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	0		0	1		
+2026-05-15T10:25:01+02:00	Xq5f8o9446	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-25T09:10:50+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	1		0	0		
 2026-05-15T10:24:51+02:00	Xq5f8o9445	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T17:56:12+02:00	1020200	X0019BU39P	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:24:51+02:00	Xq5f8o9445	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T17:56:12+02:00	1280100a	X001LHLHUV	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:24:51+02:00	Xq5f8o9445	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-16T17:56:12+02:00	1460553	X001WPZI9N	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:24:41+02:00	Xq5f8o9444	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-21T18:11:55+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
-2026-05-15T10:24:34+02:00	Xq5f8o9443	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-20T18:09:43+02:00	1280100a	X001LHLHUV	Unsellable	1	0		1	0	11.80	INR
-2026-05-15T10:24:23+02:00	Xq5f8o9442	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-15T13:02:54+02:00	TB00005	X002CXONGD	Unsellable	1	0		0	1		
+2026-05-15T10:24:34+02:00	Xq5f8o9443	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-20T18:09:43+02:00	1280100a	X001LHLHUV	Unsellable	1	0		1	0	11.80	INR
+2026-05-15T10:24:23+02:00	Xq5f8o9442	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-05-24T10:04:00+02:00	TB00005	X002CXONGD	Unsellable	1	0		1	0	11.80	INR
 2026-05-15T10:24:11+02:00	Xq5f8o9441	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-18T14:08:54+02:00	1120100	X0019BU32H	Unsellable	2	0		2	0	23.60	INR
 2026-05-15T10:24:11+02:00	Xq5f8o9441	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-18T14:08:54+02:00	1630202	X001ETHG47	Unsellable	2	0		2	0	23.60	INR
 2026-05-15T10:24:11+02:00	Xq5f8o9441	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-18T14:08:54+02:00	1060100	X001G4MZFF	Unsellable	1	0		1	0	11.80	INR
@@ -124,39 +169,3 @@ request-date	order-id	order-source	order-type	service-speed	order-status	last-up
 2026-04-28T10:17:57+02:00	Xq4s8hU608	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-02T16:43:33+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
 2026-04-28T10:17:57+02:00	Xq4s8hU608	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-02T16:43:33+02:00	1030300_EAN	X002C88WLZ	Unsellable	3	0		3	0	35.40	INR
 2026-04-28T10:17:57+02:00	Xq4s8hU608	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-05-02T16:43:33+02:00	TB01004	X002EGWVQH	Unsellable	1	0		1	0	11.80	INR
-2026-04-25T16:59:08+02:00	Fu8lr0PjXV	Automated Stranded Removal System	Return	Standard	Delivered	2026-05-01T10:20:47+02:00	1460528	X001WQ7L83	Sellable	46	37		9	0	106.20	INR
-2026-04-22T10:34:30+02:00	Xq4m8xh504	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-25T10:28:23+02:00	1290300	X00239RFKR	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1120100	X0019BU32H	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1630202	X001ETHG47	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	4001001a	X001VD95XL	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1460501	X001VLOAKL	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1460541	X001YLRGGN	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1460577	X00232KSTT	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:20+02:00	Xq4m8xh503	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-23T14:43:13+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:10+02:00	Xq4m8xh502	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-04-22T20:02:17+02:00	1460553	X001WPZI9N	Unsellable	1	1		0	0		
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1030400	X0012WM1NR	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1630202	X001ETHG47	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1630201	X001I5SK8D	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1030600_EAN	X001ORNFU3	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1460552	X001WQ5O6J	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1160200	X001ZUU6DD	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1460580	X002345VBR	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1630210	X00262W227	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1030603	X0027JJ8K3	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:34:00+02:00	Xq4m8xh501	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T15:39:14+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:50+02:00	Xq4m8xh500	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T19:38:57+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:50+02:00	Xq4m8xh500	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-24T19:38:57+02:00	1630223	X002IIXAZ7	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:39+02:00	Xq4m8xh499	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Completed	2026-04-25T03:12:27+02:00	1030604	X0027JJHDB	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:29+02:00	Xq4m8xh498	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T19:37:44+02:00	1120100	X0019BU32H	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1140022	X001602BQR	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1280100a	X001LHLHUV	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1630300_EAN	X001S3KHTZ	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1260100	X001VFDNDR	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1460501	X001VLOAKL	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1630208	X001WV20T3	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1120039	X0027ISPWL	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1030604	X0027JJHDB	Unsellable	2	0		2	0	23.60	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1030300_EAN	X002C88WLZ	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1040400	X002DFU80F	Unsellable	1	0		1	0	11.80	INR
-2026-04-22T10:33:20+02:00	Xq4m8xh497	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Delivered	2026-04-27T18:26:10+02:00	1630222	X002HPDYRF	Unsellable	1	0		1	0	11.80	INR

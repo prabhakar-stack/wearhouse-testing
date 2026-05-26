@@ -211,6 +211,7 @@ function ExpectedTab() {
             const hoursDiff = (Date.now() - dispatched.getTime()) / 3600000;
             const issueLvl = hoursDiff > 48 ? 4 : hoursDiff > 24 ? 2 : 0;
             const marketplace = item.returnItems?.[0]?.order?.marketplace || 'UNKNOWN';
+            const trackingSnapshot = item.trackingData?.[0] || null;
             return (
               <div key={item.id || idx} className={`bg-white border ${issueLvl > 0 ? 'border-red-300' : 'border-[#313079]/10'} p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm`}>
                 <div className={`absolute inset-y-0 left-0 w-1.5 rounded-l-xl ${issueLvl === 4 ? 'bg-red-500 animate-pulse' : issueLvl > 0 ? 'bg-[#FFF700]' : 'bg-[#FF6700]'}`} />
@@ -218,6 +219,15 @@ function ExpectedTab() {
                   <div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#313079]/60">{marketplace} &bull; {item.trackingId}</p>
                     <p className="font-mono text-base text-[#313079] mt-0.5 font-bold">{item.trackingId}</p>
+                    {trackingSnapshot ? (
+                      <p className="text-[11px] text-[#313079]/70 mt-1 font-medium">
+                        {trackingSnapshot.latestStatus || 'Tracking in progress'}
+                        {trackingSnapshot.latestLocation ? ` · ${trackingSnapshot.latestLocation}` : ''}
+                        {trackingSnapshot.scheduledDelivery ? ` · ETA ${new Date(trackingSnapshot.scheduledDelivery).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-[#313079]/50 mt-1 font-medium">Tracking data will refresh hourly for distant ETAs.</p>
+                    )}
                   </div>
                   <div>
                     {issueLvl === 4 ? <span className="bg-red-50 text-red-600 px-2 py-1 text-xs font-bold uppercase border border-red-200 rounded-full">L4 ALERT</span>

@@ -1,0 +1,108 @@
+{
+  "Checkpoints": [
+    {
+      "Time": "19:47",
+      "Date": "18-May-2026",
+      "Location": "Raipur Warehouse",
+      "Activity": "Shipment Delivered",
+      "CourierName": "Bluedart",
+      "CheckpointState": "delivered"
+    },
+    {
+      "Time": "13:20",
+      "Date": "18-May-2026",
+      "Location": "Raipur Warehouse",
+      "Activity": "Shipment Out For Delivery",
+      "CourierName": "Bluedart",
+      "CheckpointState": "outfordelivery"
+    },
+    {
+      "Time": "02:18",
+      "Date": "17-May-2026",
+      "Location": "Raipur Warehouse",
+      "Activity": "Shipment Arrived",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "00:06",
+      "Date": "17-May-2026",
+      "Location": "Raipur Warehouse",
+      "Activity": "Paper Work Inscan",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "15:00",
+      "Date": "16-May-2026",
+      "Location": "Raipur Warehouse",
+      "Activity": "Network Delay, Will Impact Delivery",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "09:24",
+      "Date": "14-May-2026",
+      "Location": "Bhiwandi New Warehou",
+      "Activity": "Shipment Further Connected",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "22:48",
+      "Date": "12-May-2026",
+      "Location": "Bhiwandi New Warehou",
+      "Activity": "Shipment Arrived",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "22:21",
+      "Date": "12-May-2026",
+      "Location": "Bhiwandi New Warehou",
+      "Activity": "Paper Work Inscan",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "21:08",
+      "Date": "12-May-2026",
+      "Location": "Ovali Warehouse",
+      "Activity": "Shipment Further Connected",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "20:42",
+      "Date": "12-May-2026",
+      "Location": "Ovali Warehouse",
+      "Activity": "Shipment Arrived",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "16:13",
+      "Date": "12-May-2026",
+      "Location": "Ovali Etail Hub",
+      "Activity": "Shipment Picked Up",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    },
+    {
+      "Time": "16:55",
+      "Date": "11-May-2026",
+      "Location": "Ovali Etail Hub",
+      "Activity": "Pickup Employee Is Out To P/U Shipment",
+      "CourierName": "Bluedart",
+      "CheckpointState": "intransit"
+    }
+  ],
+  "CourierSlug": "blue-dart-courier",
+  "ExecutionTime": "",
+  "FetchTime": "1.4915478229522705",
+  "Result": "success",
+  "AdditionalInfo": "Scheduled Delivery: 18-May-2026",
+  "MostRecentStatus": "Delivered",
+  "TrackingNumber": "52102114116",
+  "ShipmentState": "delivered"
+}
