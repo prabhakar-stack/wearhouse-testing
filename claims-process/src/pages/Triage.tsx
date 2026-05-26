@@ -62,7 +62,7 @@ Order ID: ${claim.orderId}
 SKU: ${claim.sku}
 Issues:
 ${issuesText}
-Evidence: ${claim.driveLink || 'N/A'}
+Evidence: ${claim.drive_link || 'N/A'}
     `.trim();
     
     navigator.clipboard.writeText(bundle);
@@ -91,8 +91,7 @@ Evidence: ${claim.driveLink || 'N/A'}
           qty: (c as any).qty || 1, // Use backend qty if available, else 1
           type: c.type, 
           condition: c.condition, 
-          reason: c.reason, 
-          reasonDescription: c.reasonDescription 
+          reason: c.reason,
         }] 
       } as GroupedClaim;
     } else {
@@ -112,7 +111,6 @@ Evidence: ${claim.driveLink || 'N/A'}
           type: c.type, 
           condition: c.condition, 
           reason: c.reason, 
-          reasonDescription: c.reasonDescription 
         });
       }
     }
@@ -267,9 +265,9 @@ Evidence: ${claim.driveLink || 'N/A'}
 
                   {/* C4: Drive Link */}
                   <td className="px-4 py-4">
-                    {claim.driveLink ? (
+                    {claim.drive_link ? (
                       <a 
-                        href={claim.driveLink} 
+                        href={claim.drive_link} 
                         target="_blank" 
                         rel="noreferrer"
                         className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-bold text-[9px] transition-colors"
