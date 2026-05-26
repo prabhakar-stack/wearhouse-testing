@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { createRequire } from "module";
-import path from "path";
+import * as amazonRawReports from "../../../../scripts/fetch_amz_raw_reports.js";
 
 export const runtime = "nodejs";
 
-const require = createRequire(import.meta.url);
-const {
-  main: runAmazonRawSync,
-} = require(path.join(process.cwd(), "scripts", "fetch_amz_raw_reports.cjs"));
+const runAmazonRawSync = amazonRawReports.main as () => Promise<void>;
 
 export async function GET(req: Request) {
   try {

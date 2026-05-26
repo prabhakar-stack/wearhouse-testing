@@ -65,7 +65,9 @@ export async function GET(req: Request) {
       select: {
         id: true,
         trackingId: true,
+        removalOrderId: true,
         courierName: true,
+        status: true,
         expectedDate: true,
         orders: {
           select: {
@@ -176,7 +178,7 @@ export async function GET(req: Request) {
               fetchedAt: new Date(snapshot.fetchedAt),
             },
             create: {
-              trackingNumber: order.trackingNumber,
+              trackingNumber,
               manifestId: manifest.id,
               courierName: manifest.courierName,
               courierSlug: snapshot.courierSlug,
