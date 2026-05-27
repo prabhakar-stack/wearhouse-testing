@@ -5,7 +5,24 @@ import * as jose from "jose";
 const JWT_SECRET =
   process.env.JWT_SECRET || "fallback_secret_for_dev_only_change_in_prod";
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const JWT_SECRET_CONFIGURED = !!process.env.JWT_SECRET;
+
 export async function middleware(request: NextRequest) {
+  // Fail-fast in production if JWT_SECRET is not configured.
+  // This prevents a misconfigured deployment from silently accepting any token
+  // signed with the hardcoded fallback secret.
+  if (IS_PRODUCTION && !JWT_SECRET_CONFIGURED) {
+    console.error(
+      "[SECURITY CRITICAL] JWT_SECRET environment variable is not set. "
+      + "All requests are being rejected to prevent insecure operation."
+    );
+    return NextResponse.json(
+      { error: "Server misconfiguration: authentication service unavailable" },
+      { status: 500 },
+    );
+  }
+
   const session = request.cookies.get("session")?.value;
   const { pathname } = request.nextUrl;
 

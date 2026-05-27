@@ -16,7 +16,7 @@
     "postbuild": "prisma migrate deploy",
     "postinstall": "prisma generate",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
-    "sync:amazon-live": "node scripts/fetch_returns_to_supabase.js"
+    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

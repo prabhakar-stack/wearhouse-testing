@@ -7,9 +7,16 @@ const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const client = new OAuth2Client(clientId);
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_dev_only_change_in_prod';
 const isProduction = process.env.NODE_ENV === 'production';
+const JWT_SECRET_CONFIGURED = !!process.env.JWT_SECRET;
 
 export async function POST(req: Request) {
   try {
+    // Fail-fast in production if JWT_SECRET is not configured
+    if (isProduction && !JWT_SECRET_CONFIGURED) {
+      console.error('[SECURITY CRITICAL] JWT_SECRET is not set. Auth requests are being rejected.');
+      return NextResponse.json({ error: 'Server misconfiguration: authentication unavailable' }, { status: 500 });
+    }
+
     const body = await req.json();
     const { credential } = body;
     if (!credential) return NextResponse.json({ error: 'Missing Google credentials token.' }, { status: 400 });

@@ -35,6 +35,7 @@ async function main() {
       sku: 'SKU-A',
       orderId: 'CUST-ORD-001',
       reason: 'Damaged',
+      detailedDisposition: 'DAMAGED',
     },
   });
 
@@ -44,6 +45,7 @@ async function main() {
       sku: 'SKU-B',
       orderId: 'CUST-ORD-001',
       reason: 'Wrong Item',
+      detailedDisposition: 'WRONG_ITEM',
     },
   });
 

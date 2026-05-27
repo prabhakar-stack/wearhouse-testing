@@ -86,27 +86,8 @@ export async function POST(req: NextRequest) {
       });
 
 
-
-      // Dynamically generate ReturnItem records (LPN-level) for expected SKU quantities
-      for (const shipment of removalShipments) {
-        const qty = shipment.shippedQuantity || 1;
-        const skuVal = shipment.sku || 'UNKNOWN_SKU';
-
-        for (let i = 0; i < qty; i++) {
-          const virtualLpn = `LPN-${manifest.trackingId}-${skuVal}-${i}`.toUpperCase();
-
-          const rawReturn = await prisma.aMZCustomerReturn.findFirst({
-            where: {
-              orderId: shipment.orderId,
-              sku: skuVal
-            }
-          });
-
-          const customerOrderId = rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER';
-
-          // ReturnItem upsert removed – data now sourced directly from AMZ_customer_returns
-        }
-      }
+      // Dynamically generate ReturnItem records (LPN-level) is intentionally omitted here.
+      // Data is sourced directly from AMZ_customer_returns table at inspection time.
     }
 
     const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
