@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { runAmazonReturnsJob } from "@/lib/cron";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const expectedToken = `Bearer ${process.env.CRON_SECRET || "secret-cron-token"}`;
-
-    if (authHeader !== expectedToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const authError = requireCronAuth(req);
+    if (authError) {
+      return authError;
     }
 
     await runAmazonReturnsJob();

@@ -1,27 +1,11 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { ALERT_RULE_BY_TYPE } from '@/lib/alertRules';
+import { runEscalationsJob } from '@/lib/cron';
 
-/**
- * GET /api/cron/escalations
- *
- * Daily escalation cron — fires all time-based alerts using the canonical
- * 42-rule registry defined in lib/alertRules.ts. Each alert type maps to a
- * specific rule so dashboard SOPs, resolution validation, and level routing
- * all work correctly.
- *
- * Checks performed:
- *   1. Delivery ETA breach   → DELIVERY_ETA_BREACH_{48H|72H|96H}
- *   2. Receiver→Inspector handshake pending → RECV_INSP_HANDSHAKE_{10AM|12PM|3PM|NEXT_DAY}
- *   3. Claims staging stalled (claim not filed) → INSPECTION_QC_FAILED_{6H|12H|24H}
- */
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
-    const expectedToken = `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`;
-
-    if (authHeader !== expectedToken) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authError = requireCronAuth(req);
+    if (authError) {
+      return authError;
     }
 
     const now = new Date();

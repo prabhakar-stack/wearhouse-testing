@@ -26,3 +26,22 @@ View your app in AI Studio: https://ai.studio/apps/27cbe715-031e-457e-9614-e2343
    `npm run sync:amazon-returns`
 
 The sync pulls the live reports for orders, customer returns, reimbursements, removal orders, and removal shipments.
+
+## cron-job.org
+
+Use cron-job.org to trigger the app's cron endpoints directly.
+
+1. Set `CRON_SECRET` in your deployment environment.
+2. Create one HTTP GET job for each endpoint:
+   - `/api/cron/amazon-returns?secret=<CRON_SECRET>`
+   - `/api/cron/expected-tracking?secret=<CRON_SECRET>`
+   - `/api/cron/escalations?secret=<CRON_SECRET>`
+3. If you prefer headers instead of a query string, send either `Authorization: Bearer <CRON_SECRET>` or `X-Cron-Secret: <CRON_SECRET>`.
+
+Recommended schedules:
+
+1. Amazon returns: every 5 days.
+2. Expected tracking: every hour.
+3. Escalations: every hour.
+
+The shared `/api/cron` endpoint still exists, but cron-job.org works best when you schedule the individual job URLs above.
