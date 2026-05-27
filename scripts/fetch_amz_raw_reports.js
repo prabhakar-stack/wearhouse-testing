@@ -14,6 +14,9 @@ const REMOVAL_ORDERS_REPORT_TYPE =
 const REMOVAL_SHIPMENTS_REPORT_TYPE =
   "GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA";
 
+const REPORT_POLL_INTERVAL_MS = 15000;
+const REPORT_MAX_WAIT_MS = 45000;
+
 // Field definitions mapping database fields to Amazon report headers
 const REMOVAL_ORDER_FIELDS = {
   orderId: { source: "order-id", type: "string", isId: true },
@@ -166,6 +169,8 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
     console.log(`Report created successfully. ID: ${report.reportId}`);
 
     let reportStatus;
+    const startedAt = Date.now();
+
     while (true) {
       reportStatus = await sp.callAPI({
         operation: "getReport",
@@ -184,7 +189,16 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
         break;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 15000));
+      if (Date.now() - startedAt >= REPORT_MAX_WAIT_MS) {
+        console.log(
+          `[WARN] SP-API report ${reportType} stayed in ${reportStatus.processingStatus} for ${Math.round(
+            REPORT_MAX_WAIT_MS / 1000,
+          )}s. Falling back to local file if available.`,
+        );
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, REPORT_POLL_INTERVAL_MS));
     }
 
     if (reportStatus.processingStatus !== "DONE") {
