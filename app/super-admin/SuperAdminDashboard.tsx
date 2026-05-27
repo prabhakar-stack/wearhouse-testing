@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Shield, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Package, TrendingUp, Calendar } from 'lucide-react';
+import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Shield, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 // ─── Profile Modal ────────────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
             </p>
           </div>
           
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center">
             <button 
               onClick={() => setShowNotifications(!showNotifications)} 
               className={`relative p-1.5 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-slate-400'}`}
@@ -369,17 +369,6 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
                   {alertCount}
                 </span>
               )}
-            </button>
-            
-            <button 
-              onClick={() => setShowProfile(true)} 
-              className="flex items-center space-x-2.5 p-1 group border-l border-slate-200 pl-4"
-              title="Profile"
-            >
-              <div className="w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black group-hover:scale-105 transition-transform duration-300">
-                {initials}
-              </div>
-              <span className="text-xs font-bold text-slate-700 group-hover:text-[#313079] transition-colors">{displayName}</span>
             </button>
           </div>
         </header>
@@ -430,6 +419,10 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
   const [name, setName] = useState('');
   const [targetRole, setTargetRole] = useState('ADMIN');
   const [alertLevel, setAlertLevel] = useState('');
+  const [showCreateBlock, setShowCreateBlock] = useState(false);
+  const createBlockRef = useRef<HTMLDivElement>(null);
+  const [deletingUser, setDeletingUser] = useState<any | null>(null);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -502,6 +495,20 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
     }
   };
 
+  const handleToggleCreateBlock = () => {
+    setError('');
+    setSuccess('');
+    setShowCreateBlock(prev => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => {
+          createBlockRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+      return next;
+    });
+  };
+
   const handleCreate = async (e: any) => {
     e.preventDefault();
     setError(''); setSuccess('');
@@ -515,20 +522,30 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
       if (!res.ok) throw new Error(data.error);
       setSuccess('User created successfully.');
       setEmail(''); setName(''); setAlertLevel('');
+      setTimeout(() => setShowCreateBlock(false), 1000);
       fetchUsers();
     } catch (err: any) {
       setError(err.message);
     }
   };
 
-  const handleDelete = async (id: string, userEmail: string) => {
-    if (!confirm(`Are you sure you want to completely remove access for ${userEmail}?`)) return;
+  const handleDelete = (user: any) => {
+    setError(''); setSuccess('');
+    setDeletingUser(user);
+    setDeleteConfirmEmail('');
+  };
+
+  const confirmDelete = async (id: string) => {
     setError(''); setSuccess('');
     try {
       const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSuccess('User deleted successfully.');
+      setTimeout(() => {
+        setDeletingUser(null);
+        setDeleteConfirmEmail('');
+      }, 1000);
       fetchUsers();
     } catch (err: any) {
       setError(err.message);
@@ -537,156 +554,184 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
 
   return (
     <div className="flex flex-col h-full p-8 space-y-8 overflow-y-auto custom-scrollbar">
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-end shrink-0 border-b border-slate-200 pb-4">
         <div>
            <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">User Management</h2>
            <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">Manage personnel access and roles globally.</p>
         </div>
+        <button 
+          onClick={handleToggleCreateBlock} 
+          className="bg-black hover:bg-[#FF6700] hover:text-white text-[#FF6700] border border-[#FF6700] px-4 py-2.5 text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md flex items-center gap-2"
+        >
+          <span>+ Authorize Personnel</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 border border-slate-200 bg-slate-50 p-6 h-fit rounded-md shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-[#FF6700] mb-6">Authorize Personnel</h3>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
-              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} 
-                className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
-              <input type="text" required value={name} onChange={e => setName(e.target.value)}
-                placeholder="e.g. Ravi Kumar"
-                className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
-              <select value={targetRole} onChange={e => setTargetRole(e.target.value)}
-                className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
-                {availableRoles.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Alert Level Config (Optional)</label>
-              <select value={alertLevel} onChange={e => setAlertLevel(e.target.value)}
-                className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
-                <option value="">None (Default)</option>
-                <option value="L1">L1</option>
-                <option value="L2">L2</option>
-                <option value="L3">L3</option>
-                <option value="L4">L4</option>
-              </select>
-            </div>
-            {error && <p className="text-xs text-red-600 mt-2 font-medium">{error}</p>}
-            {success && <p className="text-xs text-green-600 mt-2 font-medium">{success}</p>}
-            <button type="submit" className="w-full mt-4 bg-white border border-slate-300 hover:border-[#FF6700] hover:text-[#FF6700] hover:bg-[#FF6700]/5 text-slate-700 px-4 py-3 text-xs uppercase tracking-widest transition-all font-semibold rounded">
-              Grant Access
-            </button>
-          </form>
+      <div className="w-full border border-slate-200 bg-white overflow-hidden flex flex-col rounded-xl shadow-sm">
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-700">Active Personnel Directory</h3>
         </div>
-
-        <div className="lg:col-span-2 border border-slate-200 bg-white overflow-hidden flex flex-col rounded-md shadow-sm">
-          <div className="p-4 border-b border-slate-200 bg-slate-50">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-700">Active Personnel Directory</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Name</th>
-                  <th className="px-6 py-4 font-medium">Email</th>
-                  <th className="px-6 py-4 font-medium">Role</th>
-                  <th className="px-6 py-4 font-medium">Alert Level</th>
-                  <th className="px-6 py-4 font-medium text-right">Items Proc.</th>
-                  <th className="px-6 py-4 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600">
-                {loading ? (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">Loading directory...</td></tr>
-                ) : users.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-800">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-[10px] font-black shrink-0">
-                          {(user.name || user.email).slice(0, 2).toUpperCase()}
-                        </div>
-                        <span>{user.name || <span className="text-slate-400 italic text-xs">No name</span>}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-[11px] text-slate-500">{user.email}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 text-[10px] tracking-wide uppercase font-bold rounded-sm border ${
-                        user.role === 'SUPER_ACCESS' 
-                          ? 'bg-black border-black text-[#FF6700]'
-                          : user.role === 'ADMIN'
-                          ? 'bg-slate-50 border-slate-200 text-[#313079]'
-                          : 'bg-[#FF6700]/5 border-[#FF6700]/10 text-[#FF6700]'
-                      }`}>
-                        {user.role.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <select 
-                        value={user.alertLevel || ''} 
-                        onChange={async (e) => {
-                          const val = e.target.value;
-                          try {
-                            const res = await fetch('/api/users', {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ id: user.id, alertLevel: val || null })
-                            });
-                            if (!res.ok) {
-                              const d = await res.json();
-                              alert(d.error || 'Failed to update alert level');
-                            }
-                            fetchUsers();
-                          } catch (err) {
-                            alert('Network error updating alert level');
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider">
+              <tr>
+                <th className="px-6 py-4 font-medium">Name</th>
+                <th className="px-6 py-4 font-medium">Email</th>
+                <th className="px-6 py-4 font-medium">Role</th>
+                <th className="px-6 py-4 font-medium">Alert Level</th>
+                <th className="px-6 py-4 font-medium text-right">Items Proc.</th>
+                <th className="px-6 py-4 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-600">
+              {loading ? (
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">Loading directory...</td></tr>
+              ) : users.map(user => (
+                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-slate-800">
+                     <div className="flex items-center space-x-3">
+                       <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-[10px] font-black shrink-0">
+                         {(user.name || user.email).slice(0, 2).toUpperCase()}
+                       </div>
+                       <span>{user.name || <span className="text-slate-400 italic text-xs">No name</span>}</span>
+                     </div>
+                  </td>
+                  <td className="px-6 py-4 font-mono text-[11px] text-slate-500">{user.email}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 text-[10px] tracking-wide uppercase font-bold rounded-sm border ${
+                      user.role === 'SUPER_ACCESS' 
+                        ? 'bg-black border-black text-[#FF6700]'
+                        : user.role === 'ADMIN'
+                        ? 'bg-slate-50 border-slate-200 text-[#313079]'
+                        : 'bg-[#FF6700]/5 border-[#FF6700]/10 text-[#FF6700]'
+                    }`}>
+                      {user.role.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <select 
+                      value={user.alertLevel || ''} 
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        try {
+                          const res = await fetch('/api/users', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: user.id, alertLevel: val || null })
+                          });
+                          if (!res.ok) {
+                            const d = await res.json();
+                            alert(d.error || 'Failed to update alert level');
                           }
-                        }}
-                        className="bg-white border border-slate-200 text-slate-800 text-[11px] font-mono px-2 py-1 focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded cursor-pointer"
-                      >
-                        <option value="">None</option>
-                        <option value="L1">L1</option>
-                        <option value="L2">L2</option>
-                        <option value="L3">L3</option>
-                        <option value="L4">L4</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4 text-right font-mono text-xs">{user.itemsProcessed}</td>
-                    <td className="px-6 py-4 text-right font-mono text-xs">
-                      <div className="flex justify-end items-center space-x-3">
-                        {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
-                          <button 
-                            onClick={() => openEditModal(user)} 
-                            className="text-indigo-600 hover:text-indigo-800 uppercase font-bold tracking-widest text-[10px]"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
-                          <button 
-                            onClick={() => handleDelete(user.id, user.email)} 
-                            className="text-red-500 hover:text-red-700 uppercase font-bold tracking-widest text-[10px]"
-                          >
-                            Revoke
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!loading && users.length === 0 && (
-                  <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">No active personnel.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                          fetchUsers();
+                        } catch (err) {
+                          alert('Network error updating alert level');
+                        }
+                      }}
+                      className="bg-white border border-slate-200 text-slate-800 text-[11px] font-mono px-2 py-1 focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded cursor-pointer"
+                    >
+                      <option value="">None</option>
+                      <option value="L1">L1</option>
+                      <option value="L2">L2</option>
+                      <option value="L3">L3</option>
+                      <option value="L4">L4</option>
+                    </select>
+                  </td>
+                  <td className="px-6 py-4 text-right font-mono text-xs">{user.itemsProcessed}</td>
+                  <td className="px-6 py-4 text-right font-mono text-xs">
+                    <div className="flex justify-end items-center space-x-2">
+                      {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
+                        <button 
+                          onClick={() => openEditModal(user)} 
+                          className="flex items-center space-x-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 shadow-sm"
+                        >
+                          <Pencil size={11} />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
+                        <button 
+                          onClick={() => handleDelete(user)} 
+                          className="flex items-center justify-center w-8 h-8 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-200 shadow-sm"
+                          title="Delete User"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && users.length === 0 && (
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">No active personnel.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
       
+      {/* Premium Authorize Personnel Block (Shifted to the bottom) */}
+      {showCreateBlock && (
+        <div 
+          ref={createBlockRef}
+          className="w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden animate-in slide-in-from-bottom duration-300 shrink-0"
+        >
+          <div className="bg-gradient-to-br from-black to-slate-900 p-6 text-white flex justify-between items-center border-b border-black/10">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">Authorize Personnel</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Grant system access and permissions</p>
+            </div>
+            <button onClick={() => setShowCreateBlock(false)} className="text-slate-400 hover:text-white transition-colors">
+              <X size={18} />
+            </button>
+          </div>
+          <form onSubmit={handleCreate} className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} 
+                  placeholder="e.g. employee@company.com"
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
+                <input type="text" required value={name} onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Ravi Kumar"
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
+                <select value={targetRole} onChange={e => setTargetRole(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
+                  {availableRoles.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Alert Level Config (Optional)</label>
+                <select value={alertLevel} onChange={e => setAlertLevel(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
+                  <option value="">None (Default)</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
+                  <option value="L3">L3</option>
+                  <option value="L4">L4</option>
+                </select>
+              </div>
+            </div>
+            {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+            {success && <p className="text-xs text-green-600 font-medium">{success}</p>}
+            <div className="flex justify-end space-x-3 pt-2">
+              <button type="button" onClick={() => setShowCreateBlock(false)} className="border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit" className="bg-[#FF6700] hover:bg-[#FF6700]/90 text-white px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded shadow-sm transition-colors">
+                Grant Access
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Premium Edit User Dialog */}
       {editingUser && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -754,6 +799,70 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Destructive Deletion Dialog with Email Verification */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-br from-red-700 to-red-950 p-6 text-white flex justify-between items-center border-b border-black/10">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-red-200 flex items-center gap-2">
+                  <ShieldAlert size={16} />
+                  <span>Confirm Deletion</span>
+                </h3>
+                <p className="text-[10px] text-red-300 font-bold uppercase mt-0.5 tracking-wider">Irreversible Security Action</p>
+              </div>
+              <button onClick={() => { setDeletingUser(null); setDeleteConfirmEmail(''); }} className="text-red-300 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl">
+                <p className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">Danger Zone Warning</p>
+                <p className="text-xs text-red-650 leading-relaxed">
+                  You are about to permanently revoke system access for <strong className="font-extrabold font-mono text-[11px] bg-red-100 px-1 py-0.5 rounded text-red-800">{deletingUser.email}</strong>. 
+                  All active roles, visual evaluations, and alert configuration links for this account will be erased.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Type the user's email to verify:
+                </label>
+                <input 
+                  type="text" 
+                  value={deleteConfirmEmail} 
+                  onChange={e => setDeleteConfirmEmail(e.target.value)} 
+                  placeholder={deletingUser.email}
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2.5 font-mono text-xs focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none transition-all rounded" 
+                />
+              </div>
+              
+              {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+              {success && <p className="text-xs text-green-600 font-medium">{success}</p>}
+              
+              <div className="flex space-x-3 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setDeletingUser(null); setDeleteConfirmEmail(''); }} 
+                  className="flex-1 border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  disabled={deleteConfirmEmail !== deletingUser.email}
+                  onClick={() => confirmDelete(deletingUser.id)}
+                  className="flex-1 bg-red-600 hover:bg-red-750 text-white disabled:bg-red-400 disabled:opacity-50 px-4 py-2.5 text-xs uppercase tracking-widest font-black rounded shadow-sm transition-all duration-200"
+                >
+                  Revoke Access
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
