@@ -42,21 +42,40 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
     ? resolvedName.slice(0, 2).toUpperCase()
     : resolvedName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
-  // Pre-fetch expected list so marketplace lookup is instant when receiver scans
+  const [expectedCount, setExpectedCount] = useState(0);
+  const [ledgerCount, setLedgerCount] = useState(0);
+
+  // Pre-fetch expected and ledger counts with live stats updates
   useEffect(() => {
-    fetch('/api/dock/expected')
-      .then(r => r.json())
-      .then(d => {
-        if (d.expected) {
-          const map: Record<string, Marketplace> = {};
-          d.expected.forEach((item: any) => {
-            const mp = item.returnItems?.[0]?.order?.marketplace ?? 'AMAZON';
-            map[item.trackingId] = mp;
-          });
-          setTrackingIdMarketplaceMap(map);
-        }
-      })
-      .catch(console.error);
+    const fetchLiveStats = () => {
+      fetch('/api/dock/expected')
+        .then(r => r.json())
+        .then(d => {
+          if (d.expected) {
+            setExpectedCount(d.expected.length);
+            const map: Record<string, Marketplace> = {};
+            d.expected.forEach((item: any) => {
+              const mp = item.returnItems?.[0]?.order?.marketplace ?? 'AMAZON';
+              map[item.trackingId] = mp;
+            });
+            setTrackingIdMarketplaceMap(map);
+          }
+        })
+        .catch(console.error);
+
+      fetch('/api/dock/ledger')
+        .then(r => r.json())
+        .then(d => {
+          if (d.ledger) {
+            setLedgerCount(d.ledger.length);
+          }
+        })
+        .catch(console.error);
+    };
+
+    fetchLiveStats();
+    const iv = setInterval(fetchLiveStats, 5000);
+    return () => clearInterval(iv);
   }, []);
 
   const [alertCount, setAlertCount] = useState(0);
@@ -237,7 +256,12 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
             <button onClick={() => setActiveTab('expected')} className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm">
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">Expected Deliveries</h3>
+                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                  Expected Deliveries
+                  <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                    {expectedCount}
+                  </span>
+                </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">Packages expected today</p>
               </div>
               <FileText size={32} className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10" />
@@ -255,7 +279,12 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
             <button onClick={() => setActiveTab('ledger')} className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm">
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">Handover Ledger</h3>
+                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                  Handover Ledger
+                  <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                    {ledgerCount}
+                  </span>
+                </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">View active custody stack</p>
               </div>
               <Box size={32} className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10" />
@@ -308,7 +337,7 @@ export default function ReceiverDashboard({ userId, role, name, email }: { userI
 
             {(role === 'SUPER_ACCESS' || role === 'ADMIN') && (
               <Link href={role === 'SUPER_ACCESS' ? '/super-admin' : '/admin'} className="w-full flex items-center justify-center py-4 bg-[#FFF700] border-2 border-black hover:brightness-95 transition-all text-[#313079] font-extrabold uppercase tracking-widest text-xs rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-                Return to Command Center
+                {role === 'SUPER_ACCESS' ? 'Switch to Super Access Role' : 'Switch to Admin Role'}
               </Link>
             )}
             <button onClick={async () => { localStorage.removeItem('userRole'); try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {} router.push('/login'); }} className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl">

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -60,7 +61,7 @@ async function testAll() {
     const seedRes = await fetch(`${BASE_URL}/api/alerts/seed`, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer secret-cron-token'
+        'Authorization': `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`
       }
     });
     if (!seedRes.ok) {
@@ -114,6 +115,137 @@ async function testAll() {
     const superAlertLevels = superData.alerts.map(a => a.level);
     console.log(`👀 Super Access sees alert levels: ${JSON.stringify([...new Set(superAlertLevels)])}`);
     console.log('✅ RBAC check passed for Super Access.\n');
+
+    // ----------------------------------------------------
+    // TEST 2.5: ROLE-BASED PERSONNEL SORTING & EDIT GATES
+    // ----------------------------------------------------
+    console.log('--- Test 2.5: Role-Based Personnel Sorting & Edit Gates ---');
+    
+    // 1. Fetch users and verify sorting (role hierarchy first, then createdAt desc)
+    const listRes = await fetch(`${BASE_URL}/api/users`, {
+      headers: { 'Cookie': `session=${cookies['ADMIN']}` }
+    });
+    if (!listRes.ok) throw new Error('Failed to fetch active directory');
+    const { users } = await listRes.json();
+    console.log(`Fetched ${users.length} users from directory.`);
+
+    // Verify ordering
+    const roleOrder = { SUPER_ACCESS: 0, ADMIN: 1, RECEIVER: 2, INSPECTOR: 3, CLAIMS_SPECIALIST: 4 };
+    for (let i = 0; i < users.length - 1; i++) {
+      const u1 = users[i];
+      const u2 = users[i + 1];
+      const o1 = roleOrder[u1.role] ?? 99;
+      const o2 = roleOrder[u2.role] ?? 99;
+      if (o1 > o2) {
+        throw new Error(`❌ SORTING VIOLATION: Role order is incorrect. ${u1.role} came before ${u2.role}`);
+      }
+      if (o1 === o2) {
+        const t1 = new Date(u1.createdAt).getTime();
+        const t2 = new Date(u2.createdAt).getTime();
+        if (t1 < t2) {
+          throw new Error(`❌ SORTING VIOLATION: Within role ${u1.role}, createdAt is not sorted descending.`);
+        }
+      }
+    }
+    console.log('✅ Personnel directory sorting hierarchy verified (Role asc, createdAt desc).');
+
+    // Find test target users
+    const superUser = users.find(u => u.email === 'prabhakar16032004@gmail.com');
+    const adminUser = users.find(u => u.email === 'admin@cubelelo.com');
+    const receiverUser = users.find(u => u.email === 'receiver@cubelelo.com');
+
+    if (!superUser || !adminUser || !receiverUser) {
+      throw new Error('Database is missing required baseline users for test 2.5');
+    }
+
+    // 2. Admin tries to edit Super Access (Should be BLOCKED)
+    console.log('🔄 Admin attempting to edit Super-Access user details...');
+    const adminEditSuperRes = await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['ADMIN']}` },
+      body: JSON.stringify({
+        id: superUser.id,
+        name: 'Hacked SuperAccess',
+      })
+    });
+    if (adminEditSuperRes.status === 400) {
+      const err = await adminEditSuperRes.json();
+      console.log(`✅ Success: Admin was BLOCKED from editing Super-Access. Error: "${err.error}"`);
+    } else {
+      throw new Error(`❌ Failure: Expected Admin editing Super-Access to fail with 400, but got status ${adminEditSuperRes.status}`);
+    }
+
+    // 3. Admin tries to edit Receiver (Should SUCCEED)
+    console.log('🔄 Admin attempting to edit Receiver user details...');
+    const originalName = receiverUser.name;
+    const adminEditRecRes = await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['ADMIN']}` },
+      body: JSON.stringify({
+        id: receiverUser.id,
+        name: 'Receiver User Edited by Admin',
+        itemsProcessed: 15,
+        accuracyRate: 98.5
+      })
+    });
+    if (adminEditRecRes.ok) {
+      const editData = await adminEditRecRes.json();
+      console.log(`✅ Success: Admin successfully edited Receiver. New Name: "${editData.user.name}", Items Proc: ${editData.user.itemsProcessed}, Acc Rate: ${editData.user.accuracyRate}%`);
+    } else {
+      const err = await adminEditRecRes.json();
+      throw new Error(`❌ Failure: Expected Admin editing Receiver to succeed, but got error: "${err.error}"`);
+    }
+
+    // Restore Receiver name
+    await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['ADMIN']}` },
+      body: JSON.stringify({ id: receiverUser.id, name: originalName || 'Receiver User', itemsProcessed: 0, accuracyRate: 100.0 })
+    });
+
+    // 4. Super-Access tries to edit Admin (Should SUCCEED)
+    console.log('🔄 Super-Access attempting to edit Admin user details...');
+    const originalAdminName = adminUser.name;
+    const superEditAdminRes = await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['SUPER_ACCESS']}` },
+      body: JSON.stringify({
+        id: adminUser.id,
+        name: 'Admin User Edited by SuperAccess',
+      })
+    });
+    if (superEditAdminRes.ok) {
+      const editData = await superEditAdminRes.json();
+      console.log(`✅ Success: Super-Access successfully edited Admin. New Name: "${editData.user.name}"`);
+    } else {
+      const err = await superEditAdminRes.json();
+      throw new Error(`❌ Failure: Expected Super-Access editing Admin to succeed, but got error: "${err.error}"`);
+    }
+
+    // Restore Admin name
+    await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['SUPER_ACCESS']}` },
+      body: JSON.stringify({ id: adminUser.id, name: originalAdminName || 'Admin User' })
+    });
+
+    // 5. Self-editing Block (Should be BLOCKED)
+    console.log('🔄 Super-Access attempting self-editing...');
+    const selfEditRes = await fetch(`${BASE_URL}/api/users`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Cookie': `session=${cookies['SUPER_ACCESS']}` },
+      body: JSON.stringify({
+        id: superUser.id,
+        name: 'Self Edited SuperAccess',
+      })
+    });
+    if (selfEditRes.status === 400) {
+      const err = await selfEditRes.json();
+      console.log(`✅ Success: Self-editing was BLOCKED. Error: "${err.error}"`);
+    } else {
+      throw new Error(`❌ Failure: Expected self-editing to fail with 400, but got status ${selfEditRes.status}`);
+    }
+    console.log('✅ Edit boundaries and safety lockout verified successfully.\n');
 
     // ----------------------------------------------------
     // TEST 3: DATA-DRIVEN RESOLUTION CHECKS
@@ -351,7 +483,7 @@ async function testAll() {
     const cleanupRes = await fetch(`${BASE_URL}/api/alerts/seed`, {
       method: 'DELETE',
       headers: {
-        'Authorization': 'Bearer secret-cron-token'
+        'Authorization': `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`
       }
     });
     if (!cleanupRes.ok) {

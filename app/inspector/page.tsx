@@ -609,6 +609,8 @@ function InspectorDashboard({ role }: { role: string }) {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
 
+  const [ledgerCount, setLedgerCount] = useState(0);
+
   useEffect(() => {
     fetch("/api/users/me")
       .then((res) => res.json())
@@ -616,6 +618,19 @@ function InspectorDashboard({ role }: { role: string }) {
         if (data.user) setUserData(data.user);
       })
       .catch(console.error);
+
+    const fetchLedgerCount = () => {
+      fetch("/api/inspector/ledger")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ledger) setLedgerCount(d.ledger.length);
+        })
+        .catch(console.error);
+    };
+
+    fetchLedgerCount();
+    const interval = setInterval(fetchLedgerCount, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAlerts = useCallback(() => {
@@ -821,8 +836,11 @@ function InspectorDashboard({ role }: { role: string }) {
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
-                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
+                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
                     Custody Ledger
+                    <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                      {ledgerCount}
+                    </span>
                   </h3>
                   <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
                     Packages pending inspection
@@ -940,7 +958,7 @@ function InspectorDashboard({ role }: { role: string }) {
                 href={role === "SUPER_ACCESS" ? "/super-admin" : "/admin"}
                 className="w-full flex items-center justify-center py-4 bg-[#FFF700] border-2 border-black hover:brightness-95 transition-all text-[#313079] font-extrabold uppercase tracking-widest text-xs rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
               >
-                Return to Command Center
+                {role === "SUPER_ACCESS" ? "Switch to Super Access Role" : "Switch to Admin Role"}
               </Link>
             )}
             <button

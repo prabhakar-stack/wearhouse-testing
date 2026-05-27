@@ -421,7 +421,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
 
         <div className="flex-1 p-6 relative overflow-hidden">
           <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
-            {activeTab === 'users'    && <UsersTab role={role} />}
+            {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab />}
             {activeTab === 'claims'   && <ClaimsTab />}
           </div>
@@ -458,7 +458,7 @@ function TabButton({ id, icon, label, activeTab, setActive, badge }: any) {
   );
 }
 
-function UsersTab({ role }: { role: string }) {
+function UsersTab({ role, currentUserId }: { role: string; currentUserId?: string }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
@@ -467,7 +467,18 @@ function UsersTab({ role }: { role: string }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR'];
+  // Editing state
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('ADMIN');
+  const [editItemsProcessed, setEditItemsProcessed] = useState(0);
+  const [editAccuracyRate, setEditAccuracyRate] = useState(100.0);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [updating, setUpdating] = useState(false);
+
+  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'SUPER_ACCESS'];
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -481,6 +492,46 @@ function UsersTab({ role }: { role: string }) {
   };
 
   useEffect(() => { queueMicrotask(() => { fetchUsers(); }); }, []);
+
+  const openEditModal = (user: any) => {
+    setEditingUser(user);
+    setEditName(user.name || '');
+    setEditEmail(user.email || '');
+    setEditRole(user.role || 'ADMIN');
+    setEditItemsProcessed(user.itemsProcessed || 0);
+    setEditAccuracyRate(user.accuracyRate ?? 100.0);
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  const handleUpdate = async (e: any) => {
+    e.preventDefault();
+    setEditError(''); setEditSuccess('');
+    setUpdating(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingUser.id,
+          name: editName,
+          email: editEmail,
+          role: editRole,
+          itemsProcessed: editItemsProcessed,
+          accuracyRate: editAccuracyRate
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setEditSuccess('User updated successfully.');
+      setTimeout(() => setEditingUser(null), 1000);
+      fetchUsers();
+    } catch (err: any) {
+      setEditError(err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const handleCreate = async (e: any) => {
     e.preventDefault();
@@ -596,14 +647,24 @@ function UsersTab({ role }: { role: string }) {
                     </td>
                     <td className="px-6 py-4 text-right font-mono text-xs">{user.itemsProcessed}</td>
                     <td className="px-6 py-4 text-right font-mono text-xs">
-                      {user.role !== 'SUPER_ACCESS' && (
-                        <button 
-                          onClick={() => handleDelete(user.id, user.email)} 
-                          className="text-red-500 hover:text-red-700 uppercase font-bold tracking-widest text-[10px]"
-                        >
-                          Revoke
-                        </button>
-                      )}
+                      <div className="flex justify-end items-center space-x-3">
+                        {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
+                          <button 
+                            onClick={() => openEditModal(user)} 
+                            className="text-indigo-600 hover:text-indigo-800 uppercase font-bold tracking-widest text-[10px]"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
+                          <button 
+                            onClick={() => handleDelete(user.id, user.email)} 
+                            className="text-red-500 hover:text-red-700 uppercase font-bold tracking-widest text-[10px]"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -615,6 +676,66 @@ function UsersTab({ role }: { role: string }) {
           </div>
         </div>
       </div>
+      
+      {/* Premium Edit User Dialog */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-br from-black to-slate-900 p-6 text-white flex justify-between items-center border-b border-black/10">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">Edit Personnel</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Modifying {editingUser.email}</p>
+              </div>
+              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdate} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
+                <input type="email" required value={editEmail} onChange={e => setEditEmail(e.target.value)} 
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
+                <input type="text" required value={editName} onChange={e => setEditName(e.target.value)} 
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
+                <select value={editRole} onChange={e => setEditRole(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
+                  {['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST'].map(r => (
+                    <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Items Processed</label>
+                  <input type="number" min="0" required value={editItemsProcessed} onChange={e => setEditItemsProcessed(parseInt(e.target.value, 10) || 0)} 
+                    className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Accuracy Rate (%)</label>
+                  <input type="number" step="0.1" min="0" max="100" required value={editAccuracyRate} onChange={e => setEditAccuracyRate(parseFloat(e.target.value) || 0.0)} 
+                    className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+                </div>
+              </div>
+              {editError && <p className="text-xs text-red-600 font-medium">{editError}</p>}
+              {editSuccess && <p className="text-xs text-green-600 font-medium">{editSuccess}</p>}
+              <div className="flex space-x-3 pt-2">
+                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={updating} className="flex-1 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded shadow-sm disabled:opacity-50 transition-colors">
+                  {updating ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
