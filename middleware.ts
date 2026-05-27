@@ -14,8 +14,8 @@ export async function middleware(request: NextRequest) {
   // signed with the hardcoded fallback secret.
   if (IS_PRODUCTION && !JWT_SECRET_CONFIGURED) {
     console.error(
-      "[SECURITY CRITICAL] JWT_SECRET environment variable is not set. "
-      + "All requests are being rejected to prevent insecure operation."
+      "[SECURITY CRITICAL] JWT_SECRET environment variable is not set. " +
+        "All requests are being rejected to prevent insecure operation.",
     );
     return NextResponse.json(
       { error: "Server misconfiguration: authentication service unavailable" },
@@ -31,9 +31,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/product/status") ||
-    pathname.startsWith("/api/cron") ||       // Cron routes validate their own secret
-    pathname.startsWith("/api/otp/bridge") ||  // External OTP bridge validates its own secret
-    pathname.startsWith("/api/alerts/seed")   // Test seed validates its own secret
+    pathname.startsWith("/api/cron") || // Cron routes validate their own secret
+    pathname.startsWith("/api/otp/bridge") || // External OTP bridge validates its own secret
+    pathname.startsWith("/api/alerts/seed") // Test seed validates its own secret
   ) {
     return NextResponse.next();
   }
