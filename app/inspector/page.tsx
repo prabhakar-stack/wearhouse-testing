@@ -22,6 +22,7 @@ import {
   Bell,
   ChevronDown,
   X,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -598,7 +599,7 @@ function StepVisualGuide({
 function InspectorDashboard({ role }: { role: string }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    "home" | "takeover" | "inspect" | "profile" | "ledger"
+    "home" | "takeover" | "inspect" | "profile" | "ledger" | "alerts"
   >("home");
   const [userData, setUserData] = useState<any>(null);
   const [alertCount, setAlertCount] = useState(0);
@@ -609,6 +610,8 @@ function InspectorDashboard({ role }: { role: string }) {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
 
+  const [ledgerCount, setLedgerCount] = useState(0);
+
   useEffect(() => {
     fetch("/api/users/me")
       .then((res) => res.json())
@@ -616,6 +619,19 @@ function InspectorDashboard({ role }: { role: string }) {
         if (data.user) setUserData(data.user);
       })
       .catch(console.error);
+
+    const fetchLedgerCount = () => {
+      fetch("/api/inspector/ledger")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ledger) setLedgerCount(d.ledger.length);
+        })
+        .catch(console.error);
+    };
+
+    fetchLedgerCount();
+    const interval = setInterval(fetchLedgerCount, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAlerts = useCallback(() => {
@@ -676,7 +692,9 @@ function InspectorDashboard({ role }: { role: string }) {
                 ? "Profile"
                 : activeTab === "ledger"
                   ? "Custody Ledger"
-                  : "Quality Assurance"}
+                  : activeTab === "alerts"
+                    ? "Active Alerts"
+                    : "Quality Assurance"}
             </h1>
             <p className="text-[#313079]/60 text-xs font-bold tracking-widest mt-1 uppercase">
               {userData
@@ -732,10 +750,8 @@ function InspectorDashboard({ role }: { role: string }) {
               </div>
             ) : (
               alerts.map(alert => {
-                const isSopOpen = activeSopAlertId === alert.id;
-                const steps = sopMap[alert.type] || [];
                 return (
-                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-2.5 relative pl-4 text-left">
+                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-1 relative pl-4 text-left">
                     <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
                     <div className="flex justify-between items-start">
                       <div className="min-w-0 flex-1">
@@ -744,48 +760,15 @@ function InspectorDashboard({ role }: { role: string }) {
                         </span>
                         <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
                         <p className="text-[10px] text-slate-500 mt-1 leading-normal">{alert.description}</p>
+                        {alert.manifest?.trackingId && (
+                          <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
+                            AWB: {alert.manifest.trackingId}
+                          </span>
+                        )}
                       </div>
-                      <button 
-                        onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
-                        className="text-[9px] text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-wider ml-2 shrink-0 border border-[#FF6700]/20 rounded-md px-2 py-0.5"
-                      >
-                        {isSopOpen ? 'Close' : 'SOP'}
-                      </button>
                     </div>
-
-                    {isSopOpen && (
-                      <div className="mt-2 pt-2 border-t border-slate-100 space-y-3 animate-in fade-in duration-200">
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-black uppercase tracking-wider text-[#FF6700]">SOP Steps:</p>
-                          <ul className="space-y-1">
-                            {steps.map((step: any, idx: number) => (
-                              <li key={step.id || idx} className="text-[10px] text-[#313079]/90 font-medium flex items-start space-x-1.5">
-                                <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
-                                <span className="leading-snug">{step.instruction}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="flex space-x-1.5 items-center pt-1 border-t border-slate-50">
-                          <input 
-                            type="text" 
-                            placeholder="RESOLVE NOTES" 
-                            value={resolutionText}
-                            onChange={e => setResolutionText(e.target.value)}
-                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] uppercase font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
-                          />
-                          <button 
-                            onClick={() => handleResolve(alert.id)}
-                            disabled={!resolutionText.trim() || resolvingId === alert.id}
-                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 text-[9px] font-black uppercase rounded-md"
-                          >
-                            {resolvingId === alert.id ? '...' : 'Resolve'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )
+                );
               })
             )}
           </div>
@@ -821,8 +804,11 @@ function InspectorDashboard({ role }: { role: string }) {
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
-                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
+                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
                     Custody Ledger
+                    <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                      {ledgerCount}
+                    </span>
                   </h3>
                   <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
                     Packages pending inspection
@@ -848,6 +834,30 @@ function InspectorDashboard({ role }: { role: string }) {
                   </p>
                 </div>
                 <ScanEye
+                  size={32}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
+                />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("alerts")}
+                className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden shadow-sm rounded-xl"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative z-10">
+                  <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                    Active Alerts
+                    {alertCount > 0 && (
+                      <span className="ml-2.5 bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0 animate-pulse">
+                        {alertCount}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
+                    Operational escalations &amp; alerts
+                  </p>
+                </div>
+                <Bell
                   size={32}
                   className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
                 />
@@ -940,7 +950,7 @@ function InspectorDashboard({ role }: { role: string }) {
                 href={role === "SUPER_ACCESS" ? "/super-admin" : "/admin"}
                 className="w-full flex items-center justify-center py-4 bg-[#FFF700] border-2 border-black hover:brightness-95 transition-all text-[#313079] font-extrabold uppercase tracking-widest text-xs rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
               >
-                Return to Command Center
+                {role === "SUPER_ACCESS" ? "Switch to Super Access Role" : "Switch to Admin Role"}
               </Link>
             )}
             <button
@@ -961,6 +971,7 @@ function InspectorDashboard({ role }: { role: string }) {
         {activeTab === "ledger" && <LedgerTab />}
         {activeTab === "takeover" && <TakeoverTab />}
         {activeTab === "inspect" && <InspectTab userId={userData?.id} />}
+        {activeTab === "alerts" && <NotificationsTab />}
       </main>
     </div>
   );
@@ -2853,9 +2864,12 @@ function NotificationsTab() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
+  const [sopChecked, setSopChecked] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState('');
 
   const fetchAlerts = useCallback(() => {
     fetch('/api/alerts')
@@ -2863,6 +2877,7 @@ function NotificationsTab() {
       .then(d => {
         if (d.alerts) setAlerts(d.alerts);
         if (d.sopMap) setSopMap(d.sopMap);
+        if (d.stats) setStats(d.stats);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -2875,21 +2890,34 @@ function NotificationsTab() {
   }, [fetchAlerts]);
 
   const handleResolve = async (alertId: string) => {
-    if (!resolutionText.trim()) return;
+    setResolveError('');
+    if (!resolutionText.trim()) {
+      setResolveError('Resolution notes are required.');
+      return;
+    }
+    if (!sopChecked) {
+      setResolveError('You must acknowledge following the SOP.');
+      return;
+    }
     setResolvingId(alertId);
     try {
       const res = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alertId, resolution: resolutionText }),
+        body: JSON.stringify({ alertId, resolution: resolutionText, sopAcknowledged: true }),
       });
-      if (res.ok) {
-        setResolutionText('');
-        setActiveSopAlertId(null);
-        fetchAlerts();
+      const data = await res.json();
+      if (!res.ok) {
+        setResolveError(data.error || 'Failed to resolve');
+        return;
       }
+      setResolutionText('');
+      setSopChecked(false);
+      setExpandedId(null);
+      fetchAlerts();
     } catch (e) {
       console.error(e);
+      setResolveError('Failed to connect to the server.');
     } finally {
       setResolvingId(null);
     }
@@ -2897,12 +2925,43 @@ function NotificationsTab() {
 
   return (
     <div className="max-w-lg mx-auto pb-10 pt-6 px-4">
-      <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
+      <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4 text-left">
         <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">Active Alerts</h2>
         <span className="bg-white border border-[#FF6700]/20 text-[#FF6700] px-3 py-1 font-mono text-xs rounded-full shadow-sm font-bold">{alerts.length} ALERTS</span>
       </div>
 
-      {loading ? (
+      {/* SOP Compliance stats bar */}
+      <div className="mb-4 bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 text-white rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md text-left">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-lg bg-[#FF6700]/15 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700]">
+            <Activity size={18} />
+          </div>
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">SOP Compliance Score</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Real-time daily adherence stack</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-6 text-center">
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Resolved Today</p>
+            <p className="text-lg font-mono font-black text-white mt-0.5">{stats.resolvedToday}</p>
+          </div>
+          <div className="h-6 w-px bg-slate-800" />
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SOP Followed</p>
+            <p className="text-lg font-mono font-black text-green-400 mt-0.5">{stats.sopFollowedToday}</p>
+          </div>
+          <div className="h-6 w-px bg-slate-800" />
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Adherence Rate</p>
+            <p className={`text-lg font-mono font-black mt-0.5 ${stats.adherenceRate >= 90 ? 'text-green-400' : stats.adherenceRate >= 75 ? 'text-amber-400' : 'text-red-400'}`}>
+              {stats.adherenceRate}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {loading && alerts.length === 0 ? (
         <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">Loading Alerts...</div>
       ) : alerts.length === 0 ? (
         <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-xl">
@@ -2913,14 +2972,17 @@ function NotificationsTab() {
       ) : (
         <div className="space-y-3">
           {alerts.map((alert) => {
-            const isSopOpen = activeSopAlertId === alert.id;
+            const isExpanded = expandedId === alert.id;
             const steps = sopMap[alert.type] || [];
 
             return (
               <div key={alert.id} className={`bg-white border ${alert.level === 'L4' || alert.level === 'L3' ? 'border-red-300' : 'border-[#313079]/10'} p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm`}>
                 <div className={`absolute inset-y-0 left-0 w-1.5 ${alert.level === 'L4' || alert.level === 'L3' ? 'bg-red-500 animate-pulse' : 'bg-[#FF6700]'}`} />
-                <div className="flex justify-between items-start pl-3">
-                  <div>
+                <button
+                  onClick={() => { setExpandedId(isExpanded ? null : alert.id); setResolutionText(''); setResolveError(''); setSopChecked(false); }}
+                  className="w-full flex justify-between items-start pl-3 text-left focus:outline-none"
+                >
+                  <div className="min-w-0 flex-1">
                     <span className={`inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded ${
                       alert.level === 'L4' ? 'bg-red-100 text-red-700' :
                       alert.level === 'L3' ? 'bg-red-50 text-red-600' :
@@ -2930,46 +2992,61 @@ function NotificationsTab() {
                       {alert.level} - {alert.type}
                     </span>
                     <h4 className="font-bold text-[#313079] mt-1 text-sm">{alert.title}</h4>
-                    <p className="text-xs text-[#313079]/70 mt-1">{alert.description}</p>
+                    <p className="text-xs text-[#313079]/70 mt-1 leading-normal truncate">{alert.description}</p>
                     {alert.manifest?.trackingId && (
                       <p className="text-[10px] font-mono text-slate-400 mt-2 uppercase">Tracking: {alert.manifest.trackingId}</p>
                     )}
                   </div>
-                  <button 
-                    onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
-                    className="text-xs text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-widest px-3 py-1 border border-[#FF6700]/20 rounded-lg hover:bg-[#FF6700]/5 transition-all"
-                  >
-                    {isSopOpen ? 'Close SOP' : 'View SOP'}
-                  </button>
-                </div>
+                  <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
 
-                {isSopOpen && (
-                  <div className="mt-3 pl-3 pt-3 border-t border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">Standard Operating Procedure (SOP):</p>
-                      <ul className="space-y-1.5">
-                        {steps.map((step: any, idx: number) => (
-                          <li key={step.id || idx} className="text-xs text-[#313079]/90 font-medium flex items-start space-x-2">
-                            <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
-                            <span>{step.instruction}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                {isExpanded && (
+                  <div className="mt-3 pl-3 pt-3 border-t border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200 text-left">
+                    <p className="text-xs text-slate-600 leading-relaxed">{alert.description}</p>
+
+                    {steps.length > 0 ? (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">Standard Operating Procedure (SOP):</p>
+                        <ul className="space-y-1.5">
+                          {steps.map((step: any, idx: number) => (
+                            <li key={step.id || idx} className="text-xs text-[#313079]/90 font-medium flex items-start space-x-2">
+                              <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
+                              <span>{step.instruction}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-2 pt-2 border-t border-slate-200 flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={`sop-check-${alert.id}`}
+                            checked={sopChecked}
+                            onChange={(e) => setSopChecked(e.target.checked)}
+                            className="w-4 h-4 accent-green-600 rounded cursor-pointer shrink-0"
+                          />
+                          <label htmlFor={`sop-check-${alert.id}`} className="text-[10px] font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
+                            I have read and followed this SOP
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">
+                        <p className="text-[10px] text-slate-400">No SOP configured for this alert type.</p>
+                      </div>
+                    )}
 
                     <div className="space-y-2 pt-2 border-t border-slate-50">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resolve Alert</p>
                       <div className="flex space-x-2">
                         <input 
                           type="text" 
-                          placeholder="ENTER RESOLUTION DETAILS" 
+                          placeholder="ENTER RESOLUTION DETAILS (REQUIRED)" 
                           value={resolutionText}
                           onChange={e => setResolutionText(e.target.value)}
                           className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs uppercase tracking-widest font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
                         />
                         <button 
                           onClick={() => handleResolve(alert.id)}
-                          disabled={!resolutionText.trim() || resolvingId === alert.id}
+                          disabled={!resolutionText.trim() || !sopChecked || resolvingId === alert.id}
                           className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg flex items-center justify-center min-w-[80px]"
                         >
                           {resolvingId === alert.id ? (
@@ -2979,6 +3056,12 @@ function NotificationsTab() {
                           )}
                         </button>
                       </div>
+                      {!sopChecked && (
+                        <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wider">
+                          ⚠ You must check "I have read and followed this SOP" before resolving.
+                        </p>
+                      )}
+                      {resolveError && <p className="text-[10px] text-red-600 font-medium">{resolveError}</p>}
                     </div>
                   </div>
                 )}

@@ -199,10 +199,8 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
               </div>
             ) : (
               alerts.map(alert => {
-                const isSopOpen = activeSopAlertId === alert.id;
-                const steps = sopMap[alert.type] || [];
                 return (
-                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-2.5 relative pl-4 text-left">
+                  <div key={alert.id} className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-1 relative pl-4 text-left">
                     <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
                     <div className="flex justify-between items-start">
                       <div className="min-w-0 flex-1">
@@ -211,46 +209,13 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
                         </span>
                         <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
                         <p className="text-[10px] text-slate-500 mt-1 leading-normal">{alert.description}</p>
+                        {alert.manifest?.trackingId && (
+                          <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
+                            AWB: {alert.manifest.trackingId}
+                          </span>
+                        )}
                       </div>
-                      <button 
-                        onClick={() => setActiveSopAlertId(isSopOpen ? null : alert.id)}
-                        className="text-[9px] text-[#FF6700] hover:text-[#FF6700]/80 font-black uppercase tracking-wider ml-2 shrink-0 border border-[#FF6700]/20 rounded-md px-2 py-0.5"
-                      >
-                        {isSopOpen ? 'Close' : 'SOP'}
-                      </button>
                     </div>
-
-                    {isSopOpen && (
-                      <div className="mt-2 pt-2 border-t border-slate-100 space-y-3 animate-in fade-in duration-200">
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-black uppercase tracking-wider text-[#FF6700]">SOP Steps:</p>
-                          <ul className="space-y-1">
-                            {steps.map((step: any, idx: number) => (
-                              <li key={step.id || idx} className="text-[10px] text-[#313079]/90 font-medium flex items-start space-x-1.5">
-                                <span className="font-mono font-bold text-[#FF6700]">{step.stepOrder}.</span>
-                                <span className="leading-snug">{step.instruction}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="flex space-x-1.5 items-center pt-1 border-t border-[#313079]/10">
-                          <input 
-                            type="text" 
-                            placeholder="RESOLVE NOTES" 
-                            value={resolutionText}
-                            onChange={e => setResolutionText(e.target.value)}
-                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] uppercase font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
-                          />
-                          <button 
-                            onClick={() => handleResolveAlert(alert.id)}
-                            disabled={!resolutionText.trim() || resolvingId === alert.id}
-                            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 text-[9px] font-black uppercase rounded-md"
-                          >
-                            {resolvingId === alert.id ? '...' : 'Resolve'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -426,7 +391,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
 
         <div className="flex-1 p-6 relative overflow-hidden">
           <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
-            {activeTab === 'users'    && <UsersTab role={role} />}
+            {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
             {activeTab === 'claims'   && <ClaimsTab />}
           </div>
@@ -463,7 +428,7 @@ function TabButton({ id, icon, label, activeTab, setActive, badge }: any) {
   );
 }
 
-function UsersTab({ role }: { role: string }) {
+function UsersTab({ role, currentUserId }: { role: string; currentUserId?: string }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
@@ -471,6 +436,17 @@ function UsersTab({ role }: { role: string }) {
   const [targetRole, setTargetRole] = useState('RECEIVER');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Editing state
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('RECEIVER');
+  const [editItemsProcessed, setEditItemsProcessed] = useState(0);
+  const [editAccuracyRate, setEditAccuracyRate] = useState(100.0);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   const availableRoles = ['RECEIVER', 'INSPECTOR'];
 
@@ -486,6 +462,46 @@ function UsersTab({ role }: { role: string }) {
   };
 
   useEffect(() => { queueMicrotask(() => { fetchUsers(); }); }, []);
+
+  const openEditModal = (user: any) => {
+    setEditingUser(user);
+    setEditName(user.name || '');
+    setEditEmail(user.email || '');
+    setEditRole(user.role || 'RECEIVER');
+    setEditItemsProcessed(user.itemsProcessed || 0);
+    setEditAccuracyRate(user.accuracyRate ?? 100.0);
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  const handleUpdate = async (e: any) => {
+    e.preventDefault();
+    setEditError(''); setEditSuccess('');
+    setUpdating(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingUser.id,
+          name: editName,
+          email: editEmail,
+          role: editRole,
+          itemsProcessed: editItemsProcessed,
+          accuracyRate: editAccuracyRate
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setEditSuccess('User updated successfully.');
+      setTimeout(() => setEditingUser(null), 1000);
+      fetchUsers();
+    } catch (err: any) {
+      setEditError(err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const handleCreate = async (e: any) => {
     e.preventDefault();
@@ -595,14 +611,24 @@ function UsersTab({ role }: { role: string }) {
                     </td>
                     <td className="px-6 py-4 text-right font-mono text-xs">{user.itemsProcessed}</td>
                     <td className="px-6 py-4 text-right font-mono text-xs">
-                      {(role === 'ADMIN' && user.role !== 'SUPER_ACCESS' && user.role !== 'ADMIN') ? (
-                        <button 
-                          onClick={() => handleDelete(user.id, user.email)} 
-                          className="text-red-500 hover:text-red-700 uppercase font-bold tracking-widest text-[10px]"
-                        >
-                          Revoke
-                        </button>
-                      ) : null}
+                      <div className="flex justify-end items-center space-x-3">
+                        {user.id !== currentUserId && (user.role === 'RECEIVER' || user.role === 'INSPECTOR') && (
+                          <button 
+                            onClick={() => openEditModal(user)} 
+                            className="text-indigo-600 hover:text-indigo-800 uppercase font-bold tracking-widest text-[10px]"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {user.id !== currentUserId && (user.role === 'RECEIVER' || user.role === 'INSPECTOR') && (
+                          <button 
+                            onClick={() => handleDelete(user.id, user.email)} 
+                            className="text-red-500 hover:text-red-700 uppercase font-bold tracking-widest text-[10px]"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -614,6 +640,66 @@ function UsersTab({ role }: { role: string }) {
           </div>
         </div>
       </div>
+      
+      {/* Premium Edit User Dialog (Restricted to RECEIVER & INSPECTOR for Admin) */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-gradient-to-br from-black to-slate-900 p-6 text-white flex justify-between items-center border-b border-black/10">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">Edit Personnel</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Modifying {editingUser.email}</p>
+              </div>
+              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdate} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
+                <input type="email" required value={editEmail} onChange={e => setEditEmail(e.target.value)} 
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
+                <input type="text" required value={editName} onChange={e => setEditName(e.target.value)} 
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
+                <select value={editRole} onChange={e => setEditRole(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
+                  {['RECEIVER', 'INSPECTOR'].map(r => (
+                    <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Items Processed</label>
+                  <input type="number" min="0" required value={editItemsProcessed} onChange={e => setEditItemsProcessed(parseInt(e.target.value, 10) || 0)} 
+                    className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Accuracy Rate (%)</label>
+                  <input type="number" step="0.1" min="0" max="100" required value={editAccuracyRate} onChange={e => setEditAccuracyRate(parseFloat(e.target.value) || 0.0)} 
+                    className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
+                </div>
+              </div>
+              {editError && <p className="text-xs text-red-600 font-medium">{editError}</p>}
+              {editSuccess && <p className="text-xs text-green-600 font-medium">{editSuccess}</p>}
+              <div className="flex space-x-3 pt-2">
+                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={updating} className="flex-1 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded shadow-sm disabled:opacity-50 transition-colors">
+                  {updating ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -721,6 +807,8 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
+  const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
+  const [sopChecked, setSopChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
@@ -745,6 +833,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
         setAlerts(data.alerts || []);
         setSopMap(data.sopMap || {});
         if (data.counts) setCounts(data.counts);
+        if (data.stats) setStats(data.stats);
       }
     } finally {
       setLoading(false);
@@ -755,13 +844,20 @@ function AlertsTab({ userRole }: { userRole: string }) {
 
   const handleResolve = async (alertId: string, alertLevel: string) => {
     setResolveError('');
-    if (!resolutionText.trim() && !confirm('Resolve without notes?')) return;
+    if (!resolutionText.trim()) {
+      setResolveError('Resolution notes are required.');
+      return;
+    }
+    if (!sopChecked) {
+      setResolveError('You must acknowledge following the SOP.');
+      return;
+    }
     setResolving(true);
     try {
       const res = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alertId, resolution: resolutionText }),
+        body: JSON.stringify({ alertId, resolution: resolutionText, sopAcknowledged: true }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -770,6 +866,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
       }
       setExpandedId(null);
       setResolutionText('');
+      setSopChecked(false);
       fetchAlerts();
     } finally {
       setResolving(false);
@@ -954,6 +1051,38 @@ function AlertsTab({ userRole }: { userRole: string }) {
         )}
 
         {!showResolved && (
+          <div className="mb-4 bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 text-white rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-lg bg-[#FF6700]/15 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700]">
+                <Activity size={20} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">SOP Compliance Score</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Real-time daily adherence stack</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-6 text-center">
+              <div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Resolved Today</p>
+                <p className="text-lg font-mono font-black text-white mt-0.5">{stats.resolvedToday}</p>
+              </div>
+              <div className="h-6 w-px bg-slate-800" />
+              <div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SOP Followed</p>
+                <p className="text-lg font-mono font-black text-green-400 mt-0.5">{stats.sopFollowedToday}</p>
+              </div>
+              <div className="h-6 w-px bg-slate-800" />
+              <div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Adherence Rate</p>
+                <p className={`text-lg font-mono font-black mt-0.5 ${stats.adherenceRate >= 90 ? 'text-green-400' : stats.adherenceRate >= 75 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {stats.adherenceRate}%
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!showResolved && (
           <div className="grid grid-cols-4 gap-3">
             {(['L1', 'L2', 'L3', 'L4'] as const).map(level => {
               const cfg = LEVEL_CONFIG[level];
@@ -1016,7 +1145,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
                   )}
                   {/* Alert Header Button */}
                   <button
-                    onClick={() => { setExpandedId(isExpanded ? null : alert.id); setResolutionText(''); setResolveError(''); }}
+                    onClick={() => { setExpandedId(isExpanded ? null : alert.id); setResolutionText(''); setResolveError(''); setSopChecked(false); }}
                     className={`flex-1 flex items-center justify-between ${!showResolved ? 'pl-3 pr-5' : 'px-5'} py-4 ${cfg.bgColor} hover:brightness-95 transition-all text-left`}
                   >
                   <div className="flex items-center space-x-3 min-w-0">
@@ -1133,6 +1262,20 @@ function AlertsTab({ userRole }: { userRole: string }) {
                             </li>
                           ))}
                         </ol>
+                        {!alert.resolved && (
+                          <div className="mt-4 pt-3 border-t border-slate-200 flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              id={`sop-check-${alert.id}`}
+                              checked={sopChecked}
+                              onChange={(e) => setSopChecked(e.target.checked)}
+                              className="w-5 h-5 accent-green-600 rounded cursor-pointer shrink-0"
+                            />
+                            <label htmlFor={`sop-check-${alert.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
+                              I have read and followed all standard operating procedure steps above
+                            </label>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 text-center">
@@ -1152,20 +1295,27 @@ function AlertsTab({ userRole }: { userRole: string }) {
                             <p className="text-xs text-red-700 font-bold">L4 Critical alerts can only be resolved by Super Access.</p>
                           </div>
                         ) : (
-                          <div className="flex items-center space-x-3 pt-2">
-                            <input
-                              value={resolutionText}
-                              onChange={e => setResolutionText(e.target.value)}
-                              placeholder="Resolution notes (optional)..."
-                              className="flex-1 bg-white border border-slate-300 px-4 py-3 text-sm rounded focus:border-[#FF6700] focus:outline-none focus:ring-1 focus:ring-[#FF6700]"
-                            />
-                            <button
-                              onClick={() => handleResolve(alert.id, alert.level)}
-                              disabled={resolving}
-                              className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white text-xs uppercase font-bold tracking-widest rounded transition-colors shadow-sm disabled:opacity-50"
-                            >
-                              {resolving ? 'Resolving...' : 'Resolve'}
-                            </button>
+                          <div className="flex flex-col space-y-3 pt-2">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                value={resolutionText}
+                                onChange={e => setResolutionText(e.target.value)}
+                                placeholder="Resolution notes (required)..."
+                                className="flex-1 bg-white border border-slate-300 px-4 py-3 text-sm rounded focus:border-[#FF6700] focus:outline-none focus:ring-1 focus:ring-[#FF6700]"
+                              />
+                              <button
+                                onClick={() => handleResolve(alert.id, alert.level)}
+                                disabled={resolving || !sopChecked || !resolutionText.trim()}
+                                className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs uppercase font-bold tracking-widest rounded transition-colors shadow-sm"
+                              >
+                                {resolving ? 'Resolving...' : 'Confirm Resolve'}
+                              </button>
+                            </div>
+                            {!sopChecked && (
+                              <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
+                                ⚠ You must check "I have read and followed all standard operating procedure steps above" before resolving.
+                              </p>
+                            )}
                           </div>
                         )}
                         {resolveError && <p className="text-xs text-red-600 font-medium">{resolveError}</p>}

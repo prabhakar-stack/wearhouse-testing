@@ -326,9 +326,10 @@ export async function POST(req: Request) {
         });
       }
 
-      // Determine manifest status based on return item conditions
-      // If ANY item is BAD or RECOVERY, or if we have missing shortage items → CLAIMS_STAGING. Otherwise → INSPECTED
-      const claimableConditions = ['PRODUCT_DAMAGED', 'WRONG_ITEM', 'BAD_FAKE_PRODUCT', 'MISSING', 'PACKAGING_DAMAGED'];
+      // Determine manifest status based on return item conditions.
+      // Any condition other than GOOD_SELLABLE (including PACKAGING_DAMAGED = product's original
+      // box damage, PRODUCT_DAMAGED, WRONG_ITEM, BAD_FAKE_PRODUCT, MISSING) routes to CLAIMS_STAGING.
+      // Only a fully clean inspection with all GOOD_SELLABLE items results in INSPECTED.
 
       let hasClaimableItems = false;
       for (const [lpn, rawCondition] of scannedEntries) {

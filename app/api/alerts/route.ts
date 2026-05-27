@@ -20,7 +20,18 @@ export async function GET(req: NextRequest) {
     const showResolved = searchParams.get('resolved') === 'true';
 
     // Determine which levels this role can see
-    const visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : role === 'RECEIVER' ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
+    let visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : role === 'RECEIVER' ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
+
+    const sessionUserId = req.headers.get('x-user-id');
+    if (sessionUserId) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: sessionUserId },
+        select: { alertLevel: true }
+      });
+      if (dbUser && dbUser.alertLevel) {
+        visibleLevels = [dbUser.alertLevel];
+      }
+    }
 
     const alerts = await prisma.alert.findMany({
       where: {
@@ -76,7 +87,34 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ alerts, sopMap, counts, role });
+    // Compute stats for today
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const resolvedTodayCount = await prisma.alert.count({
+      where: {
+        resolved: true,
+        resolvedAt: { gte: startOfToday },
+        level: { in: visibleLevels as any },
+      }
+    });
+
+    const sopFollowedTodayCount = await prisma.alert.count({
+      where: {
+        resolved: true,
+        resolvedAt: { gte: startOfToday },
+        sopAcknowledged: true,
+        level: { in: visibleLevels as any },
+      }
+    });
+
+    const stats = {
+      resolvedToday: resolvedTodayCount,
+      sopFollowedToday: sopFollowedTodayCount,
+      adherenceRate: resolvedTodayCount > 0 ? Math.round((sopFollowedTodayCount / resolvedTodayCount) * 100) : 100
+    };
+
+    return NextResponse.json({ alerts, sopMap, counts, role, stats });
   } catch (error: any) {
     console.error('Alerts GET error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
@@ -158,7 +196,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { alertId, resolution, forceResolve } = body;
+    const { alertId, resolution, forceResolve, sopAcknowledged } = body;
 
     if (!alertId) {
       return NextResponse.json({ error: 'Missing alertId' }, { status: 400 });
@@ -200,6 +238,8 @@ export async function PATCH(req: NextRequest) {
         resolved: true,
         resolvedAt: new Date(),
         resolution: resolution || 'Resolved by admin',
+        sopAcknowledged: !!sopAcknowledged,
+        sopViewedAt: sopAcknowledged ? new Date() : null,
       };
 
       if (userId) {

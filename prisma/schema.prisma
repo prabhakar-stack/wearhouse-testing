@@ -63,6 +63,7 @@ model User {
   role             Role
   itemsProcessed   Int          @default(0)
   accuracyRate     Float        @default(100.0)
+  alertLevel       AlertLevel?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -165,8 +166,10 @@ model Alert {
   resolved     Boolean    @default(false)
   resolvedById String?
   resolvedAt   DateTime?
-  resolution   String?
-  createdAt    DateTime   @default(now())
+  resolution      String?
+  sopAcknowledged Boolean   @default(false)
+  sopViewedAt     DateTime?
+  createdAt       DateTime   @default(now())
 
   manifest     Manifest?  @relation(fields: [manifestId], references: [id])
   targetUser   User?      @relation("AlertTarget", fields: [targetUserId], references: [id])
