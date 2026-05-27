@@ -100,8 +100,8 @@ const hasConfig =
   process.env.REFRESH_TOKEN &&
   process.env.CLIENT_ID &&
   process.env.CLIENT_SECRET &&
-  process.env.AWS_ACCESS_KEY &&
-  process.env.AWS_SECRET_KEY &&
+  process.env.AWS_ACCESS_KEY1 &&
+  process.env.AWS_SECRET_KEY1 &&
   process.env.MARKETPLACE_ID;
 
 let sp = null;
@@ -112,8 +112,8 @@ if (hasConfig) {
     credentials: {
       SELLING_PARTNER_APP_CLIENT_ID: process.env.CLIENT_ID,
       SELLING_PARTNER_APP_CLIENT_SECRET: process.env.CLIENT_SECRET,
-      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY,
-      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_KEY,
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY1,
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_KEY1,
     },
   });
 }
