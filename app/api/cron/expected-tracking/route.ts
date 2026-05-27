@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { runExpectedTrackingJob } from "@/lib/cron";
 import { requireCronAuth } from "@/lib/cronAuth";
 
+export const runtime = "nodejs";
+
 export async function GET(req: Request) {
   try {
     const authError = requireCronAuth(req);
@@ -9,12 +11,15 @@ export async function GET(req: Request) {
       return authError;
     }
 
-    const result = await runExpectedTrackingJob();
+    void runExpectedTrackingJob().catch((error: any) => {
+      console.error("[Cron Expected Tracking] Background job failed:", error);
+    });
 
     return NextResponse.json({
       success: true,
-      ...result,
-    });
+      queued: true,
+      message: "Expected tracking job started",
+    }, { status: 202 });
   } catch (error: any) {
     console.error("[Cron Expected Tracking] Error:", error);
     return NextResponse.json(

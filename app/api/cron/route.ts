@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const results: Array<{
       jobKey: string;
       label: string;
-      status: "ran" | "skipped" | "failed";
+      status: "queued" | "skipped";
       lastSuccessAt: Date | null;
       lastRunAt: Date;
     }> = [];
@@ -54,48 +54,42 @@ export async function GET(req: Request) {
         },
       });
 
-      try {
-        await job.run();
+      results.push({
+        jobKey: job.key,
+        label: job.label,
+        status: "queued",
+        lastSuccessAt,
+        lastRunAt: startedAt,
+      });
 
-        await prisma.cronJobState.update({
-          where: { jobKey: job.key },
-          data: {
-            lastRunAt: startedAt,
-            lastSuccessAt: new Date(),
-            lastError: null,
-          },
+      void job
+        .run()
+        .then(async () => {
+          await prisma.cronJobState.update({
+            where: { jobKey: job.key },
+            data: {
+              lastRunAt: startedAt,
+              lastSuccessAt: new Date(),
+              lastError: null,
+            },
+          });
+        })
+        .catch(async (error: any) => {
+          console.error(`[Cron ${job.key}] Background job failed:`, error);
+          await prisma.cronJobState.update({
+            where: { jobKey: job.key },
+            data: {
+              lastRunAt: startedAt,
+              lastError: error?.message || "Cron job failed",
+            },
+          });
         });
-
-        results.push({
-          jobKey: job.key,
-          label: job.label,
-          status: "ran",
-          lastSuccessAt: new Date(),
-          lastRunAt: startedAt,
-        });
-      } catch (error: any) {
-        await prisma.cronJobState.update({
-          where: { jobKey: job.key },
-          data: {
-            lastRunAt: startedAt,
-            lastError: error?.message || "Cron job failed",
-          },
-        });
-
-        results.push({
-          jobKey: job.key,
-          label: job.label,
-          status: "failed",
-          lastSuccessAt,
-          lastRunAt: startedAt,
-        });
-      }
     }
 
     return NextResponse.json({
       success: true,
       results,
-    });
+    }, { status: 202 });
   } catch (error: any) {
     console.error("[Cron Master] Error:", error);
     return NextResponse.json(

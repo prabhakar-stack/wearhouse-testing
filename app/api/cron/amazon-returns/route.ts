@@ -11,11 +11,15 @@ export async function GET(req: Request) {
       return authError;
     }
 
-    await runAmazonReturnsJob();
+    void runAmazonReturnsJob().catch((error: any) => {
+      console.error("[Cron Amazon Returns] Background job failed:", error);
+    });
+
     return NextResponse.json({
       success: true,
-      message: "Amazon raw report fetch and sync completed",
-    });
+      queued: true,
+      message: "Amazon raw report fetch and sync started",
+    }, { status: 202 });
   } catch (error: any) {
     console.error("[Cron Amazon Returns] Error:", error);
     return NextResponse.json(

@@ -442,6 +442,9 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
   // OTP
   const [otpState, setOtpState]   = useState<'IDLE'|'FETCHING'|'NOT_REQUIRED'|'FETCHED'|'ERROR'>('IDLE');
   const [fetchedOtp, setFetchedOtp] = useState('');
+  const [otpRecordId, setOtpRecordId] = useState<string | null>(null);
+  const otpPollIntervalRef = useRef<number | null>(null);
+  const otpPollTimeoutRef = useRef<number | null>(null);
 
   // Done screen + silent upload
   const [showDoneScreen, setShowDoneScreen] = useState(false);
@@ -452,6 +455,18 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
 
   const isDamaged  = tapeState === 'damaged' || boxState === 'damaged' || tamperState === 'damaged';
   const isAllGood  = tapeState === 'good' && boxState === 'good' && tamperState === 'good';
+
+  const stopOtpPolling = useCallback(() => {
+    if (otpPollIntervalRef.current !== null) {
+      window.clearInterval(otpPollIntervalRef.current);
+      otpPollIntervalRef.current = null;
+    }
+
+    if (otpPollTimeoutRef.current !== null) {
+      window.clearTimeout(otpPollTimeoutRef.current);
+      otpPollTimeoutRef.current = null;
+    }
+  }, []);
 
   // Derive marketplace from trackingIdMarketplaceMap as soon as trackingId is scanned
   useEffect(() => {
@@ -486,15 +501,58 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
     return () => { if (stream) stream.getTracks().forEach(t => t.stop()); };
   }, [showEvidencePanel]);
 
-  const fetchSystemOTP = () => {
+  const fetchSystemOTP = useCallback(() => {
+    if (!scannedTrackingId) {
+      setOtpState('ERROR');
+      return;
+    }
+
+    stopOtpPolling();
     setOtpState('FETCHING');
-    setTimeout(() => {
-      const r = Math.random();
-      if (r < 0.5) { setOtpState('FETCHED'); setFetchedOtp(Math.floor(100000 + Math.random() * 900000).toString()); }
-      else if (r < 0.8) { setOtpState('NOT_REQUIRED'); }
-      else { setOtpState('ERROR'); }
-    }, 2000);
-  };
+    setFetchedOtp('');
+    setOtpRecordId(null);
+
+    const pollOtp = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (scannedTrackingId) {
+          params.set('trackingId', scannedTrackingId);
+        }
+
+        const res = await fetch(`/api/otp/latest${params.toString() ? `?${params.toString()}` : ''}`);
+        if (!res.ok) {
+          throw new Error('Failed to fetch OTP');
+        }
+
+        const data = await res.json();
+        const record = data?.record;
+
+        if (data?.available && record?.otp) {
+          setOtpRecordId(record.id || null);
+          setFetchedOtp(String(record.otp));
+          setOtpState('FETCHED');
+          stopOtpPolling();
+        }
+      } catch (error) {
+        console.error('[OTP] Fetch failed:', error);
+        setOtpState('ERROR');
+        stopOtpPolling();
+      }
+    };
+
+    void pollOtp();
+    otpPollIntervalRef.current = window.setInterval(pollOtp, 1500);
+    otpPollTimeoutRef.current = window.setTimeout(() => {
+      setOtpState((current) => (current === 'FETCHED' ? current : 'NOT_REQUIRED'));
+      stopOtpPolling();
+    }, 20000);
+  }, [scannedTrackingId, stopOtpPolling]);
+
+  useEffect(() => {
+    return () => {
+      stopOtpPolling();
+    };
+  }, [stopOtpPolling]);
 
   const startScanner = async () => {
     setScanning(true);
@@ -625,6 +683,14 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trackingId: trackingIdVal, tapeIntact: true, boxCrushed: false, isTampered: false, otpProvided: fetchedOtp, evidenceUrl: '' }),
         });
+
+        if (otpRecordId) {
+          await fetch('/api/otp/latest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: otpRecordId }),
+          });
+        }
       } catch (e) { console.error('[Silent Accept] failed:', e); }
     })();
   };
@@ -635,6 +701,8 @@ function ReceiveTab({ userId, trackingIdMarketplaceMap }: { userId: string; trac
     setActiveStep(1); setAllChecked(false);
     setShowEvidencePanel(false); setShowDoneScreen(false);
     setOtpState('IDLE'); setFetchedOtp('');
+    setOtpRecordId(null);
+    stopOtpPolling();
     setMarketplace('AMAZON');
   };
 
