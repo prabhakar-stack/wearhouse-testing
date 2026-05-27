@@ -177,7 +177,7 @@ export async function fetchTrackingSnapshot(
         });
 
         let apiResponseJson: any = null;
-        page.on("response", async (response) => {
+        page.on("response", async (response: any) => {
           try {
             if (response.url().includes("get_checkpoints_table")) {
               apiResponseJson = await response.json();
@@ -231,7 +231,7 @@ export async function fetchTrackingSnapshot(
         // wait for API response
         try {
           await page.waitForResponse(
-            (r) => r.url().includes("get_checkpoints_table"),
+            (r: any) => r.url().includes("get_checkpoints_table"),
             { timeout: 20000 },
           );
         } catch (_) {
