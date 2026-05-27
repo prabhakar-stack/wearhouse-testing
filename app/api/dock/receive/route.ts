@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
             title: `Intake Visual Rejection`,
             description: `Package intake rejected for Tracking ID ${manifest.trackingId} due to visual damage.`,
             manifestId: manifest.id,
+            targetUserId: userId || null,
           }
         });
         console.log(`[Dock Receive Alert] Created L1 Alert for manifest: ${manifest.id}`);

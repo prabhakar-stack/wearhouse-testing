@@ -12,7 +12,7 @@ const ALL_LEVELS            = ['L1', 'L2', 'L3', 'L4'];
 export async function GET(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
-    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -20,9 +20,10 @@ export async function GET(req: NextRequest) {
     const showResolved = searchParams.get('resolved') === 'true';
 
     // Determine which levels this role can see
-    let visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : role === 'RECEIVER' ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
+    let visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : (role === 'RECEIVER' || role === 'INSPECTOR') ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
 
     const sessionUserId = req.headers.get('x-user-id');
+    const sessionUserEmail = req.headers.get('x-user-email');
     if (sessionUserId) {
       const dbUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
@@ -33,14 +34,37 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Build the dynamic where clause
+    const whereClause: any = {
+      resolved: showResolved,
+      level: { in: visibleLevels as any },
+    };
+
+    // Filter L1 alerts for RECEIVER or INSPECTOR roles to only see their own processed/targeted items
+    if (role === 'RECEIVER' || role === 'INSPECTOR') {
+      const emailLower = sessionUserEmail?.toLowerCase() || '';
+      whereClause.OR = [
+        {
+          level: { not: 'L1' }
+        },
+        {
+          level: 'L1',
+          OR: role === 'RECEIVER' ? [
+            { targetUserId: sessionUserId || undefined },
+            { manifest: { receivedBy: emailLower } }
+          ] : [
+            { targetUserId: sessionUserId || undefined },
+            { manifest: { inspectedBy: emailLower } }
+          ]
+        }
+      ];
+    }
+
     const alerts = await prisma.alert.findMany({
-      where: {
-        resolved: showResolved,
-        level: { in: visibleLevels as any },
-      },
+      where: whereClause,
       include: {
         manifest: {
-          select: { trackingId: true, status: true, claimId: true }
+          select: { trackingId: true, status: true, claimId: true, receivedBy: true, inspectedBy: true }
         },
         targetUser: {
           select: { email: true, name: true, role: true }
@@ -73,12 +97,32 @@ export async function GET(req: NextRequest) {
     // Count by level (only visible levels)
     const counts: Record<string, number> = { L1: 0, L2: 0, L3: 0, L4: 0, total: 0 };
     if (!showResolved) {
+      const unresolvedWhere: any = {
+        resolved: false,
+        level: { in: visibleLevels as any },
+      };
+      if (role === 'RECEIVER' || role === 'INSPECTOR') {
+        const emailLower = sessionUserEmail?.toLowerCase() || '';
+        unresolvedWhere.OR = [
+          {
+            level: { not: 'L1' }
+          },
+          {
+            level: 'L1',
+            OR: role === 'RECEIVER' ? [
+              { targetUserId: sessionUserId || undefined },
+              { manifest: { receivedBy: emailLower } }
+            ] : [
+              { targetUserId: sessionUserId || undefined },
+              { manifest: { inspectedBy: emailLower } }
+            ]
+          }
+        ];
+      }
+
       const countResult = await prisma.alert.groupBy({
         by: ['level'],
-        where: {
-          resolved: false,
-          level: { in: visibleLevels as any },
-        },
+        where: unresolvedWhere,
         _count: true,
       });
       for (const row of countResult) {
@@ -91,21 +135,36 @@ export async function GET(req: NextRequest) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    const statsWhere: any = {
+      resolved: true,
+      resolvedAt: { gte: startOfToday },
+      level: { in: visibleLevels as any },
+    };
+    if (role === 'RECEIVER' || role === 'INSPECTOR') {
+      const emailLower = sessionUserEmail?.toLowerCase() || '';
+      statsWhere.OR = [
+        {
+          level: { not: 'L1' }
+        },
+        {
+          level: 'L1',
+          OR: role === 'RECEIVER' ? [
+            { targetUserId: sessionUserId || undefined },
+            { manifest: { receivedBy: emailLower } }
+          ] : [
+            { targetUserId: sessionUserId || undefined },
+            { manifest: { inspectedBy: emailLower } }
+          ]
+        }
+      ];
+    }
+
     const resolvedTodayCount = await prisma.alert.count({
-      where: {
-        resolved: true,
-        resolvedAt: { gte: startOfToday },
-        level: { in: visibleLevels as any },
-      }
+      where: statsWhere
     });
 
     const sopFollowedTodayCount = await prisma.alert.count({
-      where: {
-        resolved: true,
-        resolvedAt: { gte: startOfToday },
-        sopAcknowledged: true,
-        level: { in: visibleLevels as any },
-      }
+      where: { ...statsWhere, sopAcknowledged: true }
     });
 
     const stats = {
@@ -191,7 +250,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
     const userId = req.headers.get('x-user-id');
-    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
