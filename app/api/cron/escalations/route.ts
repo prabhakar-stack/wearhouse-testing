@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { runEscalationsJob } from '@/lib/cron';
+import { prisma } from '@/lib/prisma';
+import { ALERT_RULE_BY_TYPE } from '@/lib/alertRules';
 
 export async function GET(req: Request) {
   try {
-    const authError = requireCronAuth(req);
-    if (authError) {
-      return authError;
+    const authHeader = req.headers.get('authorization');
+    const expectedToken = `Bearer ${process.env.CRON_SECRET || 'secret-cron-token'}`;
+    if (authHeader !== expectedToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const now = new Date();
