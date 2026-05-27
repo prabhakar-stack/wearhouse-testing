@@ -14,8 +14,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/product/status") ||
-    pathname.startsWith("/api/cron") ||       // Cron jobs use CRON_SECRET header
-    pathname.startsWith("/api/alerts/seed")   // Test seed uses CRON_SECRET header
+    pathname.startsWith("/api/cron") ||       // Cron routes validate their own secret
+    pathname.startsWith("/api/alerts/seed")   // Test seed validates its own secret
   ) {
     return NextResponse.next();
   }
