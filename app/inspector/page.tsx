@@ -96,7 +96,7 @@ export default function InspectorPage() {
 function StepVisualGuide({
   step,
 }: {
-  step: { id: number; title: string; desc: string; sampleImg: string | null };
+  step: { id: number; title: string; desc: string; sampleImg: string | string[] | null };
 }) {
   const renderBoxWireframe = (
     highlightedFace: "top" | "bottom" | "front" | "back" | "left" | "right",
@@ -560,22 +560,27 @@ function StepVisualGuide({
   };
 
   if (step.sampleImg) {
+    const images = Array.isArray(step.sampleImg) ? step.sampleImg : [step.sampleImg];
     return (
-      <div className="relative w-full h-36 rounded-lg overflow-hidden border border-[#313079]/10 bg-white shadow-sm flex shrink-0">
-        <img
-          src={step.sampleImg}
-          alt="Sample reference"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
-          Reference Sample
-        </div>
+      <div className="flex space-x-2 shrink-0 h-36 w-fit">
+        {images.map((imgSrc, index) => (
+          <div key={index} className="relative h-full w-fit rounded-lg overflow-hidden border border-[#313079]/10 bg-slate-950/5 shadow-sm">
+            <img
+              src={imgSrc}
+              alt={`Sample reference ${index + 1}`}
+              className="h-full w-auto object-contain"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
+              Reference Sample {images.length > 1 ? `#${index + 1}` : ""}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-36 rounded-lg overflow-hidden border border-[#FF6700]/20 bg-[#313079] flex items-center justify-center shrink-0 shadow-lg">
+    <div className="relative w-56 h-36 rounded-lg overflow-hidden border border-[#FF6700]/20 bg-[#313079] flex items-center justify-center shrink-0 shadow-lg">
       <div className="absolute inset-0 bg-gradient-to-br from-[#313079] via-[#000000] to-[#313079] opacity-95"></div>
       <style>{`
         @keyframes laser {
@@ -1206,6 +1211,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
 
   const [boxStep, setBoxStep] = useState(1);
+  const [boxStep6Part, setBoxStep6Part] = useState<1 | 2>(1);
 
   const [itemStep, setItemStep] = useState(1);
   const [itemsProcessed, setItemsProcessed] = useState(0);
@@ -1279,6 +1285,7 @@ function InspectTab({ userId }: { userId?: string }) {
     setIsValidatingLpn(false);
     setLpnScanError("");
     setBoxStep(1);
+    setBoxStep6Part(1);
     setItemStep(1);
     setItemsProcessed(0);
     setCurrentLpn("");
@@ -1940,6 +1947,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
   const nextBoxStep = () => {
     triggerXp(20);
+    setBoxStep6Part(1);
     if (boxStep < 8) {
       setBoxStep((prev) => prev + 1);
     } else {
@@ -2140,38 +2148,38 @@ function InspectTab({ userId }: { userId?: string }) {
     {
       id: 1,
       title: "Top Side",
-      desc: "Lay the box flat. Center the TOP face in the camera frame so all 4 edges are visible. Capture when steady.",
-      sampleImg: "/samples/inspector_box_photo.png",
+      desc: "Just a plain image showing no rotation. Lay the box flat and center the top face in the camera frame.",
+      sampleImg: "/samples/1.png",
     },
     {
       id: 2,
       title: "Bottom Side",
-      desc: "Flip the box over carefully. Capture the BOTTOM face — look for moisture staining or crushed corners.",
-      sampleImg: "/samples/inspector_box_photo.png",
+      desc: "Select one side of box to start. Flip the box over carefully to capture the bottom face.",
+      sampleImg: "/samples/234.png",
     },
     {
       id: 3,
       title: "Front Side",
       desc: "Stand the box upright. Capture the FRONT face — note any dents, tears, or re-taped areas.",
-      sampleImg: null,
+      sampleImg: "/samples/234.png",
     },
     {
       id: 4,
       title: "Back Side",
       desc: "Rotate the box. Capture the BACK face — check for any impact damage or label irregularities.",
-      sampleImg: null,
+      sampleImg: "/samples/234.png",
     },
     {
       id: 5,
       title: "Left Side",
       desc: "Capture the LEFT SIDE of the box — look for crush marks or moisture stains on the edges.",
-      sampleImg: null,
+      sampleImg: "/samples/566.png",
     },
     {
       id: 6,
       title: "Right Side",
-      desc: "Capture the RIGHT SIDE — check the seam tape runs continuously without gaps or cuts.",
-      sampleImg: null,
+      desc: "Capture the RIGHT SIDE — check the seam tape runs continuously without gaps or cuts (showing 2 rotations).",
+      sampleImg: "/samples/566.png",
     },
     {
       id: 7,
@@ -2405,20 +2413,57 @@ function InspectTab({ userId }: { userId?: string }) {
                     </div>
 
                     {isActive && (
-                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
-                        <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                          {step.desc}
-                        </p>
-                        <StepVisualGuide step={step} />
-                        <button
-                          onClick={() => {
-                            captureImage("box");
-                            nextBoxStep();
-                          }}
-                          className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all"
-                        >
-                          <Camera size={16} /> <span>Capture Image</span>
-                        </button>
+                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                          {/* Left Side: Visual Guide / Image */}
+                          <div className="shrink-0">
+                            <StepVisualGuide step={step} />
+                          </div>
+
+                          {/* Right Side: Step Info & Actions */}
+                          <div className="flex-1 flex flex-col justify-between space-y-3">
+                            {step.id === 6 ? (
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
+                                  {step.desc}
+                                </p>
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-left">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700] mb-0.5 animate-pulse">
+                                    Rotation Step {boxStep6Part} of 2
+                                  </p>
+                                  <p className="text-xs font-bold text-orange-700 leading-normal">
+                                    {boxStep6Part === 1
+                                      ? "Rotate the box 90 degrees to check the first section of continuous seam tape."
+                                      : "Again rotate the box 90 degrees to inspect the second section of seam tape before capturing."
+                                    }
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
+                                {step.desc}
+                              </p>
+                            )}
+                            {step.id === 6 && boxStep6Part === 1 ? (
+                              <button
+                                onClick={() => setBoxStep6Part(2)}
+                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all mt-auto"
+                              >
+                                <span>Next Rotation →</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  captureImage("box");
+                                  nextBoxStep();
+                                }}
+                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all mt-auto"
+                              >
+                                <Camera size={16} /> <span>Capture Image</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2492,27 +2537,31 @@ function InspectTab({ userId }: { userId?: string }) {
                     </div>
 
                     {isActive && (
-                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
-                        {"instruction" in step && step.instruction && (
-                          <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                            {step.instruction}
-                          </p>
-                        )}
-
-                        {"sampleImg" in step && step.sampleImg && (
-                          <div className="relative w-full h-40 rounded-lg overflow-hidden border border-[#313079]/10 bg-[#FF6700]/5">
-                            <img
-                              src={step.sampleImg}
-                              alt="Reference sample"
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
-                              Reference Sample
+                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className={`flex ${"sampleImg" in step && step.sampleImg ? "flex-col md:flex-row gap-4" : "flex-col space-y-3"}`}>
+                          {"sampleImg" in step && step.sampleImg && (
+                            <div className="shrink-0">
+                              <div className="relative h-40 w-fit rounded-lg overflow-hidden border border-[#313079]/10 bg-slate-950/5 shadow-sm">
+                                <img
+                                  src={step.sampleImg}
+                                  alt="Reference sample"
+                                  className="h-full w-auto object-contain"
+                                />
+                                <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
+                                  Reference Sample
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {step.id === 1 && (
+                          <div className="flex-1 flex flex-col space-y-3 justify-between">
+                            {"instruction" in step && step.instruction && (
+                              <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
+                                {step.instruction}
+                              </p>
+                            )}
+
+                            {step.id === 1 && (
                           <div className="space-y-3">
                             <input
                               type="text"
@@ -2791,6 +2840,8 @@ function InspectTab({ userId }: { userId?: string }) {
                             </button>
                           </div>
                         )}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

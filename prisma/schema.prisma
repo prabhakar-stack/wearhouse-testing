@@ -272,7 +272,7 @@ model AMZReimbursement {
 
 // Amazon customer returns (raw LPN-level rows)
 model AMZCustomerReturn {
-  lpn                     String   @id @map("license-plate-number")
+  lpn                     String   @id
   returnDate              DateTime? @map("return-date")
   orderId                 String?  @map("order-id")
   sku                     String?  @map("sku")
@@ -290,7 +290,7 @@ model AMZCustomerReturn {
 }
 
 model ReturnItem {
-  lpn                     String   @id @map("license-plate-number")
+  lpn                     String   @id
   returnDate              DateTime? @map("return-date")
   sku                     String?  @map("sku")
   asin                    String?  @map("asin")
