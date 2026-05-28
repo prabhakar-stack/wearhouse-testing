@@ -82,7 +82,6 @@ model Manifest {
   receivedAt       DateTime?
   receivedBy       String?        // Receiver's email
   inspectedBy      String?        // Inspector's email
-  customerOrderId  String?        // Original purchase customer order ID
   claimId          String?        // Claims identifier
   createdAt        DateTime     @default(now())
 
@@ -272,7 +271,7 @@ model AMZReimbursement {
 
 // Amazon customer returns (raw LPN-level rows)
 model AMZCustomerReturn {
-  lpn                     String   @id @map("license-plate-number")
+  lpn                     String   @id
   returnDate              DateTime? @map("return-date")
   orderId                 String?  @map("order-id")
   sku                     String?  @map("sku")
@@ -381,7 +380,7 @@ model ShopifyReturnTracking {
 }
 
 model ReturnItem {
-  lpn                     String   @id @map("license-plate-number")
+  lpn                     String   @id
   returnDate              DateTime? @map("return-date")
   sku                     String?  @map("sku")
   asin                    String?  @map("asin")
