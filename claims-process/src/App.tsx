@@ -8,7 +8,8 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Triage from './pages/Triage';
 import SmartFiling from './pages/SmartFiling';
-import RecoveryHubTab from './pages/RecoveryHubTab';
+import RecoveryHubTab from '../app/admin/components/RecoveryHubTab';
+import QCAuditTab from './pages/QCAuditTab';
 
 export default function App() {
   return (
@@ -19,7 +20,7 @@ export default function App() {
           <Route path="/triage" element={<Triage />} />
           <Route path="/filing" element={<SmartFiling />} />
           <Route path="/recovery" element={<RecoveryHubTab />} />
-          <Route path="/audit" element={<Placeholder title="QC Audit" />} />
+          <Route path="/audit" element={<QCAuditTab />} />
           <Route path="/performance" element={<Placeholder title="Performance Reports" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

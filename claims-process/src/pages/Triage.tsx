@@ -21,7 +21,6 @@ interface GroupedClaim extends Claim {
     type: string;
     condition?: string;
     reason?: string;
-    reasonDescription?: string;
   }[];
 }
 
@@ -56,17 +55,17 @@ export default function Triage() {
   }, []);
 
   const handleCopy = (claim: GroupedClaim) => {
-    const issuesText = claim.issues.map((i: any) => `- Qty: ${i.qty ?? 1} [${i.type}]: ${i.reasonDescription || i.reason}`).join('\n');
+    const issuesText = claim.issues.map((i: any) => `- Qty: ${i.qty ?? 1} [${i.type}]: ${i.reason}`).join('\n');
     const bundle = `
 Order ID: ${claim.orderId}
 SKU: ${claim.sku}
 Issues:
 ${issuesText}
-Evidence: ${claim.drive_link || 'N/A'}
+Evidence: ${claim.driveLink || 'N/A'}
     `.trim();
     
     navigator.clipboard.writeText(bundle);
-    setCopiedId(claim.claimId?.toString() ?? null);
+    setCopiedId(claim.uniqueKey);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -91,7 +90,7 @@ Evidence: ${claim.drive_link || 'N/A'}
           qty: (c as any).qty || 1, // Use backend qty if available, else 1
           type: c.type, 
           condition: c.condition, 
-          reason: c.reason,
+          reason: c.reason 
         }] 
       } as GroupedClaim;
     } else {
@@ -110,7 +109,7 @@ Evidence: ${claim.drive_link || 'N/A'}
           qty: (c as any).qty || 1, 
           type: c.type, 
           condition: c.condition, 
-          reason: c.reason, 
+          reason: c.reason 
         });
       }
     }
@@ -137,9 +136,9 @@ Evidence: ${claim.drive_link || 'N/A'}
     
     // Check if any valid issue matches the tab filter
     return validIssues.some((issue: any) => {
-      if (filter === 'Missing') return c.deliveryStatus?.toLowerCase() !== 'Delivered' && c.slaDaysElapsed>=1;
+      if (filter === 'Missing') return c.deliveryStatus?.toLowerCase() !== 'delivered' && c.slaDaysElapsed>=1;
       if (filter === 'Damaged') return (issue.type === 'Damaged');
-      if (filter === 'RejectedDelivery') return c.deliveryStatus === 'Rejected'  || issue.type === 'RejectedDelivery' || issue.type === 'Rejected';
+      if (filter === 'RejectedDelivery') return c.deliveryStatus?.toLowerCase() === 'rejected' || issue.type === 'RejectedDelivery' || issue.type === 'Rejected';
       return issue.type === filter;
     });
   });
@@ -257,7 +256,6 @@ Evidence: ${claim.drive_link || 'N/A'}
                       {claim.issues?.map((issue: any, idx: number) => (
                         <div key={idx} className="flex flex-col gap-0.5 border-l-2 border-slate-100 pl-2">
                           <span className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">{issue.reason || 'N/A'}</span>
-                          <p className="text-[9px] text-slate-400 font-medium leading-tight italic">"{issue.reasonDescription}"</p>
                         </div>
                       ))}
                     </div>
@@ -265,9 +263,9 @@ Evidence: ${claim.drive_link || 'N/A'}
 
                   {/* C4: Drive Link */}
                   <td className="px-4 py-4">
-                    {claim.drive_link ? (
+                    {claim.driveLink ? (
                       <a 
-                        href={claim.drive_link} 
+                        href={claim.driveLink} 
                         target="_blank" 
                         rel="noreferrer"
                         className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-bold text-[9px] transition-colors"
@@ -307,7 +305,7 @@ Evidence: ${claim.drive_link || 'N/A'}
                         ) : (
                           <div className="flex flex-col items-end">
                             <span className="text-[8px] font-bold text-slate-300 italic">Unfiled</span>
-                            {true  && (
+                            {true && (
                               <button 
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -348,7 +346,7 @@ Evidence: ${claim.drive_link || 'N/A'}
                         onClick={() => handleCopy(claim)}
                         className="p-1.5 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-slate-100 transition-all text-[#FF6700] shrink-0"
                       >
-                        {copiedId === claim.claimId ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedId === claim.uniqueKey ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </td>

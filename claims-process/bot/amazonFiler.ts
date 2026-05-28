@@ -1309,8 +1309,8 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
           4: []  // Slot 5: 1st image of matched LPN subfolder
         };
 
-        const orderUrl = claim.orderDriveLink || claim.order_drive_link || claim.drive_link;
-        const lpnUrl = claim.drive_link || claim.orderDriveLink || claim.order_drive_link;
+        const orderUrl = claim.orderDriveLink;
+        const lpnUrl = claim.driveLink;
 
         if (!orderUrl) {
           throw new Error("No Order Google Drive link (order_drive_link) is provided in the claim database record. Cannot verify or upload supporting images.");
@@ -1515,7 +1515,7 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     }
 
     // Step: Evidence
-    const evidenceLink = claim.drive_link || claim.orderDriveLink || claim.order_drive_link;
+    const evidenceLink = claim.driveLink || claim.orderDriveLink;
     if (evidenceLink) {
       log(`Providing evidence link: ${evidenceLink}`);
       
