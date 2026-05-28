@@ -1,8 +1,0 @@
-{
-  "name": "ClaimsHub Enterprise",
-  "description": "A high-performance dashboard for E-commerce Claims Operations specialists, featuring triage queues, SLA monitoring, and automated filing hubs.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

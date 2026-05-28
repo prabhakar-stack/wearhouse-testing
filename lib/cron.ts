@@ -1,19 +1,34 @@
 import { prisma } from "@/lib/prisma";
 import { fetchTrackingSnapshot } from "@/lib/trackcourier";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
+import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
 
 export const HOUR_MS = 60 * 60 * 1000;
+export const HALF_DAY_MS = 12 * HOUR_MS;
 export const FIVE_DAYS_MS = 5 * 24 * HOUR_MS;
 
 const runAmazonRawSync = amazonRawReports.main as () => Promise<void>;
 
-export type CronJobKey = "amazon-returns" | "expected-tracking" | "escalations";
+export type CronJobKey =
+  | "amazon-returns"
+  | "shopify-returns"
+  | "expected-tracking"
+  | "escalations";
 
 export async function runAmazonReturnsJob() {
   await runAmazonRawSync();
 
   return {
     message: "Amazon raw report fetch and sync completed",
+  };
+}
+
+export async function runShopifyReturnsSyncJob() {
+  const results = await runShopifyReturnsJob();
+
+  return {
+    message: "Shopify returns sync completed",
+    results,
   };
 }
 
@@ -365,6 +380,12 @@ export const cronJobs = [
     label: "Amazon Returns",
     intervalMs: FIVE_DAYS_MS,
     run: runAmazonReturnsJob,
+  },
+  {
+    key: "shopify-returns" as const,
+    label: "Shopify Returns",
+    intervalMs: HALF_DAY_MS,
+    run: runShopifyReturnsSyncJob,
   },
   {
     key: "expected-tracking" as const,
