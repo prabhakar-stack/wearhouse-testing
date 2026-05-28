@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "clean": "next clean",
     "seed:test-order": "node prisma/seed-test-order.js",
-    "postbuild": "prisma migrate deploy",
+    "postbuild": "prisma db push --accept-data-loss",
     "postinstall": "prisma generate",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
     "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js"
