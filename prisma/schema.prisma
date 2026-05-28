@@ -82,7 +82,6 @@ model Manifest {
   receivedAt       DateTime?
   receivedBy       String?        // Receiver's email
   inspectedBy      String?        // Inspector's email
-  customerOrderId  String?        // Original purchase customer order ID
   claimId          String?        // Claims identifier
   createdAt        DateTime     @default(now())
 
