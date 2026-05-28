@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
-import { prisma } from "@/lib/prisma";
-import { fetchShiprocketTrackingSnapshot } from "@/lib/shiprocketTracking";
+import fs from "fs";
+import path from "path";
+import { prisma } from "./prisma.ts";
+import { fetchShiprocketTrackingSnapshot } from "./shiprocketTracking.ts";
 
 const TRACKING_REFRESH_MS = 60 * 60 * 1000;
 
@@ -177,13 +179,21 @@ async function fetchReturnPrimeReturns() {
     );
   }
 
-  return fetchPagedRecords({
+  // Fetch the paged records first
+  const records = await fetchPagedRecords({
     url,
     headers: {
       "x-rp-token": token,
     },
-    pageParam: "page",
+    pageParam: process.env.RP_PAGE_PARAM || "page",
   });
+
+  // Persist raw payload for audit / debugging (project‑root location)
+  const outPath = path.join(process.cwd(), "returnprime_returns.json");
+  await fs.promises.writeFile(outPath, JSON.stringify(records, null, 2));
+  console.log(`Saved ReturnPrime raw payload to ${outPath}`);
+
+  return records;
 }
 
 async function fetchShiprocketReturns() {
@@ -200,11 +210,19 @@ async function fetchShiprocketReturns() {
     headers[tokenHeader] = `${tokenPrefix}${token}`;
   }
 
-  return fetchPagedRecords({
+  // Fetch the paged records first
+  const records = await fetchPagedRecords({
     url,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
     pageParam: process.env.SHIPROCKET_PAGE_PARAM || "page",
   });
+
+  // Persist raw payload for audit / debugging (project‑root location)
+  const outPath = path.join(process.cwd(), "shiprocket_returns.json");
+  await fs.promises.writeFile(outPath, JSON.stringify(records, null, 2));
+  console.log(`Saved Shiprocket raw payload to ${outPath}`);
+
+  return records;
 }
 
 async function upsertReturnTracking(input: ShopifyReturnTrackingInput) {
@@ -329,7 +347,7 @@ function mapShiprocketReturn(record: JsonRecord, product: JsonRecord) {
     requestType: record.purpose_of_shipment !== undefined && record.purpose_of_shipment !== null ? String(record.purpose_of_shipment) : null,
     status: record.status !== undefined && record.status !== null ? String(record.status) : null,
     channel: record.channel_name !== undefined && record.channel_name !== null ? String(record.channel_name) : null,
-    orderId: record.order_id !== undefined && record.order_id !== null ? String(record.order_id) : null,
+    orderId: record.channel_order_id !== undefined && record.channel_order_id !== null ? String(record.channel_order_id) : null,
     orderName: record.channel_order_id !== undefined && record.channel_order_id !== null ? String(record.channel_order_id) : null,
     orderCreatedAt: parseDate(record.channel_created_at),
     fulfillmentId: record.fulfillment_id !== undefined && record.fulfillment_id !== null ? String(record.fulfillment_id) : null,

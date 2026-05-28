@@ -1,5 +1,14 @@
-import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
-import { prisma } from "@/lib/prisma";
+import process from 'process';
+process.emitWarning = ((originalEmit) => (warning, ...args) => {
+  if (typeof warning === 'string' && warning.includes('fs.Stats constructor')) {
+    // Silently ignore this specific deprecation warning
+    return;
+  }
+  return originalEmit.call(process, warning, ...args);
+})(process.emitWarning);
+
+import { runShopifyReturnsJob } from "../lib/shopifyReturns.ts";
+import { prisma } from "../lib/prisma.ts";
 
 async function main() {
   console.log("====================================================");
