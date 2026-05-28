@@ -290,7 +290,7 @@ model AMZCustomerReturn {
 
 model ReturnPrimeReturn {
   id                   String       @id
-  requestNumber        String?      @unique
+  requestNumber        String?
   requestType          String?
   status               String?
   channel              String?

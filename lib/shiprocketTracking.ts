@@ -161,14 +161,52 @@ async function getShiprocketBearerToken() {
   return token;
 }
 
-export async function fetchShiprocketTrackingSnapshot(
-  trackingNumber: string,
+type ShiprocketTrackingLookup = {
+  awbCode?: string | null;
+  shipmentId?: string | null;
+  orderId?: string | null;
+  channelId?: string | null;
+  courierName?: string | null;
+};
+
+type TrackingCandidate = {
+  id: string;
+  url: string;
+};
+
+function buildTrackingCandidates(lookup: ShiprocketTrackingLookup) {
+  const candidates: TrackingCandidate[] = [];
+
+  if (lookup.awbCode) {
+    candidates.push({
+      id: lookup.awbCode,
+      url: `${SHIPROCKET_BASE_URL}/v1/external/courier/track/awb/${encodeURIComponent(lookup.awbCode)}?medium=shiprocketMCP`,
+    });
+  }
+
+  if (lookup.shipmentId) {
+    candidates.push({
+      id: lookup.shipmentId,
+      url: `${SHIPROCKET_BASE_URL}/v1/external/courier/track/shipment/${encodeURIComponent(lookup.shipmentId)}?medium=shiprocketMCP`,
+    });
+  }
+
+  if (lookup.orderId && lookup.channelId) {
+    candidates.push({
+      id: `${lookup.orderId}:${lookup.channelId}`,
+      url: `${SHIPROCKET_BASE_URL}/v1/external/courier/track?order_id=${encodeURIComponent(lookup.orderId)}&channel_id=${encodeURIComponent(lookup.channelId)}`,
+    });
+  }
+
+  return candidates;
+}
+
+async function requestTrackingSnapshot(
+  token: string,
+  candidate: TrackingCandidate,
   courierName?: string | null,
 ): Promise<TrackingSnapshot> {
-  const token = await getShiprocketBearerToken();
-  const trackUrl = `${SHIPROCKET_BASE_URL}/v1/external/courier/track/awb/${encodeURIComponent(trackingNumber)}?medium=shiprocketMCP`;
-
-  const response = await fetch(trackUrl, {
+  const response = await fetch(candidate.url, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -183,10 +221,10 @@ export async function fetchShiprocketTrackingSnapshot(
 
   const responseData = await response.json();
   const trackingData = responseData?.tracking_data ?? responseData ?? {};
-  const parsed = parseTrackingData(trackingData, trackingNumber);
+  const parsed = parseTrackingData(trackingData, candidate.id);
 
   return {
-    trackingNumber,
+    trackingNumber: candidate.id,
     courierName: parsed.courierName || courierName || null,
     courierSlug: parsed.courierSlug,
     trackingUrl: parsed.trackingUrl,
@@ -206,4 +244,30 @@ export async function fetchShiprocketTrackingSnapshot(
     ),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+export async function fetchShiprocketTrackingSnapshot(
+  lookup: ShiprocketTrackingLookup,
+): Promise<TrackingSnapshot> {
+  const candidates = buildTrackingCandidates(lookup);
+  if (candidates.length === 0) {
+    throw new Error("Missing Shiprocket tracking identifiers.");
+  }
+
+  const token = await getShiprocketBearerToken();
+  let lastError: Error | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      return await requestTrackingSnapshot(
+        token,
+        candidate,
+        lookup.courierName,
+      );
+    } catch (error) {
+      lastError = error as Error;
+    }
+  }
+
+  throw lastError || new Error("Shiprocket tracking request failed.");
 }
