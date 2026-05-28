@@ -14,9 +14,8 @@ export interface Claim {
   deliveryStatus?: string;
   condition?: string;
   reason?: string;
-  drive_link?: string;
+  driveLink?: string;
   orderDriveLink?: string;
-  order_drive_link?: string;
   trackingId?: string;
   orderId: string;
   amazonOrderId?: string;
