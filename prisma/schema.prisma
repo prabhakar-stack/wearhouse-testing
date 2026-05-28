@@ -289,6 +289,97 @@ model AMZCustomerReturn {
   @@map("AMZ_customer_returns")
 }
 
+model ReturnPrimeReturn {
+  id                   String       @id
+  requestNumber        String?      @unique
+  requestType          String?
+  status               String?
+  channel              String?
+  orderId              String?
+  orderName            String?
+  orderCreatedAt       DateTime?
+  fulfillmentId        String?
+  deliveryStatus       String?
+  deliveryDate         DateTime?
+  customerEmail        String?
+  postalCode           String?
+  receivedStatus       Boolean      @default(false)
+  inspectedStatus      Boolean      @default(false)
+  rejectedStatus       Boolean      @default(false)
+  archivedStatus       Boolean      @default(false)
+  refundStatus         String?
+  eligibleRefundStatus  Boolean      @default(false)
+  refundedAmount       Float?       @default(0)
+  originalProductId    String?
+  sku                  String?
+  trackingNumber       String?
+  quantity             Int?
+  actualAmount         Float?
+  imageSrc             String?
+  marketplace          Marketplace  @default(SHOPIFY)
+  rawPayload           Json?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([orderId])
+  @@index([trackingNumber])
+  @@map("return_prime_returns")
+}
+
+model ShiprocketReturn {
+  id              String       @id
+  requestNumber   String?
+  requestType     String?
+  status          String?
+  channel         String?
+  orderId         String?
+  orderName       String?
+  orderCreatedAt  DateTime?
+  fulfillmentId   String?
+  deliveryStatus  String?
+  deliveryDate    DateTime?
+  customerEmail   String?
+  postalCode      String?
+  courierName     String?
+  courierSlug     String?
+  shipmentId      String?
+  trackingNumber  String?
+  sku             String?
+  productName     String?
+  quantity        Int?
+  amount          Float?
+  marketplace     Marketplace  @default(SHOPIFY)
+  rawPayload      Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([orderId])
+  @@index([shipmentId])
+  @@index([trackingNumber])
+  @@map("shiprocket_returns")
+}
+
+model ShopifyReturnTracking {
+  trackingNumber    String       @id
+  sourceType        String
+  sourceId          String
+  marketplace       Marketplace  @default(SHOPIFY)
+  courierName       String?
+  courierSlug       String?
+  latestStatus      String?
+  latestLocation    String?
+  scheduledDelivery DateTime?
+  checkpointCount   Int          @default(0)
+  checkpoints       Json?
+  rawText           String?
+  fetchedAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([sourceType, sourceId])
+  @@index([marketplace])
+  @@map("shopify_return_tracking")
+}
+
 model ReturnItem {
   lpn                     String   @id @map("license-plate-number")
   returnDate              DateTime? @map("return-date")
