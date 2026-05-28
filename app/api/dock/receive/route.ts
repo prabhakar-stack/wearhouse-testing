@@ -110,12 +110,11 @@ export async function POST(req: NextRequest) {
       // Update Manifest status, receive timestamp, receivedBy and customerOrderId
       await tx.manifest.update({
         where: { id: manifest.id },
-        data: {
-          status: isDamaged ? 'EXPECTED' : 'AT_DOCK',
-          receivedAt: isDamaged ? null : new Date(),
-          receivedBy: userEmail,
-          customerOrderId: customerOrderId,
-        }
+  data: {
+    status: isDamaged ? 'EXPECTED' : 'AT_DOCK',
+    receivedAt: isDamaged ? null : new Date(),
+    receivedBy: userEmail,
+  }
       });
 
       // Create an Evidence if visually damaged/tampered (receiver rejection)
