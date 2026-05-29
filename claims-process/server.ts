@@ -297,13 +297,15 @@ async function setupDatabaseSchema(db: pg.Pool) {
           SELECT DISTINCT ON (lpn)
             lpn,
             "orderId",
-            "manifestId"
+            "manifestId",
+            "type"
           FROM "Evidence"
           ` : `
           SELECT 
             NULL::text AS lpn,
             NULL::text AS "orderId",
-            NULL::text AS "manifestId"
+            NULL::text AS "manifestId",
+            NULL::text AS "type"
           LIMIT 0
           `}
         ),
@@ -376,6 +378,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
             
             -- type mapping
             CASE
+              WHEN ev.lpn IS NOT NULL AND ev.type = 'RECEIVER_REJECTION' THEN 'Rejected'
+              WHEN ev.lpn IS NOT NULL AND ev.type = 'Claimed' THEN 'Claimed'
               WHEN ev.lpn IS NOT NULL THEN 'Damaged'
               ELSE 'Missing'
             END AS type
@@ -737,6 +741,33 @@ async function startServer() {
       }
 
       return { success: true, message: "Successfully executed mock sync flow." };
+    }
+  }
+
+  async function handleEvidenceTypeClaimedUpdate(db: any, orderId: string | undefined, status: string | undefined) {
+    if (!db || !orderId || !status) return;
+    if (status.toLowerCase() === 'claimed') {
+      try {
+        const claimCheck = await db.query(
+          `SELECT type FROM "claims_amz" WHERE "orderId" = $1 LIMIT 1`,
+          [orderId]
+        );
+        if (claimCheck.rows.length > 0 && claimCheck.rows[0].type === 'Rejected') {
+          try {
+            await db.query(`UPDATE "Evidence" SET "type" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
+            console.log(`[Evidence Update] Updated Evidence.type to 'Claimed' for Order ID: ${orderId}`);
+          } catch (evErr) {
+            try {
+              await db.query(`UPDATE "evidence" SET "type" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
+              console.log(`[Evidence Update fallback] Updated evidence.type to 'Claimed' for Order ID: ${orderId}`);
+            } catch (innerEvErr: any) {
+              console.error(`[Evidence Update] Failed both Evidence and evidence table updates: ${innerEvErr.message}`);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error(`[Evidence Update Check] Lookup failed: ${e.message}`);
+      }
     }
   }
 
@@ -1392,6 +1423,9 @@ async function startServer() {
             `UPDATE "claims_amz" SET status = 'Claimed' WHERE lpn = $1 OR "orderId" = $2`,
             [claimData.lpn || '', claimData.orderId || '']
           ).catch(() => {});
+
+          // 3. Conditional Evidence table type update
+          handleEvidenceTypeClaimedUpdate(db, claimData.orderId, 'Claimed');
         }
       }
     }).catch(err => {
@@ -1956,6 +1990,9 @@ async function startServer() {
         } catch (e) {
           // Suppress error since it might be a read-only view
         }
+
+        // Conditional Evidence table type update
+        await handleEvidenceTypeClaimedUpdate(db, orderId, status);
       } else {
         const item = mockClaims.find((c: any) => c.orderId === orderId);
         if (item) {
