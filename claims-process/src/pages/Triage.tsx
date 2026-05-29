@@ -119,6 +119,11 @@ Evidence: ${claim.driveLink || 'N/A'}
   const groupedClaimsList: GroupedClaim[] = Object.values(groupedClaimsRaw);
 
   const filteredClaims = groupedClaimsList.filter(c => {
+    // CRITICAL TRIAGE FILTER: Items classified as 'Shopify RTO' never require claims processing
+    if (c.channel === 'Shopify RTO') {
+      return false;
+    }
+
     // Check if any issue matches the filters
     const validIssues = c.issues.filter((issue: any) => {
       const condition = issue.condition?.toLowerCase();

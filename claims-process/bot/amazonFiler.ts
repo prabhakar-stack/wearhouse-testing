@@ -538,7 +538,7 @@ async function getClaimsForTrackingId(trackingId: string, orderId: string): Prom
     const oid = (orderId || "").trim();
 
     if (tid || oid) {
-      const tables = ['"claims_AMZ"'];
+      const tables = ['"claims_all"'];
       for (const table of tables) {
         try {
           const colRes = await tempPool.query(`

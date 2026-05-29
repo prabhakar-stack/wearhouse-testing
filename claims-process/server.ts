@@ -34,7 +34,7 @@ let mockReturnItems: any[] = [
 async function setupDatabaseSchema(db: pg.Pool) {
   try {
     console.log("Dropping deprecated AMZ_filed_claims table...");
-    await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE;`);
+    await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE; DROP TABLE IF EXISTS "claims_amz" CASCADE; DROP VIEW IF EXISTS "claims_all" CASCADE; DROP TABLE IF EXISTS "claims_all" CASCADE;`);
     await db.query(`DROP TABLE IF EXISTS "AMZ_filed_claims" CASCADE;`);
 
         console.log("Checking and setting up sample_recovery table...");
@@ -245,7 +245,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
     const countRes = await db.query('SELECT COUNT(*) FROM "sample_recovery"');
 
 
-    console.log("Checking and setting up claims_AMZ view...");
+    console.log("Checking and setting up claims_all physical table...");
 
     // First check existing tables in the database
     const tablesRes = await db.query(`
@@ -264,13 +264,22 @@ async function setupDatabaseSchema(db: pg.Pool) {
 
     // Check if the base returns table exists
     if (existingTables.has(returnsTable.toLowerCase())) {
-      console.log(`Table "${returnsTable}" found. Proceeding with database-backed "claims_amz" view...`);
+      console.log(`Table "${returnsTable}" found. Proceeding with database-backed "claims_all" table setup...`);
       
-      // Drop any existing table/view named "claims_AMZ" to avoid conflicts
+      // Ensure "shopify_return_tracking" has "orderId" column for correct Shopify integration
+      try {
+        await db.query(`ALTER TABLE "shopify_return_tracking" ADD COLUMN IF NOT EXISTS "orderId" text;`);
+        console.log(`[Schema Match] Added "orderId" column to "shopify_return_tracking" table successfully.`);
+      } catch (colErr: any) {
+        console.warn(`[Schema Match] "shopify_return_tracking" Column check/alter warning:`, colErr.message);
+      }
+
+      // Drop any existing table/view named "claims_AMZ" or "claims_amz" to avoid conflicts
       await db.query(`DROP VIEW IF EXISTS "claims_AMZ" CASCADE;`);
       await db.query(`DROP TABLE IF EXISTS "claims_AMZ" CASCADE;`);
       await db.query(`DROP VIEW IF EXISTS claims_amz CASCADE;`);
       await db.query(`DROP TABLE IF EXISTS claims_amz CASCADE;`);
+      await db.query(`DROP VIEW IF EXISTS "claims_all" CASCADE;`);
 
       // Determine helper existence flags
       const hasRemovalShipments = existingTables.has('amz_removal_shipments');
@@ -279,8 +288,30 @@ async function setupDatabaseSchema(db: pg.Pool) {
       const hasManifest = existingTables.has('manifest');
       const hasReimbursements = existingTables.has('amz_reimbursements');
 
-      const viewSql = `
-        CREATE OR REPLACE VIEW "claims_amz" AS
+      // Create the physical table "claims_all" matching the schema exactly
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS "claims_all" (
+          lpn text PRIMARY KEY,
+          "orderId" text,
+          "trackingId" text,
+          sku text,
+          fnsku text,
+          "productName" text,
+          channel text,
+          status text DEFAULT 'unclaimed',
+          type text,
+          "driveLink" text,
+          "orderDriveLink" text,
+          "createdAt" timestamp with time zone,
+          qty integer
+        );
+      `);
+
+      const syncSql = `
+        TRUNCATE TABLE "claims_all";
+        INSERT INTO "claims_all" (
+          lpn, "orderId", "trackingId", sku, fnsku, "productName", channel, status, type, "driveLink", "orderDriveLink", "createdAt", qty
+        )
         WITH base_returns AS (
           SELECT 
             "license-plate-number" AS lpn,
@@ -298,18 +329,23 @@ async function setupDatabaseSchema(db: pg.Pool) {
             lpn,
             "orderId",
             "manifestId",
-            "type"
+            "type",
+            "orderDriveLink",
+            "lpnDriveLink"
           FROM "Evidence"
           ` : `
           SELECT 
             NULL::text AS lpn,
             NULL::text AS "orderId",
             NULL::text AS "manifestId",
-            NULL::text AS "type"
+            NULL::text AS "type",
+            NULL::text AS "orderDriveLink",
+            NULL::text AS "lpnDriveLink"
           LIMIT 0
           `}
         ),
         mapped_claims_raw AS (
+          -- Part 1: Amazon Returns Base Queue
           SELECT 
             br.lpn,
             
@@ -382,10 +418,62 @@ async function setupDatabaseSchema(db: pg.Pool) {
               WHEN ev.lpn IS NOT NULL AND ev.type = 'Claimed' THEN 'Claimed'
               WHEN ev.lpn IS NOT NULL THEN 'Damaged'
               ELSE 'Missing'
-            END AS type
+            END AS type,
+
+            -- evidence drive links
+            COALESCE(ev."lpnDriveLink", ev."orderDriveLink") AS "driveLink",
+            ev."orderDriveLink" AS "orderDriveLink",
+            NULL::timestamp with time zone AS "createdAt",
+            1::integer AS qty
             
           FROM base_returns br
           LEFT JOIN evidences ev ON br.lpn = ev.lpn
+
+          UNION ALL
+
+          -- Part 2: Shopify Returns Queue (RTO Channel classification)
+          -- Match srt.trackingNumber inside shiprocket_returns
+          SELECT
+            sr.id AS lpn,
+            COALESCE(srt."orderId", sr."orderId") AS "orderId",
+            srt."trackingNumber" AS "trackingId",
+            sr.sku AS sku,
+            NULL::text AS fnsku,
+            sr."productName" AS "productName",
+            'Shopify RTO'::text AS channel,
+            'RejectedDelivery'::text AS type,
+            -- Pull drive links from Evidence matched either by orderId or lpn
+            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "driveLink",
+            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "orderDriveLink",
+            sr."createdAt" AS "createdAt",
+            sr.quantity AS qty
+          FROM "shopify_return_tracking" srt
+          JOIN "shiprocket_returns" sr ON srt."trackingNumber" = sr."trackingNumber"
+
+          UNION ALL
+
+          -- Part 3: Shopify Returns Queue (RTV Channel classification)
+          -- Match srt.trackingNumber inside return_prime_returns AND approved requestType
+          SELECT
+            rpr.id AS lpn,
+            COALESCE(srt."orderId", rpr."orderId") AS "orderId",
+            srt."trackingNumber" AS "trackingId",
+            rpr.sku AS sku,
+            NULL::text AS fnsku,
+            NULL::text AS "productName",
+            'Shopify RTV'::text AS channel,
+            'CustomerReturn'::text AS type,
+            -- Pull drive links from Evidence matched either by orderId or lpn
+            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "driveLink",
+            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "orderDriveLink",
+            rpr."createdAt" AS "createdAt",
+            rpr.quantity AS qty
+          FROM "shopify_return_tracking" srt
+          JOIN "return_prime_returns" rpr ON srt."trackingNumber" = rpr."trackingNumber"
+          WHERE rpr."requestType" = 'approved'
+            AND NOT EXISTS (
+              SELECT 1 FROM "shiprocket_returns" sr2 WHERE sr2."trackingNumber" = srt."trackingNumber"
+            )
         )
         SELECT 
           mcr.lpn,
@@ -396,19 +484,25 @@ async function setupDatabaseSchema(db: pg.Pool) {
           mcr."productName",
           mcr.channel,
           COALESCE(cs.status, 'unclaimed') AS status,
-          mcr.type
+          mcr.type,
+          mcr."driveLink",
+          mcr."orderDriveLink",
+          mcr."createdAt",
+          mcr.qty
         FROM mapped_claims_raw mcr
         LEFT JOIN "claims_status" cs ON mcr."orderId" = cs."orderId";
       `;
       
-      await db.query(viewSql);
-      console.log('✅ "claims_amz" view successfully created or replaced in PostgreSQL.');
+      await db.query(syncSql);
+      console.log('✅ Physical "claims_all" table successfully populated from base tables.');
     } else {
-      console.warn(`⚠️ Base table "${returnsTable}" was not found! Creating a dynamic mock table for "claims_amz"...`);
+      console.warn(`⚠️ Base table "${returnsTable}" was not found! Ensuring "claims_all" physical table exists...`);
       await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE;`);
       await db.query(`DROP TABLE IF EXISTS "claims_amz" CASCADE;`);
+      await db.query(`DROP VIEW IF EXISTS "claims_all" CASCADE;`);
+      await db.query(`DROP TABLE IF EXISTS "claims_all" CASCADE;`);
       await db.query(`
-        CREATE TABLE "claims_amz" (
+        CREATE TABLE IF NOT EXISTS "claims_all" (
           lpn text PRIMARY KEY,
           "orderId" text,
           "trackingId" text,
@@ -416,13 +510,15 @@ async function setupDatabaseSchema(db: pg.Pool) {
           fnsku text,
           "productName" text,
           channel text,
-          status text,
-          type text
+          status text DEFAULT 'unclaimed',
+          type text,
+          "driveLink" text,
+          "orderDriveLink" text,
+          "createdAt" timestamp with time zone,
+          qty integer
         );
       `);
-      console.log('✅ Fallback table "claims_amz" created.');
-      
-    
+      console.log('✅ Fallback physical table "claims_all" created.');
     }
   } catch (err: any) {
     console.error('❌ setupDatabaseSchema error:', err.message);
@@ -600,6 +696,48 @@ async function startServer() {
       reason: "Customer Rejected Delivery",
       reasonDescription: "The customer rejected the shipment directly upon delivery attempt due to late arrival.",
       driveLink: "https://drive.google.com/drive/folders/3KPMil0jNl8h_GjVlqXt91iKJenoiNzbM"
+    },
+    {
+      claimId: "C-112826",
+      lpn: "LPN201",
+      trackingId: "TRACK_SHOPIFY_RTO_123",
+      orderId: "SHPFY-1001",
+      source: "Shopify",
+      channel: "Shopify RTO",
+      sku: "SHOPIFY-SKU-999",
+      fnsku: "",
+      shippedQuantity: 2,
+      qty: 2,
+      deliveryStatus: "ReturnedToOrigin",
+      condition: "good",
+      type: "Rejected",
+      status: "New",
+      date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      slaDaysElapsed: 4,
+      reason: "Undelivered RTO",
+      reasonDescription: "Delivery failed multiple times, package returned to warehouse.",
+      driveLink: "https://drive.google.com/drive/folders/3KPMil0jNl8h_GjVlqXt91iKJenoiNzbN"
+    },
+    {
+      claimId: "C-112827",
+      lpn: "LPN202",
+      trackingId: "TRACK_SHOPIFY_RTV_456",
+      orderId: "SHPFY-1002",
+      source: "Shopify",
+      channel: "Shopify RTV",
+      sku: "SHOPIFY-SKU-888",
+      fnsku: "",
+      shippedQuantity: 1,
+      qty: 1,
+      deliveryStatus: "Returned",
+      condition: "damaged",
+      type: "Damaged",
+      status: "New",
+      date: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+      slaDaysElapsed: 6,
+      reason: "Customer Damaged Return",
+      reasonDescription: "Item returned by customer in bad packaging.",
+      driveLink: "https://drive.google.com/drive/folders/3KPMil0jNl8h_GjVlqXt91iKJenoiNzbM"
     }
   ];
 
@@ -749,7 +887,7 @@ async function startServer() {
     if (status.toLowerCase() === 'claimed') {
       try {
         const claimCheck = await db.query(
-          `SELECT "type" FROM "claims_amz" WHERE "orderId" = $1 LIMIT 1`,
+          `SELECT "type" FROM "claims_all" WHERE "orderId" = $1 LIMIT 1`,
           [orderId]
         );
         if (claimCheck.rows.length > 0 && claimCheck.rows[0].type === 'Rejected') {
@@ -891,12 +1029,12 @@ async function startServer() {
         // 3. Resolve potential LPNS via optional claims_amz if it exists
         try {
           const viewCheck = await pool.query(`
-            SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'claims_amz'
+            SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'claims_all'
             UNION ALL
-            SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name = 'claims_amz'
+            SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name = 'claims_all'
           `);
           if (viewCheck.rows.length > 0) {
-            const claimsRes = await pool.query('SELECT lpn FROM "claims_amz" WHERE LOWER(sku) = LOWER($1)', [search]);
+            const claimsRes = await pool.query('SELECT lpn FROM "claims_all" WHERE LOWER(sku) = LOWER($1)', [search]);
             for (const r of claimsRes.rows) {
               if (r.lpn) candidateLpns.add(r.lpn.toLowerCase());
             }
@@ -950,12 +1088,12 @@ async function startServer() {
           if (!sku) {
             try {
               const viewCheck = await pool.query(`
-                SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'claims_amz'
+                SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'claims_all'
                 UNION ALL
-                SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name = 'claims_amz'
+                SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name = 'claims_all'
               `);
               if (viewCheck.rows.length > 0) {
-                const claimsRes = await pool.query('SELECT sku FROM "claims_amz" WHERE LOWER(lpn) = LOWER($1) LIMIT 1', [lpn]);
+                const claimsRes = await pool.query('SELECT sku FROM "claims_all" WHERE LOWER(lpn) = LOWER($1) LIMIT 1', [lpn]);
                 if (claimsRes.rows.length > 0) {
                   sku = claimsRes.rows[0].sku;
                 }
@@ -1186,12 +1324,12 @@ async function startServer() {
         try {
           const result = await pool.query(`
             SELECT c.*, s.status AS db_status, s."claimId" AS db_claim_id, s.bot_log_reason 
-            FROM "claims_amz" c 
+            FROM "claims_all" c 
             LEFT JOIN "claims_status" s ON c."orderId" = s."orderId"
           `);
           rawRows = result.rows;
         } catch (error: any) {
-          console.log(`SQL error with "claims_amz" view: ${error.message}. Retrying with fallback tables...`);
+          console.log(`SQL error with "claims_all" table: ${error.message}. Retrying with fallback tables...`);
           try {
             const fallbackResult = await pool.query('SELECT * FROM claims');
             rawRows = fallbackResult.rows;
@@ -1244,14 +1382,15 @@ async function startServer() {
         const sku = data.sku || 'N/A';
         const key = `${tid}-${sku}`;
 
+        const rowQty = typeof data.qty === 'number' ? data.qty : 1;
         if (!processedMap[key]) {
           processedMap[key] = {
             ...data,
-            qty: 1,
+            qty: rowQty,
             items: [data]
           };
         } else {
-          processedMap[key].qty += 1;
+          processedMap[key].qty += rowQty;
           processedMap[key].items.push(data);
         }
       });
@@ -1317,8 +1456,8 @@ async function startServer() {
         const tid = (lpn || claimId || orderId || "").trim();
         if (!tid) throw new Error("No ID provided");
 
-        // Try table names: quoted '"claims_AMZ"', lowercase 'claims', and quoted '"Claims"'
-        const tables = ['"claims_amz"'];
+        // Try table names: quoted '"claims_all"', lowercase 'claims', etc.
+        const tables = ['"claims_all"'];
         for (const table of tables) {
           // Get column names for this table to avoid "column does not exist" errors
           const colRes = await db.query(`
@@ -1343,7 +1482,8 @@ async function startServer() {
 
           const query = `
             SELECT * FROM ${table} 
-            WHERE ${searchTerms.join(' OR ')}
+            WHERE (${searchTerms.join(' OR ')})
+              AND (LOWER(channel) IN ('amazon b2b', 'amz b2c', 'amazon b2c'))
             LIMIT 1
           `;
           const result = await db.query(query, [tid]);
@@ -1369,6 +1509,18 @@ async function startServer() {
 
     if (!claimData) {
       return res.status(404).json({ status: "Error", message: "No claim record found." });
+    }
+
+    // Strict bot automation exclusion for Shopify channels
+    if (claimData && claimData.channel) {
+      const channelLower = claimData.channel.toLowerCase();
+      const allowedChannels = ['amazon b2b', 'amz b2c', 'amazon b2c'];
+      if (!allowedChannels.includes(channelLower)) {
+        return res.status(400).json({
+          status: "Error",
+          message: `The background automated bot cannot process Shopify channels. Automation is restricted strictly to Amazon channels ('Amazon B2B', 'AMZ/B2c', or 'amazon b2c').`
+        });
+      }
     }
 
     const identifier = claimData.lpn || claimData.claimId || claimData.orderId;
@@ -1418,9 +1570,9 @@ async function startServer() {
             console.error(`[DB ERROR] Failed to record status in claims_status:`, dbErr);
           });
           
-          // 2. Also try to update status directly in the fallback table claims_amz if it's not a view
+          // 2. Also try to update status directly in the fallback table claims_all if it's not a view
           db.query(
-            `UPDATE "claims_amz" SET status = 'Claimed' WHERE lpn = $1 OR "orderId" = $2`,
+            `UPDATE "claims_all" SET status = 'Claimed' WHERE lpn = $1 OR "orderId" = $2`,
             [claimData.lpn || '', claimData.orderId || '']
           ).catch(() => {});
 
@@ -1462,7 +1614,7 @@ async function startServer() {
             -- claims_status 'rejected'
             SELECT c.sku, s."orderId" AS item_id
             FROM "claims_status" s
-            JOIN "claims_amz" c ON s."orderId" = c."orderId"
+            JOIN "claims_all" c ON s."orderId" = c."orderId"
             WHERE s.status = 'rejected'
           )
           SELECT sku, COUNT(*)::int as target_count
@@ -1921,7 +2073,7 @@ async function startServer() {
             s.status AS claims_status_status, 
             s.bot_log_reason,
             COALESCE(c."driveLink", 'https://drive.google.com/embeddedfolderview?id=1xyz') as "driveLink"
-          FROM "claims_amz" c
+          FROM "claims_all" c
           JOIN "claims_status" s ON c."orderId" = s."orderId"
           WHERE s.status = 'rejected' OR c.status = 'rejected'
         `;
@@ -1984,9 +2136,9 @@ async function startServer() {
           DO UPDATE SET status = $2
         `, [orderId, status]);
 
-        // Try updating physical claims_amz if it is a physical table rather than a read-only view
+        // Try updating physical claims_all if it is a physical table rather than a read-only view
         try {
-          await db.query(`UPDATE "claims_amz" SET status = $1 WHERE "orderId" = $2`, [status, orderId]);
+          await db.query(`UPDATE "claims_all" SET status = $1 WHERE "orderId" = $2`, [status, orderId]);
         } catch (e) {
           // Suppress error since it might be a read-only view
         }
