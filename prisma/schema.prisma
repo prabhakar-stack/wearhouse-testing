@@ -409,3 +409,35 @@ model AMZFiledClaim {
 
   @@map("AMZ_filed_claims")
 }
+
+
+/// Model for regular logs & bot synchronization polling inside the main operations dashboard.
+model claims_status {
+  id             Int      @id @default(autoincrement())
+  orderId        String   @unique
+  trackingId     String?
+  claimId        String   @default("")
+  status         String   @default("unclaimed")
+  bot_log_reason String?
+  created_at     DateTime @default(now())
+}
+
+
+
+/// Model for the recovery hub pipeline tracking, with SKUs relationally fetched.
+model sample_recovery {
+  lpn           String  @id
+  sku           String
+  damage_type   String
+  status        String  @default("recovery")
+  isRefurbished Boolean @default(false)
+}
+
+/// Model for the QC audit compliance module, keeping track of expected and actual scan counts.
+model qc_status {
+  sku            String  @id
+  target_count   Int
+  quantity_count Int     @default(0)
+  status         String?
+}
+
