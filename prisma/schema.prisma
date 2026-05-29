@@ -78,6 +78,7 @@ model Manifest {
   trackingId     String       @unique
   status         PackageState
   marketplace    Marketplace @default(AMAZON)
+  courierName    String?
   orderId        String? @unique // Amazon order identifier
   removalOrderId String? // Amazon removal order ID linking to AMZRemovalShipment
   expectedDate   DateTime?
