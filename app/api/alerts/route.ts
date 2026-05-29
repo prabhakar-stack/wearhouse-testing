@@ -12,7 +12,7 @@ const ALL_LEVELS            = ['L1', 'L2', 'L3', 'L4'];
 export async function GET(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
-    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'QC_AGENT', 'RECOVERER'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -250,7 +250,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const role = req.headers.get('x-user-role');
     const userId = req.headers.get('x-user-id');
-    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR'].includes(role)) {
+    if (!role || !['ADMIN', 'SUPER_ACCESS', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'QC_AGENT', 'RECOVERER'].includes(role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
