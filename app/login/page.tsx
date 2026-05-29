@@ -48,6 +48,12 @@ export default function LoginPage() {
           router.push('/admin');
         } else if (data.role === 'RECEIVER') {
           router.push('/receiver');
+        } else if (data.role === 'CLAIMS_SPECIALIST') {
+          router.push('/claims-specialist');
+        } else if (data.role === 'RECOVERER') {
+          router.push('/recoverer');
+        } else if (data.role === 'QC_AGENT') {
+          router.push('/qc-agent');
         } else {
           router.push('/inspector');
         }
@@ -92,6 +98,12 @@ export default function LoginPage() {
           router.push('/admin');
         } else if (data.role === 'RECEIVER') {
           router.push('/receiver');
+        } else if (data.role === 'CLAIMS_SPECIALIST') {
+          router.push('/claims-specialist');
+        } else if (data.role === 'RECOVERER') {
+          router.push('/recoverer');
+        } else if (data.role === 'QC_AGENT') {
+          router.push('/qc-agent');
         } else {
           router.push('/inspector');
         }

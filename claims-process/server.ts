@@ -546,7 +546,7 @@ import { updateClaimsStatus } from "./scripts/update_claims_status.js";
 async function startServer() {
   const app = express();
   app.use(express.json());
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 5000;
 
   // Start periodic status updates
   updateClaimsStatus().catch(err => console.error("[CRON ERROR] Initial startup sync failed:", err.message));

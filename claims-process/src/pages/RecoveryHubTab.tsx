@@ -18,9 +18,9 @@ import { motion, AnimatePresence } from 'motion/react';
 interface RecoveryItem {
   lpn: string;
   sku: string;
-  damageType: 'barcode_damage' | 'box_damage';
+  damageType: 'Barcode Damaged' | 'Packaging Damaged';
   isRefurbished?: boolean;
-  status: 'pending' | 'recovered';
+  status: 'recovery' | 'recovered' | 'damaged' | 'requires review at recovery';
 }
 
 export default function RecoveryHubTab() {
@@ -33,6 +33,9 @@ export default function RecoveryHubTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMonitorActive, setIsMonitorActive] = useState(false);
   const [monitorSearchValue, setMonitorSearchValue] = useState('');
+  const [showDamageConfirm, setShowDamageConfirm] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [unscannedCount, setUnscannedCount] = useState(0);
 
   // Clear alerts after 4 seconds
   useEffect(() => {
@@ -72,6 +75,8 @@ export default function RecoveryHubTab() {
         const targetItem = batch[existingIndex];
         if (targetItem.status === 'recovered') {
           setAlertMessage(`Item "${targetItem.lpn}" is already recovered.`);
+        } else if (targetItem.status === 'damaged') {
+          setAlertMessage(`Item "${targetItem.lpn}" is already marked as damaged.`);
         } else {
           setActiveLpn(targetItem.lpn);
           setUsingRefurbishedBox(!!targetItem.isRefurbished);
@@ -89,15 +94,15 @@ export default function RecoveryHubTab() {
     try {
       const response = await fetch(`/api/recovery/query?search=${encodeURIComponent(cleanInput)}`);
       if (!response.ok) {
-        setAlertMessage("Item not found in database");
+        setAlertMessage("Item not found in expected recovery pool");
         setIsLoading(false);
         return;
       }
 
       const data = await response.json();
-      const statusFromDb = data.status || '';
-      if (statusFromDb === 'recovered') {
-        setAlertMessage("already reccovered");
+      const statusFromDb = (data.status || '').trim().toLowerCase();
+      if (statusFromDb !== 'recovery') {
+        setAlertMessage(`Only items with "recovery" status can be included in the handover batch. (Current status: "${data.status || 'unknown'}")`);
         setIsLoading(false);
         setInputValue('');
         return;
@@ -106,9 +111,9 @@ export default function RecoveryHubTab() {
       const mappedItem: RecoveryItem = {
         lpn: data.lpn,
         sku: data.sku,
-        damageType: data.damageType === 'box_damage' || data.damage_type === 'box_damage' ? 'box_damage' : 'barcode_damage',
+        damageType: data.damageType === 'Packaging Damaged' || data.damage_type === 'Packaging Damaged' || data.damageType === 'box_damage' || data.damage_type === 'box_damage' ? 'Packaging Damaged' : 'Barcode Damaged',
         isRefurbished: !!(data.isRefurbished || data.is_refurbished),
-        status: 'pending'
+        status: 'recovery'
       };
 
       // Add to local state array
@@ -120,6 +125,71 @@ export default function RecoveryHubTab() {
     } finally {
       setIsLoading(false);
       setInputValue('');
+    }
+  };
+
+  const handleHandoverComplete = async () => {
+    if (batch.length === 0) {
+      setAlertMessage("Please scan/add at least default hand-over items to the batch before concluding the handover phase!");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/recovery/reconcile-check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          scannedLpns: batch.map(item => item.lpn)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Reconciliation check failed");
+      }
+
+      const data = await response.json();
+      if (data.unscannedCount > 0) {
+        setUnscannedCount(data.unscannedCount);
+        setShowReconcileModal(true);
+      } else {
+        await finalizeHandover();
+      }
+    } catch (err) {
+      console.error(err);
+      setAlertMessage("Failed to perform reconciliation check");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const finalizeHandover = async () => {
+    try {
+      setIsLoading(true);
+      const tempResponse = await fetch('/api/recovery/reconcile-finalize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          scannedLpns: batch.map(item => item.lpn)
+        })
+      });
+
+      if (!tempResponse.ok) {
+        throw new Error("Fallback mutation failed");
+      }
+
+      setIsMonitorActive(true);
+      setSuccessMessage("Handover completed successfully! ACTIVE RECOVERY WORKSTATION MONITOR is now unlocked.");
+      setShowReconcileModal(false);
+    } catch (err) {
+      console.error(err);
+      setAlertMessage("Failed to finalize handover status updates");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -136,6 +206,8 @@ export default function RecoveryHubTab() {
     if (foundItem) {
       if (foundItem.status === 'recovered') {
         setAlertMessage(`Item "${foundItem.lpn}" is already recovered.`);
+      } else if (foundItem.status === 'damaged') {
+        setAlertMessage(`Item "${foundItem.lpn}" is already marked as damaged.`);
       } else {
         setActiveLpn(foundItem.lpn);
         setUsingRefurbishedBox(!!foundItem.isRefurbished);
@@ -163,7 +235,7 @@ export default function RecoveryHubTab() {
           lpn: activeItem.lpn,
           sku: activeItem.sku,
           damageType: activeItem.damageType,
-          isRefurbished: activeItem.damageType === 'box_damage' ? usingRefurbishedBox : false,
+          isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
           status: 'recovered'
         })
       });
@@ -178,7 +250,7 @@ export default function RecoveryHubTab() {
           return {
             ...item,
             status: 'recovered',
-            isRefurbished: activeItem.damageType === 'box_damage' ? usingRefurbishedBox : item.isRefurbished
+            isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : item.isRefurbished
           };
         }
         return item;
@@ -190,6 +262,55 @@ export default function RecoveryHubTab() {
     } catch (err) {
       console.error(err);
       setAlertMessage("Failed to save recovery parameters to database");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMarkDamaged = async () => {
+    if (!activeLpn) return;
+    const activeItem = batch.find(item => item.lpn === activeLpn);
+    if (!activeItem) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/recovery/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          lpn: activeItem.lpn,
+          sku: activeItem.sku,
+          damageType: activeItem.damageType,
+          isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
+          status: 'requires review at recovery'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Update mutation failed");
+      }
+
+      // Mark the item row as red and status as damaged in local state list
+      setBatch(prev => prev.map(item => {
+        if (item.lpn === activeLpn) {
+          return {
+            ...item,
+            status: 'damaged',
+            isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : item.isRefurbished
+          };
+        }
+        return item;
+      }));
+
+      setSuccessMessage(`✅ Item ${activeItem.lpn} marked as DAMAGED. Switched status to 'requires review at recovery'.`);
+      setActiveLpn(null);
+      setUsingRefurbishedBox(false);
+      setShowDamageConfirm(false);
+    } catch (err) {
+      console.error(err);
+      setAlertMessage("Failed to save damaged status to database");
     } finally {
       setIsLoading(false);
     }
@@ -281,17 +402,11 @@ export default function RecoveryHubTab() {
           {!isMonitorActive ? (
             <button
               type="button"
-              onClick={() => {
-                if (batch.length === 0) {
-                  setAlertMessage("Please scan/add at least default hand-over items to the batch before concluding the handover phase!");
-                  return;
-                }
-                setIsMonitorActive(true);
-                setSuccessMessage("Handover completed successfully! ACTIVE RECOVERY WORKSTATION MONITOR is now unlocked.");
-              }}
+              onClick={handleHandoverComplete}
               className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-xs font-extrabold tracking-wider transition-all shrink-0 hover:translate-y-[1px] shadow-sm flex items-center justify-center gap-2"
+              disabled={isLoading}
             >
-              <CheckCircle className="w-4 h-4 shrink-0" />
+              {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-4 h-4 shrink-0" />}
               HANDOVER COMPLETE
             </button>
           ) : (
@@ -342,9 +457,13 @@ export default function RecoveryHubTab() {
                     // Determine styling based on active state or recovered state
                     const isActive = item.lpn === activeLpn;
                     const isRecovered = item.status === 'recovered';
+                    const isDamaged = item.status === 'damaged';
 
                     let rowClass = "transition-all duration-200 ";
-                    if (isActive) {
+                    if (isDamaged) {
+                      // plain Red to flag the broken product status visually, plus crossed-out text format
+                      rowClass += "bg-[#ef4444] text-white font-bold line-through hover:bg-[#dc2626]";
+                    } else if (isActive) {
                       // yellow background background (#FFF700)
                       rowClass += "bg-[#FFF700] text-black font-extrabold border-y-2 border-black";
                     } else if (isRecovered) {
@@ -363,21 +482,24 @@ export default function RecoveryHubTab() {
                         <td className="py-3.5 px-4 text-xs font-mono font-bold tracking-tight">
                           <div className="flex items-center gap-2">
                             {isRecovered && <CheckCircle className="w-3.5 h-3.5 text-green-600 shrink-0" />}
+                            {isDamaged && <AlertTriangle className="w-3.5 h-3.5 text-white shrink-0 animate-pulse" />}
                             {item.lpn}
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-xs font-mono">{item.sku}</td>
                         <td className="py-3.5 px-4 text-[10px] uppercase font-bold tracking-wider">
                           <span className={`px-2 py-0.5 rounded-full ${
-                            item.damageType === 'box_damage' 
-                              ? 'bg-blue-50 text-blue-700 border border-blue-100' 
-                              : 'bg-amber-50 text-amber-700 border border-amber-100'
+                            isDamaged
+                              ? 'bg-red-800 text-white border border-red-700'
+                              : item.damageType === 'Packaging Damaged' 
+                                ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                                : 'bg-amber-50 text-amber-700 border border-amber-100'
                           }`}>
-                            {item.damageType === 'box_damage' ? 'box damage' : 'barcode damage'}
+                            {item.damageType === 'Packaging Damaged' ? 'packaging damage' : 'barcode damage'}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-xs font-bold text-center">
-                          {item.damageType === 'box_damage' ? (
+                          {item.damageType === 'Packaging Damaged' ? (
                             item.isRefurbished || (isActive && usingRefurbishedBox) ? (
                               <span className="text-green-600 font-extrabold text-[10px] tracking-tight uppercase">REFURB</span>
                             ) : (
@@ -424,12 +546,12 @@ export default function RecoveryHubTab() {
                   <p className="text-sm font-bold font-mono tracking-wider">{activeItem.lpn} ({activeItem.sku})</p>
                 </div>
                 <div className={`px-4 py-2 rounded-xl text-xs font-extrabold tracking-wider uppercase text-black ${
-                  activeItem.damageType === 'box_damage' ? 'bg-sky-400' : 'bg-amber-400'
+                  activeItem.damageType === 'Packaging Damaged' ? 'bg-sky-400' : 'bg-amber-400'
                 }`}>
-                  {activeItem.damageType === 'box_damage' ? 'BOX DAMAGE DETECTED' : 'BARCODE DAMAGE DETECTED'}
+                  {activeItem.damageType === 'Packaging Damaged' ? 'PACKAGING DAMAGE DETECTED' : 'BARCODE DAMAGE DETECTED'}
                 </div>
               </div>
-
+ 
               {/* Center of 60% Screen (Instructions Node) */}
               <div className="flex-1 p-6 bg-slate-50 border border-slate-200/60 rounded-2xl flex flex-col justify-center space-y-4">
                 <div className="flex items-start gap-3">
@@ -441,9 +563,9 @@ export default function RecoveryHubTab() {
                     <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Follow steps on work deck and log when complete</p>
                   </div>
                 </div>
-
+ 
                 <div className="p-4 bg-white border border-slate-100 rounded-xl space-y-3 shadow-inner">
-                  {activeItem.damageType === 'barcode_damage' ? (
+                  {activeItem.damageType === 'Barcode Damaged' ? (
                     <div className="space-y-3">
                       <div className="flex gap-2 text-xs font-bold text-slate-800">
                         <Printer className="w-4 h-4 text-[#FF6700]" />
@@ -501,6 +623,15 @@ export default function RecoveryHubTab() {
                 </button>
                 <button
                   type="button"
+                  style={{ backgroundColor: '#FF6700' }}
+                  className="flex-2 py-3 text-white hover:bg-opacity-90 text-xs font-extrabold tracking-wider uppercase transition-all rounded-xl shadow-md"
+                  onClick={() => setShowDamageConfirm(true)}
+                  disabled={isLoading}
+                >
+                  Item Damaged
+                </button>
+                <button
+                  type="button"
                   className="flex-3 py-3 bg-slate-900 border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-[#FFF700] hover:translate-y-[1px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-xs font-extrabold tracking-widest uppercase transition-all rounded-xl"
                   onClick={handlePersistRecovery}
                   disabled={isLoading}
@@ -510,7 +641,7 @@ export default function RecoveryHubTab() {
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       PERSISTING TO SUPABASE...
                     </span>
-                  ) : activeItem.damageType === 'barcode_damage' ? (
+                  ) : activeItem.damageType === 'Barcode Damaged' ? (
                     "Barcode Changed"
                   ) : (
                     "Box Changed"
@@ -558,6 +689,83 @@ export default function RecoveryHubTab() {
           )}
         </div>
       </div>
+      
+      {/* State-based Confirmation Modal representing Item Damaged confirmation block */}
+      <AnimatePresence>
+        {showDamageConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-black rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full space-y-4 text-slate-900"
+            >
+              <div className="flex items-center gap-3 text-red-600">
+                <AlertTriangle className="w-8 h-8 shrink-0" />
+                <h3 className="text-lg font-extrabold tracking-tight uppercase animate-pulse">Confirm Item Damaged</h3>
+              </div>
+              <p className="text-sm font-semibold text-slate-700 leading-relaxed">
+                Are you sure this item is damaged? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors"
+                  onClick={() => setShowDamageConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 bg-[#FF6700] hover:bg-opacity-95 text-white rounded-xl text-xs font-extrabold tracking-wider uppercase transition-colors"
+                  onClick={handleMarkDamaged}
+                >
+                  Confirm Damaged
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showReconcileModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-black rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full space-y-4 text-slate-900"
+            >
+              <div className="flex items-center gap-3 text-amber-500">
+                <AlertTriangle className="w-8 h-8 shrink-0" />
+                <h3 className="text-lg font-extrabold tracking-tight uppercase">Unscanned Items Remaining</h3>
+              </div>
+              <p className="text-sm font-semibold text-slate-700 leading-relaxed">
+                There are <span className="font-extrabold text-amber-600">{unscannedCount}</span> products left unscanned from the expected recovery pool. Are you sure this is it?
+              </p>
+              <p className="text-xs text-slate-400 font-medium">
+                Note: Selecting "Yes" will automatically update the status of those missing/unscanned items to exactly 'missing at recovery'.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors"
+                  onClick={() => setShowReconcileModal(false)}
+                >
+                  No, Go Back
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-extrabold tracking-wider uppercase transition-colors"
+                  onClick={finalizeHandover}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Finalizing..." : "Yes, This is It"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

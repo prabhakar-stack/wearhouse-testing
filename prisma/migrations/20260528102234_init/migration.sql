@@ -24,6 +24,7 @@ CREATE TABLE "User" (
     "role" "Role" NOT NULL,
     "itemsProcessed" INTEGER NOT NULL DEFAULT 0,
     "accuracyRate" DOUBLE PRECISION NOT NULL DEFAULT 100.0,
+    "alertLevel" "AlertLevel",
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -42,7 +43,6 @@ CREATE TABLE "Manifest" (
     "receivedAt" TIMESTAMP(3),
     "receivedBy" TEXT,
     "inspectedBy" TEXT,
-    "customerOrderId" TEXT,
     "claimId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -128,9 +128,22 @@ CREATE TABLE "Alert" (
     "resolvedById" TEXT,
     "resolvedAt" TIMESTAMP(3),
     "resolution" TEXT,
+    "sopAcknowledged" BOOLEAN NOT NULL DEFAULT false,
+    "sopViewedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Alert_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CronJobState" (
+    "jobKey" TEXT NOT NULL,
+    "lastRunAt" TIMESTAMP(3),
+    "lastSuccessAt" TIMESTAMP(3),
+    "lastError" TEXT,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CronJobState_pkey" PRIMARY KEY ("jobKey")
 );
 
 -- CreateTable
@@ -192,6 +205,7 @@ CREATE TABLE "AMZ_removal_shipments" (
     "shipped-quantity" INTEGER,
     "carrier" TEXT,
     "tracking-number" TEXT,
+    "processedAt" TIMESTAMP(3),
     "shipment-status" TEXT,
 
     CONSTRAINT "AMZ_removal_shipments_pkey" PRIMARY KEY ("id")
@@ -223,7 +237,7 @@ CREATE TABLE "AMZ_reimbursements" (
 
 -- CreateTable
 CREATE TABLE "AMZ_customer_returns" (
-    "license-plate-number" TEXT NOT NULL,
+    "lpn" TEXT NOT NULL,
     "return-date" TIMESTAMP(3),
     "order-id" TEXT,
     "sku" TEXT,
@@ -237,12 +251,99 @@ CREATE TABLE "AMZ_customer_returns" (
     "customer-comments" TEXT,
     "removal-order-type" TEXT,
 
-    CONSTRAINT "AMZ_customer_returns_pkey" PRIMARY KEY ("license-plate-number")
+    CONSTRAINT "AMZ_customer_returns_pkey" PRIMARY KEY ("lpn")
+);
+
+-- CreateTable
+CREATE TABLE "return_prime_returns" (
+    "id" TEXT NOT NULL,
+    "requestNumber" TEXT,
+    "requestType" TEXT,
+    "status" TEXT,
+    "channel" TEXT,
+    "order_id" TEXT,
+    "orderName" TEXT,
+    "orderCreatedAt" TIMESTAMP(3),
+    "fulfillmentId" TEXT,
+    "deliveryStatus" TEXT,
+    "deliveryDate" TIMESTAMP(3),
+    "customerEmail" TEXT,
+    "postalCode" TEXT,
+    "receivedStatus" BOOLEAN NOT NULL DEFAULT false,
+    "inspectedStatus" BOOLEAN NOT NULL DEFAULT false,
+    "rejectedStatus" BOOLEAN NOT NULL DEFAULT false,
+    "archivedStatus" BOOLEAN NOT NULL DEFAULT false,
+    "refundStatus" TEXT,
+    "eligibleRefundStatus" BOOLEAN NOT NULL DEFAULT false,
+    "refundedAmount" DOUBLE PRECISION DEFAULT 0,
+    "originalProductId" TEXT,
+    "sku" TEXT,
+    "trackingNumber" TEXT,
+    "quantity" INTEGER,
+    "actualAmount" DOUBLE PRECISION,
+    "imageSrc" TEXT,
+    "marketplace" "Marketplace" NOT NULL DEFAULT 'SHOPIFY',
+    "rawPayload" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "return_prime_returns_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "shiprocket_returns" (
+    "id" TEXT NOT NULL,
+    "requestNumber" TEXT,
+    "requestType" TEXT,
+    "status" TEXT,
+    "channel" TEXT,
+    "orderId" TEXT,
+    "orderName" TEXT,
+    "orderCreatedAt" TIMESTAMP(3),
+    "fulfillmentId" TEXT,
+    "deliveryStatus" TEXT,
+    "deliveryDate" TIMESTAMP(3),
+    "customerEmail" TEXT,
+    "postalCode" TEXT,
+    "courierName" TEXT,
+    "courierSlug" TEXT,
+    "shipmentId" TEXT,
+    "trackingNumber" TEXT,
+    "sku" TEXT,
+    "productName" TEXT,
+    "quantity" INTEGER,
+    "amount" DOUBLE PRECISION,
+    "marketplace" "Marketplace" NOT NULL DEFAULT 'SHOPIFY',
+    "rawPayload" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "shiprocket_returns_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "shopify_return_tracking" (
+    "trackingNumber" TEXT NOT NULL,
+    "sourceType" TEXT NOT NULL,
+    "sourceId" TEXT NOT NULL,
+    "marketplace" "Marketplace" NOT NULL DEFAULT 'SHOPIFY',
+    "courierName" TEXT,
+    "courierSlug" TEXT,
+    "latestStatus" TEXT,
+    "latestLocation" TEXT,
+    "scheduledDelivery" TIMESTAMP(3),
+    "checkpointCount" INTEGER NOT NULL DEFAULT 0,
+    "checkpoints" JSONB,
+    "rawText" TEXT,
+    "fetchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "shopify_return_tracking_pkey" PRIMARY KEY ("trackingNumber")
 );
 
 -- CreateTable
 CREATE TABLE "ReturnItem" (
-    "license-plate-number" TEXT NOT NULL,
+    "lpn" TEXT NOT NULL,
     "return-date" TIMESTAMP(3),
     "sku" TEXT,
     "asin" TEXT,
@@ -258,7 +359,7 @@ CREATE TABLE "ReturnItem" (
     "orderId" TEXT,
     "itemPrice" DOUBLE PRECISION,
 
-    CONSTRAINT "ReturnItem_pkey" PRIMARY KEY ("license-plate-number")
+    CONSTRAINT "ReturnItem_pkey" PRIMARY KEY ("lpn")
 );
 
 -- CreateTable
@@ -290,6 +391,27 @@ CREATE UNIQUE INDEX "Evidence_lpn_key" ON "Evidence"("lpn");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "MissingItem_orderId_fnsku_key" ON "MissingItem"("orderId", "fnsku");
+
+-- CreateIndex
+CREATE INDEX "return_prime_returns_order_id_idx" ON "return_prime_returns"("order_id");
+
+-- CreateIndex
+CREATE INDEX "return_prime_returns_trackingNumber_idx" ON "return_prime_returns"("trackingNumber");
+
+-- CreateIndex
+CREATE INDEX "shiprocket_returns_orderId_idx" ON "shiprocket_returns"("orderId");
+
+-- CreateIndex
+CREATE INDEX "shiprocket_returns_shipmentId_idx" ON "shiprocket_returns"("shipmentId");
+
+-- CreateIndex
+CREATE INDEX "shiprocket_returns_trackingNumber_idx" ON "shiprocket_returns"("trackingNumber");
+
+-- CreateIndex
+CREATE INDEX "shopify_return_tracking_sourceType_sourceId_idx" ON "shopify_return_tracking"("sourceType", "sourceId");
+
+-- CreateIndex
+CREATE INDEX "shopify_return_tracking_marketplace_idx" ON "shopify_return_tracking"("marketplace");
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_manifestId_fkey" FOREIGN KEY ("manifestId") REFERENCES "Manifest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
