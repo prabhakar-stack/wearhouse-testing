@@ -14,6 +14,8 @@ enum Role {
   RECEIVER
   INSPECTOR
   CLAIMS_SPECIALIST
+  RECOVERER
+  QC_AGENT
 }
 
 enum Marketplace {
@@ -75,8 +77,8 @@ model Manifest {
   id             String       @id @default(uuid())
   trackingId     String       @unique
   status         PackageState
-  marketplace    Marketplace?
-  courierName    String?
+  marketplace    Marketplace @default(AMAZON)
+  orderId        String? @unique // Amazon order identifier
   removalOrderId String? // Amazon removal order ID linking to AMZRemovalShipment
   expectedDate   DateTime?
   receivedAt     DateTime?
@@ -98,6 +100,7 @@ model Order {
   totalAmount        Float? // Amazon removal fee
   totalQuantity      Int? // Total quantity of items in the order
   fulfillmentChannel String? // FBA / FBM / AMAZON_REMOVAL
+  fulfillmentId      String? // Optional fulfillment identifier
   manifestId         String?
   manifest           Manifest?   @relation(fields: [manifestId], references: [id])
   trackingNumber     String? // Carrier tracking number associated with the removal order
@@ -152,6 +155,7 @@ model Evidence {
 
   manifest Manifest? @relation(fields: [manifestId], references: [id])
   // returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
+  status           String?   // optional status, defaults to null
 }
 
 model Alert {
@@ -206,7 +210,8 @@ model MissingItem {
 
 // Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {
-  orderId           String    @id @map("order-id")
+  id                String    @id @default(uuid())
+  orderId           String    @map("order-id")
   requestDate       DateTime? @map("request-date")
   orderSource       String?   @map("order-source")
   orderType         String?   @map("order-type")
@@ -271,7 +276,8 @@ model AMZReimbursement {
 
 // Amazon customer returns (raw LPN-level rows)
 model AMZCustomerReturn {
-  lpn                 String    @id @map("license-plate-number")
+  id                  String    @id @default(uuid())
+  lpn                 String    @map("license-plate-number")
   returnDate          DateTime? @map("return-date")
   orderId             String?   @map("order-id")
   sku                 String?   @map("sku")
@@ -406,4 +412,38 @@ model AMZFiledClaim {
   caseId  String?   @map("case_id")
 
   @@map("AMZ_filed_claims")
+}
+
+// Teammate-added: claims tracking table (has a claims_amz view depending on it)
+model ClaimsStatus {
+  id            Int      @id @default(autoincrement())
+  orderId       String   @unique
+  trackingId    String?
+  claimId       String   @default("")
+  status        String   @default("unclaimed")
+  botLogReason  String?  @map("bot_log_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("claims_status")
+}
+
+// Teammate-added: QC tracking per SKU
+model QcStatus {
+  sku           String  @id
+  targetCount   Int     @map("target_count")
+  quantityCount Int     @default(0) @map("quantity_count")
+  status        String?
+
+  @@map("qc_status")
+}
+
+// Teammate-added: sample recovery tracking per LPN
+model SampleRecovery {
+  lpn           String  @id
+  sku           String
+  damageType    String  @map("damage_type")
+  status        String  @default("recovery")
+  isRefurbished Boolean @default(false)
+
+  @@map("sample_recovery")
 }

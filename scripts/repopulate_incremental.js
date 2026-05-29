@@ -1,4 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
+import { fileURLToPath } from 'url';
+
 const prisma = new PrismaClient();
 
 async function main(batchSize = 100) {
@@ -148,7 +150,9 @@ async function main(batchSize = 100) {
   console.log(`Incremental repopulation completed for ${processedOrders} order groups.`);
 }
 
-if (require.main === module) {
+// Equivalent of require.main === module in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
   main()
     .catch(e => {
       console.error('Fatal incremental repopulation error:', e);
@@ -157,6 +161,6 @@ if (require.main === module) {
     .finally(async () => {
       await prisma.$disconnect();
     });
-} else {
-  module.exports = { main };
 }
+
+export { main };

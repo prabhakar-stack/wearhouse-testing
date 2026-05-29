@@ -4,7 +4,7 @@ process.emitWarning = ((originalEmit) => (warning, ...args) => {
     // Silently ignore this specific deprecation warning
     return;
   }
-  return originalEmit.call(process, warning, ...args);
+  return (originalEmit as any).call(process, warning, ...args);
 })(process.emitWarning);
 
 import { runShopifyReturnsJob } from "../lib/shopifyReturns.ts";
@@ -20,16 +20,6 @@ async function main() {
   try {
     const results = await runShopifyReturnsJob();
     console.log("Synchronization Completed Successfully.");
-    console.log("----------------------------------------------------");
-    console.log("COUNTS REPORT:");
-    console.log(`- ReturnPrime (B2C) Fetched: ${results.b2cFetched}`);
-    console.log(`- ReturnPrime (B2C) Saved/Upserted: ${results.b2cSaved}`);
-    console.log(`- Shiprocket (B2B) Fetched: ${results.b2bFetched}`);
-    console.log(`- Shiprocket (B2B) Saved/Upserted: ${results.b2bSaved}`);
-    console.log(`- Shopify Return Tracking Updated: ${results.trackingUpdated}`);
-    console.log(`- Shopify Return Tracking Skipped: ${results.trackingSkipped}`);
-    console.log(`- Shopify Return Tracking Errors: ${results.trackingErrors}`);
-    console.log("----------------------------------------------------");
 
     // Let's query the database for tracking rows that were created or updated during this run
     const trackingRows = await prisma.shopifyReturnTracking.findMany({

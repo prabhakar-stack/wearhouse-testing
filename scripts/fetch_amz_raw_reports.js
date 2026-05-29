@@ -1,18 +1,16 @@
-require("dotenv").config();
-
-const SellingPartnerAPI = require("amazon-sp-api");
-const fs = require("fs");
-const path = require("path");
-const { PrismaClient } = require("@prisma/client");
+import "dotenv/config";
+import SellingPartnerAPI from "amazon-sp-api";
+import fs from "fs";
+import path from "path";
+import { PrismaClient } from "@prisma/client";
+import { fileURLToPath } from "url";
 
 const prisma = new PrismaClient();
 
 const RETURNS_REPORT_TYPE = "GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA";
 const REIMBURSEMENTS_REPORT_TYPE = "GET_FBA_REIMBURSEMENTS_DATA";
-const REMOVAL_ORDERS_REPORT_TYPE =
-  "GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DATA";
-const REMOVAL_SHIPMENTS_REPORT_TYPE =
-  "GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA";
+const REMOVAL_ORDERS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DATA";
+const REMOVAL_SHIPMENTS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA";
 
 const REPORT_POLL_INTERVAL_MS = 15000;
 const REPORT_MAX_WAIT_MS = 45000;
@@ -103,8 +101,6 @@ const hasConfig =
   process.env.REFRESH_TOKEN &&
   process.env.CLIENT_ID &&
   process.env.CLIENT_SECRET &&
-  process.env.AWS_ACCESS_KEY1 &&
-  process.env.AWS_SECRET_KEY1 &&
   process.env.MARKETPLACE_ID;
 
 let sp = null;
@@ -115,8 +111,6 @@ if (hasConfig) {
     credentials: {
       SELLING_PARTNER_APP_CLIENT_ID: process.env.CLIENT_ID,
       SELLING_PARTNER_APP_CLIENT_SECRET: process.env.CLIENT_SECRET,
-      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY1,
-      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_KEY1,
     },
   });
 }
@@ -146,9 +140,9 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
   start.setDate(start.getDate() - startDaysAgo);
 
   try {
-    console.log(`\n======================================`);
-    console.log(`SP-API: Requesting ${reportType}`);
-    console.log(`Time Range: ${start.toISOString()} to ${end.toISOString()}`);
+    // console.log(`\n======================================`);
+    // console.log(`SP-API: Requesting ${reportType}`);
+    // console.log(`Time Range: ${start.toISOString()} to ${end.toISOString()}`);
 
     const report = await Promise.race([
       sp.callAPI({
@@ -166,7 +160,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
       ),
     ]);
 
-    console.log(`Report created successfully. ID: ${report.reportId}`);
+    // console.log(`Report created successfully. ID: ${report.reportId}`);
 
     let reportStatus;
     const startedAt = Date.now();
@@ -178,7 +172,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
         path: { reportId: report.reportId },
       });
 
-      console.log(`Report status: ${reportStatus.processingStatus}`);
+      // console.log(`Report status: ${reportStatus.processingStatus}`);
 
       if (
         reportStatus.processingStatus === "DONE" ||
@@ -189,6 +183,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
         break;
       }
 
+      // Safety timeout to prevent infinite loop
       if (Date.now() - startedAt >= REPORT_MAX_WAIT_MS) {
         console.log(
           `[WARN] SP-API report ${reportType} stayed in ${reportStatus.processingStatus} for ${Math.round(
@@ -212,7 +207,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
       return null;
     }
 
-    console.log("Downloading report document...");
+    // console.log("Downloading report document...");
     const document = await sp.callAPI({
       operation: "getReportDocument",
       endpoint: "reports",
@@ -221,7 +216,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
 
     const reportData = await sp.download(document);
     fs.writeFileSync(localPath, reportData);
-    console.log(`Saved report output locally to ${fileName}.tsv`);
+    // console.log(`Saved report output locally to ${fileName}.tsv`);
     return reportData.toString();
   } catch (error) {
     console.error(
@@ -320,7 +315,7 @@ function chunkArray(items, size) {
  * Sync Removal Orders
  */
 async function syncRemovalOrders(rows) {
-  console.log(`Syncing ${rows.length} Removal Orders...`);
+  // console.log(`Syncing ${rows.length} Removal Orders...`);
   let successCount = 0;
 
   for (const rawRow of rows) {
@@ -348,9 +343,9 @@ async function syncRemovalOrders(rows) {
       );
     }
   }
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Removal Orders.`,
-  );
+  // console.log(
+  //   `Successfully synced ${successCount}/${rows.length} Removal Orders.`,
+  // );
   return successCount;
 }
 
@@ -358,7 +353,7 @@ async function syncRemovalOrders(rows) {
  * Sync Removal Shipments
  */
 async function syncRemovalShipments(rows) {
-  console.log(`Syncing ${rows.length} Removal Shipments...`);
+  // console.log(`Syncing ${rows.length} Removal Shipments...`);
   let successCount = 0;
 
   for (const rawRow of rows) {
@@ -402,9 +397,9 @@ async function syncRemovalShipments(rows) {
       );
     }
   }
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Removal Shipments.`,
-  );
+  // console.log(
+  //   `Successfully synced ${successCount}/${rows.length} Removal Shipments.`,
+  // );
   return successCount;
 }
 
@@ -412,7 +407,7 @@ async function syncRemovalShipments(rows) {
  * Sync Reimbursements
  */
 async function syncReimbursements(rows) {
-  console.log(`Syncing ${rows.length} Reimbursements...`);
+  // console.log(`Syncing ${rows.length} Reimbursements...`);
   let successCount = 0;
 
   for (const rawRow of rows) {
@@ -440,9 +435,9 @@ async function syncReimbursements(rows) {
       );
     }
   }
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Reimbursements.`,
-  );
+  // console.log(
+  //   `Successfully synced ${successCount}/${rows.length} Reimbursements.`,
+  // );
   return successCount;
 }
 
@@ -450,7 +445,7 @@ async function syncReimbursements(rows) {
  * Sync Customer Returns
  */
 async function syncCustomerReturns(rows) {
-  console.log(`Syncing ${rows.length} Customer Returns...`);
+  // console.log(`Syncing ${rows.length} Customer Returns...`);
   let successCount = 0;
 
   for (const rawRow of rows) {
@@ -478,9 +473,9 @@ async function syncCustomerReturns(rows) {
       );
     }
   }
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Customer Returns.`,
-  );
+  // console.log(
+  //   `Successfully synced ${successCount}/${rows.length} Customer Returns.`,
+  // );
   return successCount;
 }
 
@@ -589,18 +584,6 @@ function mapReturnRow(row) {
   };
 }
 
-function getRemovalShipmentKey(row) {
-  const tracking = pick(row.tracking_number, row.tracking);
-  if (tracking) {
-    return tracking;
-  }
-
-  return pick(
-    row.removal_order_id ? `removal_${row.removal_order_id}` : null,
-    row.order_id ? `removal_${row.order_id}` : null,
-  );
-}
-
 async function syncCoreReturns(rows) {
   if (!rows || rows.length === 0) {
     console.log("No rows for Core Returns to sync.");
@@ -623,7 +606,6 @@ async function syncCoreReturns(rows) {
           return null;
         }
 
-        // Parse LPNs: split by commas or spaces if multiple exist
         const rawLpns = mapped.lpn;
         const lpns =
           typeof rawLpns === "string"
@@ -792,7 +774,6 @@ async function syncCoreReimbursements(rows) {
         continue;
       }
 
-      orderId = orderId || returnItem.orderId;
       orderId = orderId || returnItem.orderId;
 
       if (!orderId) {
@@ -991,31 +972,11 @@ async function main() {
   console.log(`- ReturnItems: ${syncedCoreReturns} records synced to Core`);
   console.log("======================================");
 
-  // Run the incremental repopulator after the fetch completes so newly fetched
-  // shipment rows are materialized into operational tables.
+  // Run the incremental repopulator after the fetch completes
   if (!process.env.DISABLE_REPOPULATE) {
     try {
-      console.log("Triggering incremental repopulation task (repopulate_incremental.js)...");
-      const repopulate = require("./repopulate_incremental.js");
-      if (repopulate && typeof repopulate.main === "function") {
-        await repopulate.main();
-        console.log("Incremental repopulation task finished.");
-      } else {
-        console.log("Incremental repopulation module did not export a main() function.");
-      }
-    } catch (err) {
-      console.error("[WARN] Incremental repopulation task failed:", err?.message || err);
-    }
-  } else {
-    console.log("DISABLE_REPOPULATE is set - skipping repopulation task.");
-  }
-
-  // Run the incremental repopulator after the fetch completes so newly fetched
-  // shipment rows are materialized into operational tables.
-  if (!process.env.DISABLE_REPOPULATE) {
-    try {
-      console.log("Triggering incremental repopulation task (repopulate_incremental.js)...");
-      const repopulate = require("./repopulate_incremental.js");
+      console.log("\nTriggering incremental repopulation task (repopulate_incremental.js)...");
+      const repopulate = await import("./repopulate_incremental.js");
       if (repopulate && typeof repopulate.main === "function") {
         await repopulate.main();
         console.log("Incremental repopulation task finished.");
@@ -1030,7 +991,9 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+// Equivalent of require.main === module in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
   main()
     .catch((e) => console.error("[FATAL ERROR] Sync process failed:", e))
     .finally(async () => {
@@ -1038,6 +1001,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = {
-  main,
-};
+export { main };

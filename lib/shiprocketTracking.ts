@@ -212,8 +212,8 @@ async function requestTrackingSnapshot(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    // 8‑second timeout per request
-    signal: AbortSignal.timeout(8000),
+    // 15‑second timeout per request to give slow courier partners extra time
+    signal: AbortSignal.timeout(15000),
   });
 
     // If response is not OK, attempt to parse the error body to see if it's a cancelled AWB.

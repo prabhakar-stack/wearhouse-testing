@@ -514,13 +514,33 @@ export async function runShopifyReturnsJob() {
     uniqueTrackingJobs.set(jobKey, job);
   }
 
+  const trackingRecords: any[] = [];
+
   for (const job of uniqueTrackingJobs.values()) {
     try {
       const result = await upsertReturnTracking(job);
       if (result.skipped) {
         results.trackingSkipped += 1;
+        // If skipped because it is fresh, retrieve from DB to ensure it is represented in the JSON payload
+        const trackingKey =
+          job.shipmentId ||
+          job.awbCode ||
+          (job.orderId && job.channelId
+            ? `${job.orderId}:${job.channelId}`
+            : null);
+        if (trackingKey) {
+          const existing = await prisma.shopifyReturnTracking.findUnique({
+            where: { trackingNumber: trackingKey },
+          });
+          if (existing) {
+            trackingRecords.push(existing);
+          }
+        }
       } else {
         results.trackingUpdated += 1;
+        if (result.tracking) {
+          trackingRecords.push(result.tracking);
+        }
       }
     } catch (error) {
       results.trackingErrors += 1;
@@ -531,6 +551,11 @@ export async function runShopifyReturnsJob() {
       );
     }
   }
+
+  // Persist tracking payload for audit / debugging (project‑root location)
+  const trackingOutPath = path.join(process.cwd(), "shiprocket_tracking.json");
+  await fs.promises.writeFile(trackingOutPath, JSON.stringify(trackingRecords, null, 2));
+  console.log(`Saved Shiprocket tracking raw payload to ${trackingOutPath}`);
 
   return results;
 }
