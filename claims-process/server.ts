@@ -749,16 +749,16 @@ async function startServer() {
     if (status.toLowerCase() === 'claimed') {
       try {
         const claimCheck = await db.query(
-          `SELECT type FROM "claims_amz" WHERE "orderId" = $1 LIMIT 1`,
+          `SELECT "type" FROM "claims_amz" WHERE "orderId" = $1 LIMIT 1`,
           [orderId]
         );
         if (claimCheck.rows.length > 0 && claimCheck.rows[0].type === 'Rejected') {
           try {
-            await db.query(`UPDATE "Evidence" SET "type" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
-            console.log(`[Evidence Update] Updated Evidence.type to 'Claimed' for Order ID: ${orderId}`);
+            await db.query(`UPDATE "Evidence" SET "status" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
+            console.log(`[Evidence Update] Updated Evidence.status to 'Claimed' for Order ID: ${orderId}`);
           } catch (evErr) {
             try {
-              await db.query(`UPDATE "evidence" SET "type" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
+              await db.query(`UPDATE "evidence" SET "status" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
               console.log(`[Evidence Update fallback] Updated evidence.type to 'Claimed' for Order ID: ${orderId}`);
             } catch (innerEvErr: any) {
               console.error(`[Evidence Update] Failed both Evidence and evidence table updates: ${innerEvErr.message}`);
