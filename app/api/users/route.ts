@@ -152,8 +152,8 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: 'Admins cannot edit other Admin or Super Access accounts.' }, { status: 401 });
       }
       // Admin cannot assign SUPER_ACCESS or ADMIN roles
-      if (targetRole && targetRole !== 'RECEIVER' && targetRole !== 'INSPECTOR') {
-        return NextResponse.json({ error: 'Admins can only assign RECEIVER or INSPECTOR roles.' }, { status: 401 });
+      if (targetRole && targetRole !== 'RECEIVER' && targetRole !== 'INSPECTOR' && targetRole !== 'CLAIMS_SPECIALIST' && targetRole !== 'RECOVERER' && targetRole !== 'QC_AGENT') {
+        return NextResponse.json({ error: 'Admins cannot assign SUPER_ACCESS or ADMIN roles.' }, { status: 401 });
       }
     }
 

@@ -8,3 +8,16 @@ coverage/
 .uploads/
 
 /uploads/
+
+# Ignore browser automation profiles and states
+claims-process/amazon-profile/
+claims-process/bot_state/
+*.png
+
+# Ignore data reports
+*.tsv
+tracking-data.json
+
+# Ignore build outputs if necessary
+claims-process/dist/
+node_modules/

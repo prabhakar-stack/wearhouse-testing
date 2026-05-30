@@ -51,32 +51,44 @@ export async function GET(req: Request) {
     };
 
     // ── 1. DELIVERY ETA BREACH ──────────────────────────────────────────────
-    // Packages still EXPECTED/IN_TRANSIT after their expected delivery date.
-    // Fire the highest applicable breach tier (96h > 72h > 48h).
-    const overdueManifests = await prisma.manifest.findMany({
+    // Use ShipmentTracking.scheduledDelivery as the authoritative ETA —
+    // manifest.expectedDate is the Amazon removal request date (not a delivery ETA).
+    const overdueSnapshots = await prisma.shipmentTracking.findMany({
       where: {
-        status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
-        expectedDate: { not: null, lt: now },
+        scheduledDelivery: { not: null, lt: now },
+        manifest: {
+          status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
+        },
+      },
+      include: {
+        manifest: { select: { id: true, trackingId: true, status: true } },
       },
     });
 
-    for (const manifest of overdueManifests) {
-      if (!manifest.expectedDate) continue;
-      const hoursOverdue =
-        (now.getTime() - new Date(manifest.expectedDate).getTime()) /
-        (1000 * 60 * 60);
+    // Deduplicate by manifest (a manifest may have multiple tracking numbers)
+    const seenManifestIds = new Set<string>();
+    for (const snap of overdueSnapshots) {
+      if (!snap.manifest) continue; // skip if no manifest
+      const etaDate = snap.scheduledDelivery ? new Date(snap.scheduledDelivery) : new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // fallback ETA 5 days ahead
+      if (seenManifestIds.has(snap.manifest.id)) continue;
+      seenManifestIds.add(snap.manifest.id);
+      const hoursOverdue = (now.getTime() - etaDate.getTime()) / (1000 * 60 * 60);
 
       let alertType: string | null = null;
       if (hoursOverdue >= 96) alertType = "DELIVERY_ETA_BREACH_96H";
       else if (hoursOverdue >= 72) alertType = "DELIVERY_ETA_BREACH_72H";
       else if (hoursOverdue >= 48) alertType = "DELIVERY_ETA_BREACH_48H";
+      // If tracking data missing, raise a tracking unavailable alert
+      if (!snap.scheduledDelivery) {
+        alertType = "TRACKING_DATA_MISSING";
+      }
 
       if (!alertType) continue;
 
       const alert = await createAlertIfNew(
         alertType,
-        manifest.id,
-        manifest.trackingId,
+        snap.manifest.id,
+        snap.manifest.trackingId,
       );
       if (alert) results.deliveryBreaches++;
     }

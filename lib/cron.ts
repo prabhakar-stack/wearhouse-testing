@@ -73,13 +73,14 @@ function resolveManifestStatus(
 }
 
 export async function runExpectedTrackingJob() {
-  const threshold = new Date(Date.now() + HOUR_MS);
+  // Fetch ALL manifests still in EXPECTED or IN_TRANSIT — regardless of expectedDate,
+  // because expectedDate may have been set to a historical request date (not a real ETA).
+  // The tracking snapshot's scheduledDelivery is the authoritative ETA.
   const manifests = await prisma.manifest.findMany({
     where: {
       status: {
         in: ["EXPECTED", "IN_TRANSIT"],
       },
-      expectedDate: { gt: threshold },
     },
     select: {
       id: true,
@@ -332,16 +333,25 @@ export async function runEscalationsJob() {
   const ghostDeliveries = await prisma.manifest.findMany({
     where: {
       status: "EXPECTED",
-      expectedDate: { lt: hours48Ago },
+      trackingSnapshots: {
+        some: {
+          scheduledDelivery: { lt: hours48Ago, not: null },
+        },
+      },
+    },
+    include: {
+      trackingSnapshots: true,
     },
   });
 
   for (const ghost of ghostDeliveries) {
+    const snap = ghost.trackingSnapshots.find((s) => s.scheduledDelivery);
+    const etaDate = snap?.scheduledDelivery ? new Date(snap.scheduledDelivery) : null;
     const alert = await createAlertIfNew({
       level: "L4",
       type: "GHOST_DELIVERY",
       title: `Ghost Delivery — Courier Says Delivered`,
-      description: `Package ${ghost.trackingId} expected ${ghost.expectedDate ? new Date(ghost.expectedDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Unknown"} has not been scanned at the warehouse after 48+ hours. Possible missing delivery.`,
+      description: `Package ${ghost.trackingId} expected ${etaDate ? etaDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Unknown"} has not been scanned at the warehouse after 48+ hours. Possible missing delivery.`,
       manifestId: ghost.id,
     });
     if (alert) results.l4Alerts++;

@@ -100,7 +100,14 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
 
 export default function AdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts'>('alerts');
+  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc'>('alerts');
+  
+  const userRoleLower = role?.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
+  const isAdminOrSuper = userRoleLower === 'admin' || userRoleLower === 'super access' || userRoleLower === 'super_access' || userRoleLower === 'super-access';
+  const canAccessTriage = userRoleLower === 'claims specialist' || isAdminOrSuper;
+  const canAccessSmartFiling = userRoleLower === 'claims specialist' || isAdminOrSuper;
+  const canAccessRecovery = userRoleLower === 'recoverer' || isAdminOrSuper;
+  const canAccessQC = userRoleLower === 'qc agent' || userRoleLower === 'qcagent' || isAdminOrSuper;
   const [alertCount, setAlertCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -296,6 +303,18 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
           <TabButton id="users"    icon={<Users size={14} />}       label="Users"    activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           <TabButton id="alerts"   icon={<Bell size={14} />}        label="Alerts"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} />
           <TabButton id="claims"   icon={<FileWarning size={14} />} label="Claims"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          {canAccessTriage && (
+            <TabButton id="triage" icon={<FileWarning size={14} />} label="Claims Triage" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          )}
+          {canAccessSmartFiling && (
+            <TabButton id="smart-filing" icon={<Activity size={14} />} label="Smart Filing Monitor" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          )}
+          {canAccessRecovery && (
+            <TabButton id="recovery" icon={<PackageSearch size={14} />} label="Recovery Hub" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          )}
+          {canAccessQC && (
+            <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          )}
         </nav>
 
         {/* Sidebar Footer */}
@@ -355,7 +374,19 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
         <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200 shrink-0">
           <div>
             <h2 className="text-lg font-black uppercase tracking-wider text-[#313079]">
-              {activeTab === 'users' ? 'User Directory' : activeTab === 'claims' ? 'Claims Staging' : 'Operational Alerts'}
+              {activeTab === 'users' 
+                ? 'User Directory' 
+                : activeTab === 'claims' 
+                ? 'Claims Staging' 
+                : activeTab === 'triage'
+                ? 'Claims Triage'
+                : activeTab === 'smart-filing'
+                ? 'Smart Filing Monitor'
+                : activeTab === 'recovery'
+                ? 'Recovery Hub'
+                : activeTab === 'qc'
+                ? 'QC Audit'
+                : 'Operational Alerts'}
             </h2>
             <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
               Returns Management App &bull; {role.replace(/_/g, ' ')}
@@ -383,6 +414,18 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
             {activeTab === 'claims'   && <ClaimsTab />}
+            {activeTab === 'triage' && canAccessTriage && (
+              <iframe src="http://localhost:5000/triage?embed=true" className="w-full h-screen border-none" />
+            )}
+            {activeTab === 'smart-filing' && canAccessSmartFiling && (
+              <iframe src="http://localhost:5000/smartfiling?embed=true" className="w-full h-screen border-none" />
+            )}
+            {activeTab === 'recovery' && canAccessRecovery && (
+              <iframe src="http://localhost:5000/recoveryhubtab?embed=true" className="w-full h-screen border-none" />
+            )}
+            {activeTab === 'qc' && canAccessQC && (
+              <iframe src="http://localhost:5000/qcaudittab?embed=true" className="w-full h-screen border-none" />
+            )}
           </div>
         </div>
       </main>
@@ -441,7 +484,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
   const [editSuccess, setEditSuccess] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  const availableRoles = ['RECEIVER', 'INSPECTOR'];
+  const availableRoles = ['RECEIVER', 'INSPECTOR','CLAIMS_SPECIALIST','RECOVERER','QC_AGENT'];
 
   const fetchUsers = async () => {
     setLoading(true);

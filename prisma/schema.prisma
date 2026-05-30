@@ -211,8 +211,7 @@ model MissingItem {
 
 // Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {
-  id                String    @id @default(uuid())
-  orderId           String    @map("order-id")
+  orderId           String    @id @map("order-id")
   requestDate       DateTime? @map("request-date")
   orderSource       String?   @map("order-source")
   orderType         String?   @map("order-type")

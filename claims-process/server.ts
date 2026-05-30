@@ -43,7 +43,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
         lpn text PRIMARY KEY,
         sku text NOT NULL,
         damage_type text NOT NULL,
-        is_refurbished boolean DEFAULT false,
+        "isRefurbished" boolean DEFAULT false,
         status text DEFAULT 'pending'
       );
     `);
@@ -222,8 +222,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
               mapped_damage_type := COALESCE(NEW."recoveryType", 'box_damage');
             END IF;
 
-            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
-            VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
+             INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
+             VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
             ON CONFLICT (lpn) DO UPDATE SET
               sku = EXCLUDED.sku,
               damage_type = EXCLUDED.damage_type,
@@ -328,19 +328,13 @@ async function setupDatabaseSchema(db: pg.Pool) {
           SELECT DISTINCT ON (lpn)
             lpn,
             "orderId",
-            "manifestId",
-            "type",
-            "orderDriveLink",
-            "lpnDriveLink"
+            "manifestId"
           FROM "Evidence"
           ` : `
           SELECT 
             NULL::text AS lpn,
             NULL::text AS "orderId",
-            NULL::text AS "manifestId",
-            NULL::text AS "type",
-            NULL::text AS "orderDriveLink",
-            NULL::text AS "lpnDriveLink"
+            NULL::text AS "manifestId"
           LIMIT 0
           `}
         ),
@@ -414,8 +408,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
             
             -- type mapping
             CASE
-              WHEN ev.lpn IS NOT NULL AND ev.type = 'RECEIVER_REJECTION' THEN 'Rejected'
-              WHEN ev.lpn IS NOT NULL AND ev.type = 'Claimed' THEN 'Claimed'
               WHEN ev.lpn IS NOT NULL THEN 'Damaged'
               ELSE 'Missing'
             END AS type,
@@ -428,52 +420,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
             
           FROM base_returns br
           LEFT JOIN evidences ev ON br.lpn = ev.lpn
-
-          UNION ALL
-
-          -- Part 2: Shopify Returns Queue (RTO Channel classification)
-          -- Match srt.trackingNumber inside shiprocket_returns
-          SELECT
-            sr.id AS lpn,
-            COALESCE(srt."orderId", sr."orderId") AS "orderId",
-            srt."trackingNumber" AS "trackingId",
-            sr.sku AS sku,
-            NULL::text AS fnsku,
-            sr."productName" AS "productName",
-            'Shopify RTO'::text AS channel,
-            'RejectedDelivery'::text AS type,
-            -- Pull drive links from Evidence matched either by orderId or lpn
-            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "driveLink",
-            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "orderDriveLink",
-            sr."createdAt" AS "createdAt",
-            sr.quantity AS qty
-          FROM "shopify_return_tracking" srt
-          JOIN "shiprocket_returns" sr ON srt."trackingNumber" = sr."trackingNumber"
-
-          UNION ALL
-
-          -- Part 3: Shopify Returns Queue (RTV Channel classification)
-          -- Match srt.trackingNumber inside return_prime_returns AND approved requestType
-          SELECT
-            rpr.id AS lpn,
-            COALESCE(srt."orderId", rpr."orderId") AS "orderId",
-            srt."trackingNumber" AS "trackingId",
-            rpr.sku AS sku,
-            NULL::text AS fnsku,
-            NULL::text AS "productName",
-            'Shopify RTV'::text AS channel,
-            'CustomerReturn'::text AS type,
-            -- Pull drive links from Evidence matched either by orderId or lpn
-            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "driveLink",
-            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "orderDriveLink",
-            rpr."createdAt" AS "createdAt",
-            rpr.quantity AS qty
-          FROM "shopify_return_tracking" srt
-          JOIN "return_prime_returns" rpr ON srt."trackingNumber" = rpr."trackingNumber"
-          WHERE rpr."requestType" = 'approved'
-            AND NOT EXISTS (
-              SELECT 1 FROM "shiprocket_returns" sr2 WHERE sr2."trackingNumber" = srt."trackingNumber"
-            )
         )
         SELECT 
           mcr.lpn,
@@ -625,7 +571,7 @@ function getDbPool() {
 }
 
 // Helper to convert snake_case or mixed_case object to camelCase
-function toCamelCase(obj: any) {
+function toCamelCase(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(toCamelCase);
 
@@ -813,7 +759,7 @@ async function startServer() {
 
             // gracefull insertions handling edge cases (ON CONFLICT)
             await client.query(`
-              INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+              INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
               VALUES ($1, $2, $3, false, 'inspected')
               ON CONFLICT (lpn) DO UPDATE SET
                 sku = EXCLUDED.sku,
@@ -1107,7 +1053,7 @@ async function startServer() {
 
           // Upsert directly into sample_recovery
           await pool.query(`
-            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+            INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
             VALUES ($1, $2, $3, false, 'recovery')
             ON CONFLICT (lpn) 
             DO UPDATE SET 
@@ -1207,7 +1153,7 @@ async function startServer() {
       if (pool) {
         await pool.query(`
           UPDATE "sample_recovery"
-          SET is_refurbished = $2, status = $3
+          SET "isRefurbished" = $2, status = $3
           WHERE LOWER(lpn) = LOWER($1)
         `, [lpn, is_refurbished, recordStatus]);
 
@@ -1322,6 +1268,20 @@ async function startServer() {
       let rawRows = [];
 
       if (pool) {
+         // Query Evidence table to find valid identifiers
+        let evidenceOrderIds = new Set<string>();
+        let evidenceLpns = new Set<string>();
+        try {
+          const evidenceRes = await pool.query('SELECT DISTINCT "orderId", "lpn" FROM "Evidence"');
+          evidenceRes.rows.forEach(r => {
+            if (r.orderId) evidenceOrderIds.add(String(r.orderId).trim().toLowerCase());
+            if (r.lpn) evidenceLpns.add(String(r.lpn).trim().toLowerCase());
+          });
+        } catch (e: any) {
+          console.warn('[DB WARNING] Could not query "Evidence" table matching identifiers:', e.message);
+        }
+
+        
         try {
           const result = await pool.query(`
             SELECT c.*, s.status AS db_status, s."claimId" AS db_claim_id, s.bot_log_reason 
@@ -1344,6 +1304,14 @@ async function startServer() {
             }
           }
         }
+        
+        // Apply robust Evidence existence filtering: do not fetch/show entry if it has no record in the Evidence table
+        rawRows = rawRows.filter((row: any) => {
+          const oId = (row.orderId || row.orderid || "").trim().toLowerCase();
+          const lpn = (row.lpn || "").trim().toLowerCase();
+          return (oId && evidenceOrderIds.has(oId)) || (lpn && evidenceLpns.has(lpn));
+        });
+
       } else {
         rawRows = [...mockClaims];
       }
@@ -1977,7 +1945,7 @@ async function startServer() {
             i.lpn, 
             COALESCE(r.sku, 'UNKNOWN') as sku, 
             i.status as item_status, 
-            COALESCE(s.is_refurbished, false) as is_refurbished,
+            COALESCE(s."isRefurbished", false) as is_refurbished,
             COALESCE(s.damage_type, 'Repackaging Check') as damage_type
           FROM "ItemStatus" i
           LEFT JOIN "ReturnItem" r ON i.lpn = r.lpn

@@ -8,7 +8,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Triage from './pages/Triage';
 import SmartFiling from './pages/SmartFiling';
-import RecoveryHubTab from '../app/admin/components/RecoveryHubTab';
+import RecoveryHubTab from './pages/RecoveryHubTab.tsx';
 import QCAuditTab from './pages/QCAuditTab';
 
 export default function App() {
@@ -18,9 +18,9 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/triage" element={<Triage />} />
-          <Route path="/filing" element={<SmartFiling />} />
-          <Route path="/recovery" element={<RecoveryHubTab />} />
-          <Route path="/audit" element={<QCAuditTab />} />
+          <Route path="/smartfiling" element={<SmartFiling />} />
+          <Route path="/recoveryhubtab" element={<RecoveryHubTab />} />
+          <Route path="/qcaudittab" element={<QCAuditTab />} />
           <Route path="/performance" element={<Placeholder title="Performance Reports" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
