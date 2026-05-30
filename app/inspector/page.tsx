@@ -1241,6 +1241,9 @@ function InspectTab({ userId }: { userId?: string }) {
   const [displayOrderId, setDisplayOrderId] = useState("");
   const [expectedLpnItems, setExpectedLpnItems] = useState<InspectorReturnItem[]>([]);
   const [lpnScanError, setLpnScanError] = useState("");
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [currentSku, setCurrentSku] = useState<string | null>(null);
+  const [currentProductName, setCurrentProductName] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const visibleCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1254,7 +1257,7 @@ function InspectTab({ userId }: { userId?: string }) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const capturedImagesRef = useRef<
-    { type: "box" | "lpn" | "product"; id?: string; step?: number; blob: Blob }[]
+    { type: "box" | "lpn" | "product" | "collage"; id?: string; step?: number; blob: Blob }[]
   >([]);
   const lpnConditionsRef = useRef<Record<string, string>>({});
   const lpnRecoveryTypesRef = useRef<Record<string, string>>({});
@@ -1297,6 +1300,9 @@ function InspectTab({ userId }: { userId?: string }) {
     setShowRecoveryDropdown(false);
     setExpectedItems(0);
     setStartError("");
+    setCurrentImageUrl(null);
+    setCurrentSku(null);
+    setCurrentProductName(null);
     isOrderCompleteRef.current = false;
     capturedImagesRef.current = [];
     lpnConditionsRef.current = {};
@@ -1431,6 +1437,14 @@ function InspectTab({ userId }: { userId?: string }) {
                         filesToUpload.push({
                           key: fileKey,
                           name: fileName,
+                          mimeType: "image/jpeg",
+                          blob: img.blob,
+                          lpn: img.id,
+                        });
+                      } else if (img.type === "collage" && img.id) {
+                        filesToUpload.push({
+                          key: `collage_img_${img.id}`,
+                          name: `lpn_${img.id}_collage.jpg`,
                           mimeType: "image/jpeg",
                           blob: img.blob,
                           lpn: img.id,
@@ -1799,7 +1813,7 @@ function InspectTab({ userId }: { userId?: string }) {
             tempCanvas.toBlob(
               (blob) => {
                 if (blob)
-                  capturedImagesRef.current.push({
+                  capturedImagesRef.current!.push({
                     type,
                     id: identifier,
                     step: boxStep,
@@ -1809,12 +1823,70 @@ function InspectTab({ userId }: { userId?: string }) {
               "image/jpeg",
               0.8,
             );
+
+            // If this is a product capture and we have a Shopify reference image, build the side-by-side collage
+            if (type === "product" && currentImageUrl && identifier) {
+              const shopifyImg = new Image();
+              shopifyImg.crossOrigin = "anonymous";
+              shopifyImg.onload = () => {
+                const COLLAGE_H = 600;
+                const camW = Math.round((tempCanvas.width / tempCanvas.height) * COLLAGE_H);
+                const shopW = Math.round((shopifyImg.naturalWidth / shopifyImg.naturalHeight) * COLLAGE_H);
+                const GAP = 12;
+                const BADGE_H = 36;
+                const collage = document.createElement("canvas");
+                collage.height = COLLAGE_H + BADGE_H;
+                collage.width = shopW + GAP + camW;
+                const cCtx = collage.getContext("2d")!;
+
+                // Background
+                cCtx.fillStyle = "#0f172a";
+                cCtx.fillRect(0, 0, collage.width, collage.height);
+
+                // Left panel — Shopify reference
+                cCtx.drawImage(shopifyImg, 0, 0, shopW, COLLAGE_H);
+                cCtx.fillStyle = "rgba(99,102,241,0.85)";
+                cCtx.fillRect(0, COLLAGE_H, shopW, BADGE_H);
+                cCtx.fillStyle = "#ffffff";
+                cCtx.font = "bold 13px sans-serif";
+                cCtx.textAlign = "center";
+                cCtx.fillText("SHOPIFY REFERENCE", shopW / 2, COLLAGE_H + 23);
+
+                // Divider
+                cCtx.fillStyle = "#1e293b";
+                cCtx.fillRect(shopW, 0, GAP, collage.height);
+
+                // Right panel — received item
+                cCtx.drawImage(tempCanvas, shopW + GAP, 0, camW, COLLAGE_H);
+                cCtx.fillStyle = "rgba(239,68,68,0.85)";
+                cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
+                cCtx.fillStyle = "#ffffff";
+                cCtx.fillText("RECEIVED ITEM", shopW + GAP + camW / 2, COLLAGE_H + 23);
+
+                collage.toBlob(
+                  (collageBlob) => {
+                    if (collageBlob)
+                      capturedImagesRef.current!.push({
+                        type: "collage",
+                        id: identifier,
+                        blob: collageBlob,
+                      });
+                  },
+                  "image/jpeg",
+                  0.88,
+                );
+              };
+              shopifyImg.onerror = () => {
+                console.warn("[Collage] Failed to load Shopify reference image — skipping collage.");
+              };
+              shopifyImg.src = currentImageUrl;
+            }
           }
         } else {
           canvas.toBlob(
             (blob) => {
               if (blob)
-                capturedImagesRef.current.push({
+                capturedImagesRef.current!.push({
                   type,
                   id: identifier,
                   step: boxStep,
@@ -2019,6 +2091,11 @@ function InspectTab({ userId }: { userId?: string }) {
         ...prev,
         [resolvedFnsku]: remainingQty - 1
       }));
+
+      // Store variant reference image and product info for visual verification & collage
+      setCurrentImageUrl(itemInfo.imageUrl || null);
+      setCurrentSku(itemInfo.sku || null);
+      setCurrentProductName(itemInfo.productName || null);
 
       setCurrentLpn(scannedLpn);
       setLpnScanError("");
@@ -2475,7 +2552,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
         {phase === "ITEM_INSPECTION" && (
           <div className="flex-1 flex flex-col p-6 animate-in fade-in duration-300 overflow-y-auto custom-scrollbar">
-            <div className="mb-6 flex justify-between items-start border-b border-[#313079]/10 pb-4">
+            <div className="mb-4 flex justify-between items-start border-b border-[#313079]/10 pb-4">
               <div>
                 <h3 className="text-[10px] uppercase font-black tracking-widest text-[#FF6700] mb-1">
                   Phase 2
@@ -2494,6 +2571,35 @@ function InspectTab({ userId }: { userId?: string }) {
                 </p>
               </div>
             </div>
+
+            {/* Shopify Reference Variant Card */}
+            {currentImageUrl && (
+              <div className="mb-4 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-slate-50 p-3 flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="shrink-0 relative">
+                  <img
+                    src={currentImageUrl}
+                    alt="Shopify Variant Reference"
+                    className="w-16 h-16 object-contain rounded-lg border border-indigo-100 bg-white shadow-sm"
+                  />
+                  <div className="absolute -top-1.5 -right-1.5 bg-indigo-600 rounded-full w-4 h-4 flex items-center justify-center">
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600 mb-0.5">Shopify Reference</p>
+                  <p className="text-xs font-bold text-[#313079] leading-snug truncate">{currentProductName || "Product"}</p>
+                  {currentSku && (
+                    <p className="text-[10px] font-mono text-[#313079]/50 mt-0.5">SKU: {currentSku}</p>
+                  )}
+                </div>
+                <div className="shrink-0 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full">
+                  Visual Check
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 relative">
               {ITEM_STEPS.map((step, idx) => {

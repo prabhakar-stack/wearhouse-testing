@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
         courierName: true,
         status: true,
         expectedDate: true,
+        createdAt: true,
         orders: {
           select: {
             marketplace: true,
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
         courierName: m.courierName,
         status: m.status,
         expectedDate: m.expectedDate,
+        createdAt: m.createdAt,
         returnItems,
         trackingData,
       };

@@ -1,6 +1,46 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// ─── Shopify Variant Image Fetcher ─────────────────────────────────────────
+async function fetchShopifyVariantImage(sku: string): Promise<string | null> {
+  try {
+    const domain = process.env.SHOPIFY_DOMAIN;
+    const token = process.env.SHOPIFY_ACCESS_TOKEN;
+    const version = process.env.SHOPIFY_API_VERSION || "2024-01";
+    if (!domain || !token) return null;
+
+    const res = await fetch(`https://${domain}/admin/api/${version}/graphql.json`, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: `query getVariantImage($query: String!) {
+          productVariants(first: 1, query: $query) {
+            edges {
+              node {
+                image { url }
+                product { featuredImage { url } }
+              }
+            }
+          }
+        }`,
+        variables: { query: `sku:${sku}` },
+      }),
+    });
+
+    if (!res.ok) return null;
+    const { data } = await res.json();
+    const edges = data?.productVariants?.edges || [];
+    if (edges.length === 0) return null;
+    const node = edges[0].node;
+    return node.image?.url || node.product?.featuredImage?.url || null;
+  } catch {
+    return null;
+  }
+}
+
 const ALLOWED_CONDITIONS = new Set([
   "GOOD_SELLABLE",
   "PACKAGING_DAMAGED",
@@ -125,6 +165,9 @@ export async function GET(req: Request) {
       }
     }
 
+    // Fetch the Shopify variant reference image (non-blocking, best-effort)
+    const imageUrl = rawReturn.sku ? await fetchShopifyVariantImage(rawReturn.sku) : null;
+
     return NextResponse.json({
       success: true,
       lpn: rawReturn.lpn,
@@ -132,6 +175,7 @@ export async function GET(req: Request) {
       fnsku: resolvedFnsku,
       productName: rawReturn.productName || `SKU: ${rawReturn.sku}`,
       customerComments: rawReturn.customerComments || null,
+      imageUrl,
     });
 
   } catch (error: any) {

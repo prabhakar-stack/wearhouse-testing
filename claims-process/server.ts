@@ -43,7 +43,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
         lpn text PRIMARY KEY,
         sku text NOT NULL,
         damage_type text NOT NULL,
-        is_refurbished boolean DEFAULT false,
+        "isRefurbished" boolean DEFAULT false,
         status text DEFAULT 'pending'
       );
     `);
@@ -222,8 +222,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
               mapped_damage_type := COALESCE(NEW."recoveryType", 'box_damage');
             END IF;
 
-            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
-            VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
+             INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
+             VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
             ON CONFLICT (lpn) DO UPDATE SET
               sku = EXCLUDED.sku,
               damage_type = EXCLUDED.damage_type,
@@ -331,7 +331,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
             "manifestId",
             "type",
             "orderDriveLink",
-            "lpnDriveLink"
+            "lpnDriveLink",
+            "status"
           FROM "Evidence"
           ` : `
           SELECT 
@@ -340,7 +341,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
             NULL::text AS "manifestId",
             NULL::text AS "type",
             NULL::text AS "orderDriveLink",
-            NULL::text AS "lpnDriveLink"
+            NULL::text AS "lpnDriveLink",
+            NULL::text AS "status"
           LIMIT 0
           `}
         ),
@@ -414,8 +416,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
             
             -- type mapping
             CASE
-              WHEN ev.lpn IS NOT NULL AND ev.type = 'RECEIVER_REJECTION' THEN 'Rejected'
-              WHEN ev.lpn IS NOT NULL AND ev.type = 'Claimed' THEN 'Claimed'
+              WHEN ev.lpn IS NOT NULL AND ev.type::text = 'RECEIVER_REJECTION' THEN 'Rejected'
+              WHEN ev.lpn IS NOT NULL AND ev.status = 'Claimed' THEN 'Claimed'
               WHEN ev.lpn IS NOT NULL THEN 'Damaged'
               ELSE 'Missing'
             END AS type,
@@ -427,7 +429,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
             1::integer AS qty
             
           FROM base_returns br
-          LEFT JOIN evidences ev ON br.lpn = ev.lpn
+          JOIN evidences ev ON br.lpn = ev.lpn
 
           UNION ALL
 
@@ -624,7 +626,7 @@ function getDbPool() {
 }
 
 // Helper to convert snake_case or mixed_case object to camelCase
-function toCamelCase(obj: any) {
+function toCamelCase(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(toCamelCase);
 
@@ -812,7 +814,7 @@ async function startServer() {
 
             // gracefull insertions handling edge cases (ON CONFLICT)
             await client.query(`
-              INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+              INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
               VALUES ($1, $2, $3, false, 'inspected')
               ON CONFLICT (lpn) DO UPDATE SET
                 sku = EXCLUDED.sku,
@@ -1106,7 +1108,7 @@ async function startServer() {
 
           // Upsert directly into sample_recovery
           await pool.query(`
-            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+            INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
             VALUES ($1, $2, $3, false, 'recovery')
             ON CONFLICT (lpn) 
             DO UPDATE SET 
@@ -1206,7 +1208,7 @@ async function startServer() {
       if (pool) {
         await pool.query(`
           UPDATE "sample_recovery"
-          SET is_refurbished = $2, status = $3
+          SET "isRefurbished" = $2, status = $3
           WHERE LOWER(lpn) = LOWER($1)
         `, [lpn, is_refurbished, recordStatus]);
 
@@ -1976,7 +1978,7 @@ async function startServer() {
             i.lpn, 
             COALESCE(r.sku, 'UNKNOWN') as sku, 
             i.status as item_status, 
-            COALESCE(s.is_refurbished, false) as is_refurbished,
+            COALESCE(s."isRefurbished", false) as is_refurbished,
             COALESCE(s.damage_type, 'Repackaging Check') as damage_type
           FROM "ItemStatus" i
           LEFT JOIN "ReturnItem" r ON i.lpn = r.lpn

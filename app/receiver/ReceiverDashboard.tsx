@@ -537,19 +537,28 @@ function ExpectedTab() {
       ) : (
         <div className="space-y-3">
           {expected.map((item, idx) => {
-            const dispatched = new Date(item.expectedDate || new Date());
-            const hoursDiff = (Date.now() - dispatched.getTime()) / 3600000;
-            const issueLvl = hoursDiff > 48 ? 4 : hoursDiff > 24 ? 2 : 0;
+            const trackingSnapshot = item.trackingData?.[0] || null;
+            const etaDate = trackingSnapshot?.scheduledDelivery
+              ? new Date(trackingSnapshot.scheduledDelivery)
+              : null;
+            const hoursOverdue = etaDate
+              ? (Date.now() - etaDate.getTime()) / 3600000
+              : null;
+            // Status: future ETA = ON TIME, past ETA within 7 days = OVERDUE, beyond 7 days or no ETA = show no ETA
+            const deliveryStatus =
+              hoursOverdue === null ? "no_eta"
+              : hoursOverdue <= 0 ? "on_time"
+              : hoursOverdue <= 168 ? "overdue"   // within 7 days overdue
+              : "late";                            // very late / no meaningful ETA
             const marketplace =
               item.returnItems?.[0]?.order?.marketplace || "UNKNOWN";
-            const trackingSnapshot = item.trackingData?.[0] || null;
             return (
               <div
                 key={item.id || idx}
-                className={`bg-white border ${issueLvl > 0 ? "border-red-300" : "border-[#313079]/10"} p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm`}
+                className="bg-white border border-[#313079]/10 p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm"
               >
                 <div
-                  className={`absolute inset-y-0 left-0 w-1.5 rounded-l-xl ${issueLvl === 4 ? "bg-red-500 animate-pulse" : issueLvl > 0 ? "bg-[#FFF700]" : "bg-[#FF6700]"}`}
+                  className={`absolute inset-y-0 left-0 w-1.5 rounded-l-xl ${deliveryStatus === "overdue" || deliveryStatus === "late" ? "bg-[#FFF700]" : "bg-[#FF6700]"}`}
                 />
                 <div className="flex justify-between items-start pl-3">
                   <div>
@@ -577,17 +586,17 @@ function ExpectedTab() {
                     )}
                   </div>
                   <div>
-                    {issueLvl === 4 ? (
-                      <span className="bg-red-50 text-red-600 px-2 py-1 text-xs font-bold uppercase border border-red-200 rounded-full">
-                        L4 ALERT
+                    {deliveryStatus === "overdue" || deliveryStatus === "late" ? (
+                      <span className="bg-amber-50 text-amber-700 px-2 py-1 text-xs font-bold uppercase border border-amber-200 rounded-full">
+                        OVERDUE
                       </span>
-                    ) : issueLvl > 0 ? (
-                      <span className="bg-[#FFF700]/15 text-[#313079] px-2 py-1 text-xs font-bold uppercase border border-[#FFF700]/30 rounded-full">
-                        DELAYED
-                      </span>
-                    ) : (
+                    ) : deliveryStatus === "on_time" ? (
                       <span className="text-[#FF6700] text-xs font-bold uppercase">
                         ON TIME
+                      </span>
+                    ) : (
+                      <span className="text-[#313079]/40 text-xs font-bold uppercase">
+                        NO ETA
                       </span>
                     )}
                   </div>
