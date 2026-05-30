@@ -1,4 +1,5 @@
 import type { TrackingSnapshot } from "@/lib/trackcourier";
+import { setTimeout } from "timers/promises";
 
 const SHIPROCKET_BASE_URL = (
   process.env.SHIPROCKET_API_BASE_URL ||
@@ -211,13 +212,49 @@ async function requestTrackingSnapshot(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    // 15‑second timeout per request to give slow courier partners extra time
+    signal: AbortSignal.timeout(15000),
   });
 
+    // If response is not OK, attempt to parse the error body to see if it's a cancelled AWB.
   if (!response.ok) {
+    const errText = await response.text();
+    // Try to parse JSON – Shiprocket returns JSON even for 500 errors.
+    let parsedErr: any = null;
+    try {
+      parsedErr = JSON.parse(errText);
+    } catch (_) {
+      // Not JSON – fall through to generic error.
+    }
+    const isCancelled =
+      parsedErr &&
+      typeof parsedErr.message === "string" &&
+      parsedErr.message.toLowerCase().includes("cancelled");
+
+    if (isCancelled) {
+      // Return a minimal snapshot indicating the shipment was cancelled.
+      return {
+        trackingNumber: candidate.id,
+        courierName: null,
+        courierSlug: null,
+        trackingUrl: null,
+        found: false,
+        scheduledDelivery: null,
+        latestStatus: "Cancelled",
+        latestLocation: null,
+        checkpointCount: 0,
+        checkpoints: [],
+        rawText: errText,
+        fetchedAt: new Date().toISOString(),
+      } as any; // cast to any to satisfy TypeScript
+    }
+
+    // Otherwise, re‑throw the generic error.
     throw new Error(
-      `Shiprocket tracking request failed with ${response.status} ${response.statusText}`,
+      `Shiprocket tracking request failed with ${response.status} ${response.statusText}: ${errText}`,
     );
   }
+
 
   const responseData = await response.json();
   const trackingData = responseData?.tracking_data ?? responseData ?? {};

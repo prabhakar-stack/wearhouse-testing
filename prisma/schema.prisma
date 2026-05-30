@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -14,6 +14,8 @@ enum Role {
   RECEIVER
   INSPECTOR
   CLAIMS_SPECIALIST
+  RECOVERER
+  QC_AGENT
 }
 
 enum Marketplace {
@@ -57,76 +59,78 @@ enum EvidenceType {
 }
 
 model User {
-  id               String       @id @default(uuid())
-  email            String       @unique
-  name             String?
-  role             Role
-  itemsProcessed   Int          @default(0)
-  accuracyRate     Float        @default(100.0)
-  alertLevel       AlertLevel?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id             String      @id @default(uuid())
+  email          String      @unique
+  name           String?
+  role           Role
+  itemsProcessed Int         @default(0)
+  accuracyRate   Float       @default(100.0)
+  alertLevel     AlertLevel?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  alertsTargeted   Alert[]      @relation("AlertTarget")
-  alertsResolved   Alert[]      @relation("AlertResolver")
+  alertsTargeted Alert[] @relation("AlertTarget")
+  alertsResolved Alert[] @relation("AlertResolver")
 }
 
 model Manifest {
-  id               String       @id @default(uuid())
-  trackingId       String       @unique
-  status           PackageState
-  marketplace      Marketplace?
-  courierName      String?
-  removalOrderId   String?        // Amazon removal order ID linking to AMZRemovalShipment
-  expectedDate     DateTime?
-  receivedAt       DateTime?
-  receivedBy       String?        // Receiver's email
-  inspectedBy      String?        // Inspector's email
-  claimId          String?        // Claims identifier
-  createdAt        DateTime     @default(now())
+  id             String       @id @default(uuid())
+  trackingId     String       @unique
+  status         PackageState
+  marketplace    Marketplace @default(AMAZON)
+  courierName    String?
+  orderId        String? @unique // Amazon order identifier
+  removalOrderId String? // Amazon removal order ID linking to AMZRemovalShipment
+  expectedDate   DateTime?
+  receivedAt     DateTime?
+  receivedBy     String? // Receiver's email
+  inspectedBy    String? // Inspector's email
+  claimId        String? // Claims identifier
+  createdAt      DateTime     @default(now())
 
-  orders           Order[]
-  evidences        Evidence[]
-  alerts           Alert[]
+  orders            Order[]
+  evidences         Evidence[]
+  alerts            Alert[]
   trackingSnapshots ShipmentTracking[]
 }
 
 model Order {
   marketplace        Marketplace
-  platformOrderId    String       @id // Amazon removal order-id
-  requestDate        DateTime?    // Amazon removal request date
-  totalAmount        Float?       // Amazon removal fee
-  totalQuantity      Int?         // Total quantity of items in the order
-  fulfillmentChannel String?      // FBA / FBM / AMAZON_REMOVAL
+  platformOrderId    String      @id // Amazon removal order-id
+  requestDate        DateTime? // Amazon removal request date
+  totalAmount        Float? // Amazon removal fee
+  totalQuantity      Int? // Total quantity of items in the order
+  fulfillmentChannel String? // FBA / FBM / AMAZON_REMOVAL
+  fulfillmentId      String? // Optional fulfillment identifier
   manifestId         String?
-  manifest           Manifest?    @relation(fields: [manifestId], references: [id])
-  trackingNumber     String?      // Carrier tracking number associated with the removal order
+  manifest           Manifest?   @relation(fields: [manifestId], references: [id])
+  trackingNumber     String? // Carrier tracking number associated with the removal order
 }
 
 model ShipmentTracking {
-  trackingNumber    String     @id
+  trackingNumber    String    @id
   manifestId        String?
   courierName       String?
   courierSlug       String?
   latestStatus      String?
   latestLocation    String?
   scheduledDelivery DateTime?
-  checkpointCount   Int        @default(0)
+  checkpointCount   Int       @default(0)
   checkpoints       Json?
   rawText           String?
-  fetchedAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  fetchedAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  manifest          Manifest?  @relation(fields: [manifestId], references: [id])
+  manifest Manifest? @relation(fields: [manifestId], references: [id])
 
   @@index([manifestId])
 }
 
 model Reimbursement {
-  id                      String     @id @default(uuid())
+  id                      String    @id @default(uuid())
   // Fields referencing ReturnItem removed
-  returnItemId            String     @unique
-  platformReimbursementId String?    @unique
+  returnItemId            String    @unique
+  platformReimbursementId String?   @unique
   amountReimbursed        Float
   currency                String
   reimbursementReason     String?
@@ -143,60 +147,61 @@ model Evidence {
   lpnDriveLink    String?
   type            EvidenceType
   rawReference    String?
-  uploadedByEmail String?      // Email of user who uploaded
+  uploadedByEmail String? // Email of user who uploaded
   manifestId      String?
   returnItemId    String?
   claimReason     String?
   claimSubReason  String?
   createdAt       DateTime     @default(now())
 
-  manifest     Manifest?   @relation(fields: [manifestId], references: [id])
+  manifest Manifest? @relation(fields: [manifestId], references: [id])
   // returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
+  status           String?   // optional status, defaults to null
 }
 
 model Alert {
-  id           String     @id @default(uuid())
-  level        AlertLevel
-  type         String     // e.g. "SLA_BREACH", "GHOST_DELIVERY", "CLAIM_STALLED", "MISSING_ITEMS"
-  title        String
-  description  String
-  manifestId   String?
-  targetUserId String?
-  resolved     Boolean    @default(false)
-  resolvedById String?
-  resolvedAt   DateTime?
+  id              String     @id @default(uuid())
+  level           AlertLevel
+  type            String // e.g. "SLA_BREACH", "GHOST_DELIVERY", "CLAIM_STALLED", "MISSING_ITEMS"
+  title           String
+  description     String
+  manifestId      String?
+  targetUserId    String?
+  resolved        Boolean    @default(false)
+  resolvedById    String?
+  resolvedAt      DateTime?
   resolution      String?
-  sopAcknowledged Boolean   @default(false)
+  sopAcknowledged Boolean    @default(false)
   sopViewedAt     DateTime?
   createdAt       DateTime   @default(now())
 
-  manifest     Manifest?  @relation(fields: [manifestId], references: [id])
-  targetUser   User?      @relation("AlertTarget", fields: [targetUserId], references: [id])
-  resolvedBy   User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
+  manifest   Manifest? @relation(fields: [manifestId], references: [id])
+  targetUser User?     @relation("AlertTarget", fields: [targetUserId], references: [id])
+  resolvedBy User?     @relation("AlertResolver", fields: [resolvedById], references: [id])
 }
 
 model CronJobState {
-  jobKey        String   @id
+  jobKey        String    @id
   lastRunAt     DateTime?
   lastSuccessAt DateTime?
   lastError     String?
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime  @updatedAt
 }
 
 model ItemStatus {
-  lpn          String   @id
-  status       String   // "GOOD" or "RECOVERY"
-  recoveryType String?  // "barcode not clear" or "product packaging box replacement required"
+  lpn            String   @id
+  status         String // "GOOD" or "RECOVERY"
+  recoveryType   String? // "barcode not clear" or "product packaging box replacement required"
   // New fields for storing drive links and order reference
-  orderId      String?  // orderPlatformId or internal order identifier
-  lpnDriveLink String?  // per‑LPN Google Drive folder URL (folder named after the LPN)
+  orderId        String? // orderPlatformId or internal order identifier
+  lpnDriveLink   String? // per‑LPN Google Drive folder URL (folder named after the LPN)
   orderDriveLink String? // shared order‑level Google Drive folder URL
-  createdAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
 }
 
 model MissingItem {
   id              String   @id @default(uuid())
-  orderId         String   // platformOrderId
+  orderId         String // platformOrderId
   fnsku           String
   missingQuantity Int
   createdAt       DateTime @default(now())
@@ -206,90 +211,92 @@ model MissingItem {
 
 // Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {
-  orderId             String    @id @map("order-id")
-  requestDate         DateTime? @map("request-date")
-  orderSource         String?   @map("order-source")
-  orderType           String?   @map("order-type")
-  serviceSpeed        String?   @map("service-speed")
-  orderStatus         String?   @map("order-status")
-  lastUpdatedDate     DateTime? @map("last-updated-date")
-  sku                 String?   @map("sku")
-  fnsku               String?   @map("fnsku")
-  disposition         String?   @map("disposition")
-  requestedQuantity   Int?      @map("requested-quantity")
-  cancelledQuantity   Int?      @map("cancelled-quantity")
-  disposedQuantity    Int?      @map("disposed-quantity")
-  shippedQuantity     Int?      @map("shipped-quantity")
-  inProcessQuantity   Int?      @map("in-process-quantity")
-  removalFee          Float?    @map("removal-fee")
-  currency            String?   @map("currency")
+  id                String    @id @default(uuid())
+  orderId           String    @map("order-id")
+  requestDate       DateTime? @map("request-date")
+  orderSource       String?   @map("order-source")
+  orderType         String?   @map("order-type")
+  serviceSpeed      String?   @map("service-speed")
+  orderStatus       String?   @map("order-status")
+  lastUpdatedDate   DateTime? @map("last-updated-date")
+  sku               String?   @map("sku")
+  fnsku             String?   @map("fnsku")
+  disposition       String?   @map("disposition")
+  requestedQuantity Int?      @map("requested-quantity")
+  cancelledQuantity Int?      @map("cancelled-quantity")
+  disposedQuantity  Int?      @map("disposed-quantity")
+  shippedQuantity   Int?      @map("shipped-quantity")
+  inProcessQuantity Int?      @map("in-process-quantity")
+  removalFee        Float?    @map("removal-fee")
+  currency          String?   @map("currency")
 
   @@map("AMZ_removal_orders")
 }
 
 // Amazon removal shipments (per-shipment rows)
 model AMZRemovalShipment {
-  id                String    @id @default(uuid())
-  requestDate       DateTime? @map("request-date")
-  orderId           String?   @map("order-id")
-  shipmentDate      DateTime? @map("shipment-date")
-  sku               String?   @map("sku")
-  fnsku             String?   @map("fnsku")
-  disposition       String?   @map("disposition")
-  shippedQuantity   Int?      @map("shipped-quantity")
-  carrier           String?   @map("carrier")
-  trackingNumber    String?   @map("tracking-number")
-  processedAt       DateTime?
-  shipmentStatus    String?   @map("shipment-status")
+  id              String    @id @default(uuid())
+  requestDate     DateTime? @map("request-date")
+  orderId         String?   @map("order-id")
+  shipmentDate    DateTime? @map("shipment-date")
+  sku             String?   @map("sku")
+  fnsku           String?   @map("fnsku")
+  disposition     String?   @map("disposition")
+  shippedQuantity Int?      @map("shipped-quantity")
+  carrier         String?   @map("carrier")
+  trackingNumber  String?   @map("tracking-number")
+  processedAt     DateTime?
+  shipmentStatus  String?   @map("shipment-status")
 
   @@map("AMZ_removal_shipments")
 }
 
 // Amazon reimbursements table import
 model AMZReimbursement {
-  reimbursementId               String   @id @map("reimbursement-id")
-  approvalDate                  DateTime? @map("approval-date")
-  caseId                        String?  @map("case-id")
-  amazonOrderId                 String?  @map("amazon-order-id")
-  reason                        String?  @map("reason")
-  sku                           String?  @map("sku")
-  fnsku                         String?  @map("fnsku")
-  asin                          String?  @map("asin")
-  productName                   String?  @map("product-name")
-  condition                     String?  @map("condition")
-  currencyUnit                  String?  @map("currency-unit")
-  amountPerUnit                 Float?   @map("amount-per-unit")
-  amountTotal                   Float?   @map("amount-total")
-  quantityReimbursedCash        Int?     @map("quantity-reimbursed-cash")
-  quantityReimbursedInventory   Int?     @map("quantity-reimbursed-inventory")
-  quantityReimbursedTotal       Int?     @map("quantity-reimbursed-total")
-  originalReimbursementId       String?  @map("original-reimbursement-id")
-  originalReimbursementType     String?  @map("original-reimbursement-type")
+  reimbursementId             String    @id @map("reimbursement-id")
+  approvalDate                DateTime? @map("approval-date")
+  caseId                      String?   @map("case-id")
+  amazonOrderId               String?   @map("amazon-order-id")
+  reason                      String?   @map("reason")
+  sku                         String?   @map("sku")
+  fnsku                       String?   @map("fnsku")
+  asin                        String?   @map("asin")
+  productName                 String?   @map("product-name")
+  condition                   String?   @map("condition")
+  currencyUnit                String?   @map("currency-unit")
+  amountPerUnit               Float?    @map("amount-per-unit")
+  amountTotal                 Float?    @map("amount-total")
+  quantityReimbursedCash      Int?      @map("quantity-reimbursed-cash")
+  quantityReimbursedInventory Int?      @map("quantity-reimbursed-inventory")
+  quantityReimbursedTotal     Int?      @map("quantity-reimbursed-total")
+  originalReimbursementId     String?   @map("original-reimbursement-id")
+  originalReimbursementType   String?   @map("original-reimbursement-type")
 
   @@map("AMZ_reimbursements")
 }
 
 // Amazon customer returns (raw LPN-level rows)
 model AMZCustomerReturn {
-  lpn                     String   @id
-  returnDate              DateTime? @map("return-date")
-  orderId                 String?  @map("order-id")
-  sku                     String?  @map("sku")
-  asin                    String?  @map("asin")
-  fnsku                   String?  @map("fnsku")
-  productName             String?  @map("product-name")
-  quantity                Int?     @map("quantity")
-  fulfillmentCenterId     String?  @map("fulfillment-center-id")
-  detailedDisposition     String?  @map("detailed-disposition")
-  reason                  String?  @map("reason")
-  customerComments        String?  @map("customer-comments")
-  removalOrderType        String?  @map("removal-order-type")
+  id                  String    @id @default(uuid())
+  lpn                 String    @map("license-plate-number")
+  returnDate          DateTime? @map("return-date")
+  orderId             String?   @map("order-id")
+  sku                 String?   @map("sku")
+  asin                String?   @map("asin")
+  fnsku               String?   @map("fnsku")
+  productName         String?   @map("product-name")
+  quantity            Int?      @map("quantity")
+  fulfillmentCenterId String?   @map("fulfillment-center-id")
+  detailedDisposition String?   @map("detailed-disposition")
+  reason              String?   @map("reason")
+  customerComments    String?   @map("customer-comments")
+  removalOrderType    String?   @map("removal-order-type")
 
   @@map("AMZ_customer_returns")
 }
 
 model ReturnPrimeReturn {
-  id                   String       @id
+  id                   String      @id
   requestNumber        String?
   requestType          String?
   status               String?
@@ -302,23 +309,23 @@ model ReturnPrimeReturn {
   deliveryDate         DateTime?
   customerEmail        String?
   postalCode           String?
-  receivedStatus       Boolean      @default(false)
-  inspectedStatus      Boolean      @default(false)
-  rejectedStatus       Boolean      @default(false)
-  archivedStatus       Boolean      @default(false)
+  receivedStatus       Boolean     @default(false)
+  inspectedStatus      Boolean     @default(false)
+  rejectedStatus       Boolean     @default(false)
+  archivedStatus       Boolean     @default(false)
   refundStatus         String?
-  eligibleRefundStatus  Boolean      @default(false)
-  refundedAmount       Float?       @default(0)
+  eligibleRefundStatus Boolean     @default(false)
+  refundedAmount       Float?      @default(0)
   originalProductId    String?
   sku                  String?
   trackingNumber       String?
   quantity             Int?
   actualAmount         Float?
   imageSrc             String?
-  marketplace          Marketplace  @default(SHOPIFY)
+  marketplace          Marketplace @default(SHOPIFY)
   rawPayload           Json?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
 
   @@index([orderId])
   @@index([trackingNumber])
@@ -326,31 +333,31 @@ model ReturnPrimeReturn {
 }
 
 model ShiprocketReturn {
-  id              String       @id
-  requestNumber   String?
-  requestType     String?
-  status          String?
-  channel         String?
-  orderId         String?
-  orderName       String?
-  orderCreatedAt  DateTime?
-  fulfillmentId   String?
-  deliveryStatus  String?
-  deliveryDate    DateTime?
-  customerEmail   String?
-  postalCode      String?
-  courierName     String?
-  courierSlug     String?
-  shipmentId      String?
-  trackingNumber  String?
-  sku             String?
-  productName     String?
-  quantity        Int?
-  amount          Float?
-  marketplace     Marketplace  @default(SHOPIFY)
-  rawPayload      Json?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String      @id
+  requestNumber  String?
+  requestType    String?
+  status         String?
+  channel        String?
+  orderId        String?
+  orderName      String?
+  orderCreatedAt DateTime?
+  fulfillmentId  String?
+  deliveryStatus String?
+  deliveryDate   DateTime?
+  customerEmail  String?
+  postalCode     String?
+  courierName    String?
+  courierSlug    String?
+  shipmentId     String?
+  trackingNumber String?
+  sku            String?
+  productName    String?
+  quantity       Int?
+  amount         Float?
+  marketplace    Marketplace @default(SHOPIFY)
+  rawPayload     Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([orderId])
   @@index([shipmentId])
@@ -359,20 +366,20 @@ model ShiprocketReturn {
 }
 
 model ShopifyReturnTracking {
-  trackingNumber    String       @id
+  trackingNumber    String      @id
   sourceType        String
   sourceId          String
-  marketplace       Marketplace  @default(SHOPIFY)
+  marketplace       Marketplace @default(SHOPIFY)
   courierName       String?
   courierSlug       String?
   latestStatus      String?
   latestLocation    String?
   scheduledDelivery DateTime?
-  checkpointCount   Int          @default(0)
+  checkpointCount   Int         @default(0)
   checkpoints       Json?
   rawText           String?
-  fetchedAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  fetchedAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   @@index([sourceType, sourceId])
   @@index([marketplace])
@@ -380,21 +387,22 @@ model ShopifyReturnTracking {
 }
 
 model ReturnItem {
-  lpn                     String   @id
-  returnDate              DateTime? @map("return-date")
-  sku                     String?  @map("sku")
-  asin                    String?  @map("asin")
-  fnsku                   String? @map("fnsku")
-  productName             String? @map("product-name")
-  quantity                Int?    @map("quantity")
-  fulfillmentCenterId     String? @map("fulfillment-center-id")
-  detailedDisposition     String? @map("detailed-disposition")
-  reason                  String? @map("reason")
-  customerComments        String? @map("customer-comments")
-  removalOrderType        String? @map("removal-order-type")
-  marketplace             String? @default("amazon")
-  orderId                String?
+  lpn                 String    @id
+  returnDate          DateTime? @map("return-date")
+  sku                 String?   @map("sku")
+  asin                String?   @map("asin")
+  fnsku               String?   @map("fnsku")
+  productName         String?   @map("product-name")
+  quantity            Int?      @map("quantity")
+  fulfillmentCenterId String?   @map("fulfillment-center-id")
+  detailedDisposition String?   @map("detailed-disposition")
+  reason              String?   @map("reason")
+  customerComments    String?   @map("customer-comments")
+  removalOrderType    String?   @map("removal-order-type")
+  marketplace         String?   @default("amazon")
+  orderId             String?
   itemPrice           Float?
+
   @@map("ReturnItem")
 }
 
@@ -405,4 +413,38 @@ model AMZFiledClaim {
   caseId  String?   @map("case_id")
 
   @@map("AMZ_filed_claims")
+}
+
+// Teammate-added: claims tracking table (has a claims_amz view depending on it)
+model ClaimsStatus {
+  id            Int      @id @default(autoincrement())
+  orderId       String   @unique
+  trackingId    String?
+  claimId       String   @default("")
+  status        String   @default("unclaimed")
+  botLogReason  String?  @map("bot_log_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("claims_status")
+}
+
+// Teammate-added: QC tracking per SKU
+model QcStatus {
+  sku           String  @id
+  targetCount   Int     @map("target_count")
+  quantityCount Int     @default(0) @map("quantity_count")
+  status        String?
+
+  @@map("qc_status")
+}
+
+// Teammate-added: sample recovery tracking per LPN
+model SampleRecovery {
+  lpn           String  @id
+  sku           String
+  damageType    String  @map("damage_type")
+  status        String  @default("recovery")
+  isRefurbished Boolean @default(false)
+
+  @@map("sample_recovery")
 }

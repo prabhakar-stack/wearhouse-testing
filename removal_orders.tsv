@@ -1,0 +1,6 @@
+request-date	order-id	order-source	order-type	service-speed	order-status	last-updated-date	sku	fnsku	disposition	requested-quantity	cancelled-quantity	disposed-quantity	shipped-quantity	in-process-quantity	removal-fee	currency
+2026-05-22T14:04:12+05:30	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T22:24:42+05:30	1030478	X001HYK0PL	Unsellable	1	0		0	1		
+2026-05-22T14:04:12+05:30	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T22:24:42+05:30	1630201	X001I5SK8D	Unsellable	2	0		0	2		
+2026-05-22T14:04:12+05:30	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T22:24:42+05:30	1280100a	X001LHLHUV	Unsellable	2	0		0	2		
+2026-05-22T14:04:12+05:30	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T22:24:42+05:30	1280600_EAN	X001PEDWDF	Unsellable	2	0		0	2		
+2026-05-22T14:04:12+05:30	Xq5m8x9933	Seller-configured Automated Unfulfillable Removal System	Return	Standard	Pending	2026-05-22T22:24:42+05:30	1460501	X001VLOAKL	Unsellable	1	0		0	1		

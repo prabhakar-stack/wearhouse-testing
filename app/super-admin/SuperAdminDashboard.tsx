@@ -438,7 +438,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
   const [editSuccess, setEditSuccess] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'SUPER_ACCESS'];
+  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'QC_AGENT', 'RECOVERER'];
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -760,7 +760,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
                 <select value={editRole} onChange={e => setEditRole(e.target.value)}
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
-                  {['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST'].map(r => (
+                  {availableRoles.map(r => (
                     <option key={r} value={r}>{r.replace('_', ' ')}</option>
                   ))}
                 </select>

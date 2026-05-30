@@ -1,5 +1,5 @@
 {
-  "type": "commonjs",
+  "type": "module",
   "name": "ai-studio-applet",
   "version": "0.1.0",
   "private": true,
@@ -15,8 +15,9 @@
     "seed:test-order": "node prisma/seed-test-order.js",
     "postbuild": "prisma db push --accept-data-loss",
     "postinstall": "prisma generate",
-    "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
-    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js"
+    "sync:amazon-returns": "node scripts/sync_amazon.mjs",
+    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js",
+    "sync:amazon": "node scripts/sync_amazon.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
