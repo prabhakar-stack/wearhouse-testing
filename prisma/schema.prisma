@@ -132,7 +132,7 @@ model CronJobState {
 }
 
 model ItemStatus {
-  lpn            String   @id
+  lpn            String   @id @default(uuid())
   status         String
   recoveryType   String?
   orderId        String?
@@ -152,7 +152,7 @@ model MissingItem {
 }
 
 model AMZRemovalOrder {
-  id                String    @id
+  id                String    @id @default(uuid())
   orderId           String    @map("order-id")
   requestDate       DateTime? @map("request-date")
   orderSource       String?   @map("order-source")
