@@ -8,56 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum Role {
-  SUPER_ACCESS
-  ADMIN
-  RECEIVER
-  INSPECTOR
-  CLAIMS_SPECIALIST
-  RECOVERER
-  QC_AGENT
-}
-
-enum Marketplace {
-  AMAZON
-  SHOPIFY
-}
-
-enum PackageState {
-  EXPECTED
-  IN_TRANSIT
-  LOST_IN_TRANSIT
-  AT_DOCK
-  IN_INSPECTION
-  INSPECTED
-  CLAIMS_STAGING
-  CLAIM_RESOLVED
-  RECOVERED_TO_INVENTORY
-}
-
-enum ItemCondition {
-  GOOD_SELLABLE
-  PACKAGING_DAMAGED
-  PRODUCT_DAMAGED
-  WRONG_ITEM
-  MISSING
-  BAD_FAKE_PRODUCT
-}
-
-enum AlertLevel {
-  L1
-  L2
-  L3
-  L4
-}
-
-enum EvidenceType {
-  RECEIVER_REJECTION
-  INSPECTOR_REJECTION
-  INSPECTION_VIDEO
-  PRODUCT_DAMAGE_PHOTO
-}
-
 model User {
   id             String      @id @default(uuid())
   email          String      @unique
@@ -68,43 +18,41 @@ model User {
   alertLevel     AlertLevel?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
-
-  alertsTargeted Alert[] @relation("AlertTarget")
-  alertsResolved Alert[] @relation("AlertResolver")
+  alertsResolved Alert[]     @relation("AlertResolver")
+  alertsTargeted Alert[]     @relation("AlertTarget")
 }
 
 model Manifest {
-  id             String       @id @default(uuid())
-  trackingId     String       @unique
-  status         PackageState
-  marketplace    Marketplace @default(AMAZON)
-  courierName    String?
-  orderId        String? @unique // Amazon order identifier
-  removalOrderId String? // Amazon removal order ID linking to AMZRemovalShipment
-  expectedDate   DateTime?
-  receivedAt     DateTime?
-  receivedBy     String? // Receiver's email
-  inspectedBy    String? // Inspector's email
-  claimId        String? // Claims identifier
-  createdAt      DateTime     @default(now())
-
-  orders            Order[]
-  evidences         Evidence[]
+  id                String             @id @default(uuid())
+  trackingId        String             @unique
+  status            PackageState
+  marketplace       Marketplace        @default(AMAZON)
+  orderId           String?
+  removalOrderId    String?
+  expectedDate      DateTime?
+  receivedAt        DateTime?
+  receivedBy        String?
+  inspectedBy       String?
+  claimId           String?
+  createdAt         DateTime           @default(now())
+  courierName       String?
   alerts            Alert[]
+  evidences         Evidence[]
+  orders            Order[]
   trackingSnapshots ShipmentTracking[]
 }
 
 model Order {
   marketplace        Marketplace
-  platformOrderId    String      @id // Amazon removal order-id
-  requestDate        DateTime? // Amazon removal request date
-  totalAmount        Float? // Amazon removal fee
-  totalQuantity      Int? // Total quantity of items in the order
-  fulfillmentChannel String? // FBA / FBM / AMAZON_REMOVAL
-  fulfillmentId      String? // Optional fulfillment identifier
+  platformOrderId    String      @id
+  requestDate        DateTime?
+  totalAmount        Float?
+  totalQuantity      Int?
+  fulfillmentChannel String?
+  fulfillmentId      String?
   manifestId         String?
+  trackingNumber     String?
   manifest           Manifest?   @relation(fields: [manifestId], references: [id])
-  trackingNumber     String? // Carrier tracking number associated with the removal order
 }
 
 model ShipmentTracking {
@@ -120,15 +68,13 @@ model ShipmentTracking {
   rawText           String?
   fetchedAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  manifest Manifest? @relation(fields: [manifestId], references: [id])
+  manifest          Manifest? @relation(fields: [manifestId], references: [id])
 
   @@index([manifestId])
 }
 
 model Reimbursement {
   id                      String    @id @default(uuid())
-  // Fields referencing ReturnItem removed
   returnItemId            String    @unique
   platformReimbursementId String?   @unique
   amountReimbursed        Float
@@ -147,22 +93,20 @@ model Evidence {
   lpnDriveLink    String?
   type            EvidenceType
   rawReference    String?
-  uploadedByEmail String? // Email of user who uploaded
+  uploadedByEmail String?
   manifestId      String?
   returnItemId    String?
   claimReason     String?
   claimSubReason  String?
   createdAt       DateTime     @default(now())
-
-  manifest Manifest? @relation(fields: [manifestId], references: [id])
-  // returnItem   ReturnItem? @relation(fields: [returnItemId], references: [lpn])
-  status           String?   // optional status, defaults to null
+  status          String?
+  manifest        Manifest?    @relation(fields: [manifestId], references: [id])
 }
 
 model Alert {
   id              String     @id @default(uuid())
   level           AlertLevel
-  type            String // e.g. "SLA_BREACH", "GHOST_DELIVERY", "CLAIM_STALLED", "MISSING_ITEMS"
+  type            String
   title           String
   description     String
   manifestId      String?
@@ -174,10 +118,9 @@ model Alert {
   sopAcknowledged Boolean    @default(false)
   sopViewedAt     DateTime?
   createdAt       DateTime   @default(now())
-
-  manifest   Manifest? @relation(fields: [manifestId], references: [id])
-  targetUser User?     @relation("AlertTarget", fields: [targetUserId], references: [id])
-  resolvedBy User?     @relation("AlertResolver", fields: [resolvedById], references: [id])
+  manifest        Manifest?  @relation(fields: [manifestId], references: [id])
+  resolvedBy      User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
+  targetUser      User?      @relation("AlertTarget", fields: [targetUserId], references: [id])
 }
 
 model CronJobState {
@@ -190,18 +133,17 @@ model CronJobState {
 
 model ItemStatus {
   lpn            String   @id
-  status         String // "GOOD" or "RECOVERY"
-  recoveryType   String? // "barcode not clear" or "product packaging box replacement required"
-  // New fields for storing drive links and order reference
-  orderId        String? // orderPlatformId or internal order identifier
-  lpnDriveLink   String? // per‑LPN Google Drive folder URL (folder named after the LPN)
-  orderDriveLink String? // shared order‑level Google Drive folder URL
+  status         String
+  recoveryType   String?
+  orderId        String?
+  lpnDriveLink   String?
+  orderDriveLink String?
   createdAt      DateTime @default(now())
 }
 
 model MissingItem {
   id              String   @id @default(uuid())
-  orderId         String // platformOrderId
+  orderId         String
   fnsku           String
   missingQuantity Int
   createdAt       DateTime @default(now())
@@ -209,9 +151,9 @@ model MissingItem {
   @@unique([orderId, fnsku])
 }
 
-// Amazon removal orders (raw portal/table import)
 model AMZRemovalOrder {
-  orderId           String    @id @map("order-id")
+  id                String    @id
+  orderId           String    @map("order-id")
   requestDate       DateTime? @map("request-date")
   orderSource       String?   @map("order-source")
   orderType         String?   @map("order-type")
@@ -232,7 +174,6 @@ model AMZRemovalOrder {
   @@map("AMZ_removal_orders")
 }
 
-// Amazon removal shipments (per-shipment rows)
 model AMZRemovalShipment {
   id              String    @id @default(uuid())
   requestDate     DateTime? @map("request-date")
@@ -250,7 +191,6 @@ model AMZRemovalShipment {
   @@map("AMZ_removal_shipments")
 }
 
-// Amazon reimbursements table import
 model AMZReimbursement {
   reimbursementId             String    @id @map("reimbursement-id")
   approvalDate                DateTime? @map("approval-date")
@@ -274,10 +214,8 @@ model AMZReimbursement {
   @@map("AMZ_reimbursements")
 }
 
-// Amazon customer returns (raw LPN-level rows)
 model AMZCustomerReturn {
-  id                  String    @id @default(uuid())
-  lpn                 String    @map("license-plate-number")
+  lpn                 String    @id @map("license-plate-number")
   returnDate          DateTime? @map("return-date")
   orderId             String?   @map("order-id")
   sku                 String?   @map("sku")
@@ -379,6 +317,7 @@ model ShopifyReturnTracking {
   rawText           String?
   fetchedAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
+  orderId           String?
 
   @@index([sourceType, sourceId])
   @@index([marketplace])
@@ -405,29 +344,18 @@ model ReturnItem {
   @@map("ReturnItem")
 }
 
-// Added to prevent dropping table which has views depending on it
-model AMZFiledClaim {
-  lpn     String    @id
-  filedAt DateTime? @default(now()) @map("filed_at")
-  caseId  String?   @map("case_id")
-
-  @@map("AMZ_filed_claims")
-}
-
-// Teammate-added: claims tracking table (has a claims_amz view depending on it)
 model ClaimsStatus {
-  id            Int      @id @default(autoincrement())
-  orderId       String   @unique
-  trackingId    String?
-  claimId       String   @default("")
-  status        String   @default("unclaimed")
-  botLogReason  String?  @map("bot_log_reason")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id           Int      @id @default(autoincrement())
+  orderId      String   @unique
+  trackingId   String?
+  claimId      String   @default("")
+  status       String   @default("unclaimed")
+  botLogReason String?  @map("bot_log_reason")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("claims_status")
 }
 
-// Teammate-added: QC tracking per SKU
 model QcStatus {
   sku           String  @id
   targetCount   Int     @map("target_count")
@@ -437,7 +365,6 @@ model QcStatus {
   @@map("qc_status")
 }
 
-// Teammate-added: sample recovery tracking per LPN
 model SampleRecovery {
   lpn           String  @id
   sku           String
@@ -446,4 +373,70 @@ model SampleRecovery {
   isRefurbished Boolean @default(false)
 
   @@map("sample_recovery")
+}
+
+model claims_all {
+  lpn            String    @id
+  orderId        String?
+  trackingId     String?
+  sku            String?
+  fnsku          String?
+  productName    String?
+  channel        String?
+  status         String?   @default("unclaimed")
+  type           String?
+  driveLink      String?
+  orderDriveLink String?
+  createdAt      DateTime? @db.Timestamptz(6)
+  qty            Int?
+}
+
+enum Role {
+  SUPER_ACCESS
+  ADMIN
+  RECEIVER
+  INSPECTOR
+  CLAIMS_SPECIALIST
+  RECOVERER
+  QC_AGENT
+}
+
+enum Marketplace {
+  AMAZON
+  SHOPIFY
+}
+
+enum PackageState {
+  EXPECTED
+  IN_TRANSIT
+  LOST_IN_TRANSIT
+  AT_DOCK
+  IN_INSPECTION
+  INSPECTED
+  CLAIMS_STAGING
+  CLAIM_RESOLVED
+  RECOVERED_TO_INVENTORY
+}
+
+enum ItemCondition {
+  GOOD_SELLABLE
+  PACKAGING_DAMAGED
+  PRODUCT_DAMAGED
+  WRONG_ITEM
+  MISSING
+  BAD_FAKE_PRODUCT
+}
+
+enum AlertLevel {
+  L1
+  L2
+  L3
+  L4
+}
+
+enum EvidenceType {
+  RECEIVER_REJECTION
+  INSPECTOR_REJECTION
+  INSPECTION_VIDEO
+  PRODUCT_DAMAGE_PHOTO
 }

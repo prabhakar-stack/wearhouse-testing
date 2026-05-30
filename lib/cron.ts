@@ -32,25 +32,40 @@ export async function runShopifyReturnsSyncJob() {
   };
 }
 
-function resolveManifestStatus(
+export function resolveManifestStatus(
   latestStatus: string | null | undefined,
   scheduledDelivery: string | null | undefined,
+  expectedDate?: Date | null,
 ) {
   const normalized = latestStatus?.trim().toLowerCase();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
 
-  if (scheduledDelivery) {
-    const scheduledDate = new Date(scheduledDelivery);
-    const today = new Date();
-    if (
-      !Number.isNaN(scheduledDate.getTime()) &&
-      scheduledDate.toDateString() === today.toDateString()
-    ) {
-      return "EXPECTED";
+  // authorative check on expectedDate: if expectedDate >= today, it should be EXPECTED. Otherwise if in transit, it stays IN_TRANSIT.
+  let dateStatus: "EXPECTED" | "IN_TRANSIT" | null = null;
+  if (expectedDate) {
+    const expDate = new Date(expectedDate);
+    expDate.setHours(0, 0, 0, 0);
+    if (!Number.isNaN(expDate.getTime()) && expDate.getTime() >= today.getTime()) {
+      dateStatus = "EXPECTED";
     }
   }
 
+  // Also check scheduledDelivery from tracking
+  if (scheduledDelivery) {
+    const scheduledDate = new Date(scheduledDelivery);
+    scheduledDate.setHours(0, 0, 0, 0);
+    if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate.getTime() >= today.getTime()) {
+      dateStatus = "EXPECTED";
+    }
+  }
+
+  if (dateStatus === "EXPECTED") {
+    return "EXPECTED";
+  }
+
   if (!normalized) {
-    return null;
+    return dateStatus;
   }
 
   if (
@@ -69,13 +84,10 @@ function resolveManifestStatus(
     return "IN_TRANSIT";
   }
 
-  return null;
+  return dateStatus;
 }
 
 export async function runExpectedTrackingJob() {
-  // Fetch ALL manifests still in EXPECTED or IN_TRANSIT — regardless of expectedDate,
-  // because expectedDate may have been set to a historical request date (not a real ETA).
-  // The tracking snapshot's scheduledDelivery is the authoritative ETA.
   const manifests = await prisma.manifest.findMany({
     where: {
       status: {
@@ -119,6 +131,16 @@ export async function runExpectedTrackingJob() {
     error: string;
   }> = [];
 
+  // 1. Gather all tracking numbers sequentially mapped to their parent manifest metadata
+  const trackingTasks: Array<{
+    manifestId: string;
+    trackingNumber: string;
+    courierName: string | null;
+    expectedDate: Date | null;
+    currentStatus: string;
+    existingSnapshot: any | null;
+  }> = [];
+
   for (const manifest of manifests) {
     const shipmentTrackingNumbers = await prisma.aMZRemovalShipment.findMany({
       where: {
@@ -153,87 +175,105 @@ export async function runExpectedTrackingJob() {
       ),
     );
 
-    if (trackingNumbers.length === 0) {
-      continue;
-    }
-
     for (const trackingNumber of trackingNumbers) {
       const existingSnapshot = (manifest.trackingSnapshots || []).find(
         (snapshot) => snapshot.trackingNumber === trackingNumber,
       );
-      const lastFetchedAt = existingSnapshot?.fetchedAt
-        ? new Date(existingSnapshot.fetchedAt).getTime()
-        : 0;
-      const shouldRefresh =
-        !existingSnapshot || Date.now() - lastFetchedAt >= HOUR_MS;
+      trackingTasks.push({
+        manifestId: manifest.id,
+        trackingNumber,
+        courierName: manifest.courierName,
+        expectedDate: manifest.expectedDate,
+        currentStatus: manifest.status,
+        existingSnapshot,
+      });
+    }
+  }
 
-      if (!shouldRefresh) {
-        continue;
+  // 2. Iterate sequentially over the flat tracking array (always refresh when job is run)
+  let taskIndex = 0;
+  for (const task of trackingTasks) {
+    taskIndex++;
+    console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] Refreshing tracking ID: ${task.trackingNumber} (${task.courierName || 'Unknown Courier'})...`);
+    try {
+      
+      // Run the Playwright tracking check
+      const snapshot = await fetchTrackingSnapshot(
+        task.trackingNumber,
+        task.courierName,
+      );
+
+      // A. First update the shipmentTracking table's scheduledDelivery column
+      const trackingRecord = await prisma.shipmentTracking.upsert({
+        where: { trackingNumber: task.trackingNumber },
+        update: {
+          manifestId: task.manifestId,
+          courierName: task.courierName,
+          courierSlug: snapshot.courierSlug,
+          latestStatus: snapshot.latestStatus,
+          latestLocation: snapshot.latestLocation,
+          scheduledDelivery: snapshot.scheduledDelivery
+            ? new Date(snapshot.scheduledDelivery)
+            : null,
+          checkpointCount: snapshot.checkpointCount,
+          checkpoints: snapshot.checkpoints,
+          rawText: snapshot.rawText,
+          fetchedAt: new Date(snapshot.fetchedAt),
+        },
+        create: {
+          trackingNumber: task.trackingNumber,
+          manifestId: task.manifestId,
+          courierName: task.courierName,
+          courierSlug: snapshot.courierSlug,
+          latestStatus: snapshot.latestStatus,
+          latestLocation: snapshot.latestLocation,
+          scheduledDelivery: snapshot.scheduledDelivery
+            ? new Date(snapshot.scheduledDelivery)
+            : null,
+          checkpointCount: snapshot.checkpointCount,
+          checkpoints: snapshot.checkpoints,
+          rawText: snapshot.rawText,
+          fetchedAt: new Date(snapshot.fetchedAt),
+        },
+      });
+
+      // B. Retrieve the saved scheduledDelivery from the DB and update the Manifest's expectedDate
+      let updatedExpectedDate = task.expectedDate;
+      if (trackingRecord.scheduledDelivery) {
+        await prisma.manifest.update({
+          where: { id: task.manifestId },
+          data: { expectedDate: trackingRecord.scheduledDelivery },
+        });
+        updatedExpectedDate = trackingRecord.scheduledDelivery;
       }
 
-      try {
-        const snapshot = await fetchTrackingSnapshot(
-          trackingNumber,
-          manifest.courierName,
-        );
+      // C. Resolve and update status
+      const nextStatus = resolveManifestStatus(
+        snapshot.latestStatus,
+        snapshot.scheduledDelivery,
+        updatedExpectedDate,
+      );
 
-        await prisma.shipmentTracking.upsert({
-          where: { trackingNumber },
-          update: {
-            manifestId: manifest.id,
-            courierName: manifest.courierName,
-            courierSlug: snapshot.courierSlug,
-            latestStatus: snapshot.latestStatus,
-            latestLocation: snapshot.latestLocation,
-            scheduledDelivery: snapshot.scheduledDelivery
-              ? new Date(snapshot.scheduledDelivery)
-              : null,
-            checkpointCount: snapshot.checkpointCount,
-            checkpoints: snapshot.checkpoints,
-            rawText: snapshot.rawText,
-            fetchedAt: new Date(snapshot.fetchedAt),
-          },
-          create: {
-            trackingNumber,
-            manifestId: manifest.id,
-            courierName: manifest.courierName,
-            courierSlug: snapshot.courierSlug,
-            latestStatus: snapshot.latestStatus,
-            latestLocation: snapshot.latestLocation,
-            scheduledDelivery: snapshot.scheduledDelivery
-              ? new Date(snapshot.scheduledDelivery)
-              : null,
-            checkpointCount: snapshot.checkpointCount,
-            checkpoints: snapshot.checkpoints,
-            rawText: snapshot.rawText,
-            fetchedAt: new Date(snapshot.fetchedAt),
-          },
-        });
-
-        const nextStatus = resolveManifestStatus(
-          snapshot.latestStatus,
-          snapshot.scheduledDelivery,
-        );
-        if (nextStatus && manifest.status !== nextStatus) {
-          await prisma.manifest.update({
-            where: { id: manifest.id },
-            data: { status: nextStatus },
-          });
-          manifest.status = nextStatus;
-        }
-
-        refreshed.push({
-          manifestId: manifest.id,
-          trackingNumber,
-          status: snapshot.latestStatus,
-        });
-      } catch (error: any) {
-        errors.push({
-          manifestId: manifest.id,
-          trackingNumber,
-          error: error?.message || "Tracking fetch failed",
+      if (nextStatus && task.currentStatus !== nextStatus) {
+        await prisma.manifest.update({
+          where: { id: task.manifestId },
+          data: { status: nextStatus },
         });
       }
+
+      refreshed.push({
+        manifestId: task.manifestId,
+        trackingNumber: task.trackingNumber,
+        status: snapshot.latestStatus,
+      });
+      console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] ✅ Successfully updated tracking ID ${task.trackingNumber}. Status: ${snapshot.latestStatus}, ETA: ${snapshot.scheduledDelivery || 'N/A'}`);
+    } catch (error: any) {
+      errors.push({
+        manifestId: task.manifestId,
+        trackingNumber: task.trackingNumber,
+        error: error?.message || "Tracking fetch failed",
+      });
+      console.error(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] ❌ Failed to refresh tracking ID ${task.trackingNumber}: ${error.message || error}`);
     }
   }
 
