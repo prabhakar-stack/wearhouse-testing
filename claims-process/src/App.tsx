@@ -8,7 +8,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Triage from './pages/Triage';
 import SmartFiling from './pages/SmartFiling';
-import RecoveryHubTab from './pages/RecoveryHubTab';
+import RecoveryHubTab from './pages/RecoveryHubTab.tsx';
 import QCAuditTab from './pages/QCAuditTab';
 
 export default function App() {

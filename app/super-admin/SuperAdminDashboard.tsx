@@ -409,17 +409,20 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab />}
             {activeTab === 'claims'   && <ClaimsTab />}
-            {activeTab === 'triage' && canAccessTriage && (
-              <iframe src="http://localhost:5000/triage" className="w-full h-screen border-none" />
-            )}
+           {activeTab === 'triage' && canAccessTriage && (
+                  <iframe 
+                    src="http://localhost:5000/triage?embed=true" 
+                    className="w-full h-screen border-none" 
+                  />
+                )}
             {activeTab === 'smart-filing' && canAccessSmartFiling && (
-              <iframe src="http://localhost:5000/smartfiling" className="w-full h-screen border-none" />
+              <iframe src="http://localhost:5000/smartfiling?embed=true" className="w-full h-screen border-none" />
             )}
             {activeTab === 'recovery' && canAccessRecovery && (
-              <iframe src="http://localhost:5000/recoveryhubtab" className="w-full h-screen border-none" />
+              <iframe src="http://localhost:5000/recoveryhubtab?embed=true" className="w-full h-screen border-none" />
             )}
             {activeTab === 'qc' && canAccessQC && (
-              <iframe src="http://localhost:5000/qcaudittab" className="w-full h-screen border-none" />
+              <iframe src="http://localhost:5000/qcaudittab?embed=true" className="w-full h-screen border-none" />
             )}
           </div>
         </div>

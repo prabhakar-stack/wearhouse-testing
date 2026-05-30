@@ -538,7 +538,7 @@ async function getClaimsForTrackingId(trackingId: string, orderId: string): Prom
     const oid = (orderId || "").trim();
 
     if (tid || oid) {
-      const tables = ['"claims_AMZ"'];
+      const tables = ['"claims_all"'];
       for (const table of tables) {
         try {
           const colRes = await tempPool.query(`
@@ -1311,7 +1311,7 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
 
         const orderUrl = claim.orderDriveLink;
         const lpnUrl = claim.driveLink;
-
+        
         if (!orderUrl) {
           throw new Error("No Order Google Drive link (order_drive_link) is provided in the claim database record. Cannot verify or upload supporting images.");
         }

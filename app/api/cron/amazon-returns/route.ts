@@ -1,25 +1,22 @@
 import { NextResponse } from "next/server";
 import { runAmazonReturnsJob } from "@/lib/cron";
-import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
-    const authError = requireCronAuth(req);
-    if (authError) {
-      return authError;
+    const authHeader = req.headers.get("authorization");
+    const expectedToken = `Bearer ${process.env.CRON_SECRET || "secret-cron-token"}`;
+
+    if (authHeader !== expectedToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    void runAmazonReturnsJob().catch((error: any) => {
-      console.error("[Cron Amazon Returns] Background job failed:", error);
-    });
-
+    await runAmazonReturnsJob();
     return NextResponse.json({
       success: true,
-      queued: true,
-      message: "Amazon raw report fetch and sync started",
-    }, { status: 202 });
+      message: "Amazon raw report fetch and sync completed",
+    });
   } catch (error: any) {
     console.error("[Cron Amazon Returns] Error:", error);
     return NextResponse.json(

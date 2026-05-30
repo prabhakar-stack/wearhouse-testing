@@ -159,28 +159,28 @@ export async function updateClaimsStatus(): Promise<void> {
       }
     }
 
-    // 2. Discover canonical orderIds and trackingIds from the claims_amz view and initialize them in claims_status
+    // 2. Discover canonical orderIds and trackingIds from the claims_all view/table and initialize them in claims_status
     const viewCheck = await pool.query(`
       SELECT table_name 
       FROM information_schema.views 
-      WHERE table_schema = 'public' AND LOWER(table_name) = 'claims_amz'
+      WHERE table_schema = 'public' AND LOWER(table_name) = 'claims_all'
     `);
     
     // Fallback if it is a physical table instead of a view
     const tableCheck = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public' AND LOWER(table_name) = 'claims_amz'
+      WHERE table_schema = 'public' AND LOWER(table_name) = 'claims_all'
     `);
 
-    const hasClaimsAmz = viewCheck.rows.length > 0 || tableCheck.rows.length > 0;
+    const hasClaimsAll = viewCheck.rows.length > 0 || tableCheck.rows.length > 0;
 
-    if (hasClaimsAmz) {
-      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_amz"';
+    if (hasClaimsAll) {
+      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_all"';
       if (hasEvidenceTable) {
         queryStr = `
           SELECT DISTINCT "orderId", "trackingId" 
-          FROM "claims_amz" 
+          FROM "claims_all" 
           WHERE "orderId" IN (
             SELECT DISTINCT "orderId" FROM "${evidenceTableName}" WHERE "orderId" IS NOT NULL AND "orderId" != 'N/A'
           )
@@ -218,12 +218,12 @@ export async function updateClaimsStatus(): Promise<void> {
           const stats = fs.statSync(filePath);
           const createdAt = stats.birthtime || stats.mtime || new Date();
 
-          // Find corresponding rows tracking that identifier inside claims_amz view to resolve true orderId(s) and trackingId(s)
+          // Find corresponding rows tracking that identifier inside claims_all to resolve true orderId(s) and trackingId(s)
           let targetPairs: { orderId: string, trackingId: string | null }[] = [];
-          if (hasClaimsAmz) {
+          if (hasClaimsAll) {
             try {
               const matchRes = await pool.query(
-                `SELECT DISTINCT "orderId", "trackingId" FROM "claims_amz" WHERE LOWER("orderId") = LOWER($1) OR LOWER(lpn) = LOWER($1)`,
+                `SELECT DISTINCT "orderId", "trackingId" FROM "claims_all" WHERE LOWER("orderId") = LOWER($1) OR LOWER(lpn) = LOWER($1)`,
                 [id]
               );
               for (const mRow of matchRes.rows) {
