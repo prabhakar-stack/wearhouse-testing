@@ -28,6 +28,7 @@ export default function RecoveryHubTab() {
   const [batch, setBatch] = useState<RecoveryItem[]>([]);
   const [activeLpn, setActiveLpn] = useState<string | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [screenshotTimestamp, setScreenshotTimestamp] = useState(() => Date.now());
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [usingRefurbishedBox, setUsingRefurbishedBox] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -417,7 +418,7 @@ export default function RecoveryHubTab() {
           )}
         </div>
         <p className="mt-2 text-[10px] text-slate-400 font-bold tracking-tight uppercase">
-          💡 Pro-tip: Enter LPNs/SKUs to append them to the batch queue. Click the green 'Handover complete' button to activate structural & barcode triage controls.
+          💡 Pro-tip: Enter LPNs/SKUs to append them to the batch queue. Click the green &apos;Handover complete&apos; button to activate structural &amp; barcode triage controls.
         </p>
       </div>
 
@@ -533,7 +534,7 @@ export default function RecoveryHubTab() {
               <div className="text-center max-w-sm space-y-2">
                 <h4 className="text-sm font-extrabold text-[#313079] uppercase">MONITOR LOCKED</h4>
                 <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                  The active triage monitor is offline. Scan received items into the Handover Deck first, then click <strong className="text-slate-600">"Handover complete"</strong> to enable the workstation triaging monitor.
+                  The active triage monitor is offline. Scan received items into the Handover Deck first, then click <strong className="text-slate-600">&quot;Handover complete&quot;</strong> to enable the workstation triaging monitor.
                 </p>
               </div>
             </div>
@@ -743,7 +744,7 @@ export default function RecoveryHubTab() {
                 There are <span className="font-extrabold text-amber-600">{unscannedCount}</span> products left unscanned from the expected recovery pool. Are you sure this is it?
               </p>
               <p className="text-xs text-slate-400 font-medium">
-                Note: Selecting "Yes" will automatically update the status of those missing/unscanned items to exactly 'missing at recovery'.
+                Note: Selecting &quot;Yes&quot; will automatically update the status of those missing/unscanned items to exactly &apos;missing at recovery&apos;.
               </p>
               <div className="flex gap-3 pt-2">
                 <button

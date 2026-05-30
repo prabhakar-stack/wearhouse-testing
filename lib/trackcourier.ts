@@ -41,8 +41,23 @@ function slugifyCourierName(courierName: string | null | undefined) {
   const normalized = (courierName || "").trim().toLowerCase();
   if (!normalized) return "blue-dart-courier";
 
+  // Check aliases first
   const alias = COURIER_SLUG_ALIASES[normalized];
   if (alias) return alias;
+
+  // Smart prefix and fuzzy mapping for variations (e.g. bluedart_ground_std, delhivery_surface)
+  if (normalized.startsWith("bluedart") || normalized.startsWith("blue-dart") || normalized.includes("blue dart")) {
+    return "blue-dart-courier";
+  }
+  if (normalized.startsWith("delhivery")) {
+    return "delhivery-courier";
+  }
+  if (normalized.startsWith("fedex")) {
+    return "fedex-courier";
+  }
+  if (normalized.startsWith("ekart")) {
+    return "ekart-logistics-courier";
+  }
 
   return normalized
     .replace(/&/g, " and ")
@@ -157,6 +172,10 @@ export async function fetchTrackingSnapshot(
       viewport: { width: 1440, height: 900 },
     });
     await page.goto(trackingUrl, { waitUntil: "networkidle", timeout: 90000 });
+
+    // Wait 20 seconds strictly to ensure dynamic tracking status completely loads
+    console.log(`[Playwright Browser] Navigation to track-and-trace complete. Waiting 20 seconds for page to update...`);
+    await page.waitForTimeout(30000);
 
     const rawText = decodeHtmlEntities(
       await page.evaluate(() => document.body.innerText || ""),

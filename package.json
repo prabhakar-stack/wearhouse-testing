@@ -13,17 +13,10 @@
     "lint": "eslint .",
     "clean": "next clean",
     "seed:test-order": "node prisma/seed-test-order.js",
-    "postbuild": "prisma db push --accept-data-loss",
-<<<<<<< HEAD
+    "postbuild": "prisma migrate deploy",
     "postinstall": "prisma generate",
-    "sync:amazon-returns": "node scripts/sync_amazon.mjs",
-    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js",
-    "sync:amazon": "node scripts/sync_amazon.mjs"
-=======
-    "sync:shopify-returns": "ts-node --esm scripts/run_shopify_returns_sync.ts",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
     "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js"
->>>>>>> 0d94eb9900fb5c2dc9fb69b28f0eb47193ff4a47
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

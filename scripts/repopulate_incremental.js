@@ -39,25 +39,44 @@ async function main(batchSize = 100) {
       const totalAmount = rawOrder?.removalFee || 0.0;
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
-      // Upsert manifest
+      let resolvedStatus = 'EXPECTED';
+      const courierName = shipments[0]?.carrier || 'Amazon Logistics';
+
+      // Upsert manifest with initial status
       const manifest = await prisma.manifest.upsert({
         where: { trackingId: trackingNumber },
         update: {
-          status: 'EXPECTED',
+          status: resolvedStatus,
           marketplace: 'AMAZON',
-          courierName: shipments[0]?.carrier || 'Amazon Logistics',
+          courierName: courierName,
           removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
           expectedDate: requestDate,
         },
         create: {
           trackingId: trackingNumber,
-          status: 'EXPECTED',
+          status: resolvedStatus,
           marketplace: 'AMAZON',
-          courierName: shipments[0]?.carrier || 'Amazon Logistics',
+          courierName: courierName,
           removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
           expectedDate: requestDate,
         }
       });
+
+      // Create initial ShipmentTracking placeholder if it doesn't exist
+      if (trackingNumber && !trackingNumber.startsWith('TRK-VIRT-')) {
+        await prisma.shipmentTracking.upsert({
+          where: { trackingNumber },
+          update: {
+            manifestId: manifest.id,
+            courierName,
+          },
+          create: {
+            trackingNumber,
+            manifestId: manifest.id,
+            courierName,
+          }
+        });
+      }
 
       // Upsert order
       if (!orderId.startsWith('__no_order__')) {
