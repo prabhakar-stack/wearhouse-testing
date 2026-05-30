@@ -1,5 +1,191 @@
 [
   {
+    "id": 1371553115,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "R_202000310813",
+    "customer_name": "Brainlytic Solutions Private Limited (CUBELELO) ",
+    "customer_email": "shipping@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492001",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "620027",
+    "delivery_address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, Tiruchirappalli, Tamil Nadu, India",
+    "payment_status": "",
+    "total": "2300.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN CANCELLED",
+    "status_code": 27,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "30 May 2026, 12:00 AM",
+    "created_at": "30 May 2026, 12:05 PM",
+    "products": [
+      {
+        "id": 2037248544,
+        "name": "QiYi X-Man Tornado 3x3 V3 Premium Magnetic Flagship UV",
+        "channel_sku": "1030710",
+        "channel_order_product_id": "1983281752",
+        "quantity": 1,
+        "product_id": 241698969,
+        "sku": "1030710",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "CANCELED",
+        "hsn": "95036090",
+        "channel_product_id": "1983281752"
+      },
+      {
+        "id": 2037248547,
+        "name": "Cubing Theme Fridge Magnet",
+        "channel_sku": "7100008",
+        "channel_order_product_id": "1983281754",
+        "quantity": 1,
+        "product_id": 208968888,
+        "sku": "7100008",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "CANCELED",
+        "hsn": "95036090",
+        "channel_product_id": "1983281754"
+      }
+    ],
+    "delivery_code": "492001",
+    "cod": 0,
+    "shipment_id": 1367814075,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "",
+        "sr_courier_id": "",
+        "weight": "0.28",
+        "length": "7.4",
+        "breadth": "8.5",
+        "height": "12",
+        "volumetric_weight": 0.15,
+        "awb": "",
+        "etd": null
+      }
+    ],
+    "return_reason": "Item is damaged",
+    "insurance_excluded": true,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 2,
+    "qc_settings": [
+      {
+        "product_id": 2037248544,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "QiYi X-Man Tornado 3x3 V3 Premium Magnetic Flagship UV",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "QiYi",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1780033620_66809026Glp.jpg",
+            "name": "Product Image"
+          }
+        }
+      },
+      {
+        "product_id": 2037248547,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Cubing Theme Fridge Magnet",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Cubelelo",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1779866767_fridge_magnet_mockup.png",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "2300.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 2300,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "Tiruchirappalli",
+      "state": "Tamil Nadu",
+      "pin_code": "620027",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Brainlytic Solutions Private Limited (CUBELELO) ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex",
+      "address2": "Shree Siddhi Vinayak Marriage Palace, DD Nagar, Ring Road No 1",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492001"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": true,
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "Item is damaged"
+    },
+    "return_shipping_charges": 0
+  },
+  {
     "id": 1369637066,
     "channel_id": 3938392,
     "channel_name": "CUSTOM",
@@ -210,8 +396,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN PICKUP EXCEPTION",
-    "status_code": 49,
+    "status": "RETURN PICKED UP",
+    "status_code": 32,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -388,8 +574,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN PENDING",
-    "status_code": 21,
+    "status": "RETURN CANCELLED",
+    "status_code": 27,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -406,7 +592,7 @@
         "sku": "1030534",
         "custom_field": "",
         "custom_field_value": "",
-        "status": "UNDEFINED",
+        "status": "CANCELED",
         "hsn": "",
         "channel_product_id": "2029524011"
       },
@@ -420,7 +606,7 @@
         "sku": "7100008",
         "custom_field": "",
         "custom_field_value": "",
-        "status": "UNDEFINED",
+        "status": "CANCELED",
         "hsn": "",
         "channel_product_id": "2029524016"
       }
@@ -722,8 +908,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN OUT FOR PICKUP",
-    "status_code": 47,
+    "status": "RETURN IN TRANSIT",
+    "status_code": 25,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -870,7 +1056,7 @@
       "insurace_opted_at_order_creation": false,
       "is_wac_insurance_auto_secure_force_enabled": 0
     },
-    "pickup_exception_remark": "Pickup not attempted/delayed Climate Change",
+    "pickup_exception_remark": "Pickup Not Attempted",
     "refund_detail": {
       "return_reason": "NA"
     },
@@ -900,8 +1086,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "CANCELLATION REQUESTED",
-    "status_code": 18,
+    "status": "RETURN PENDING",
+    "status_code": 21,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -930,14 +1116,14 @@
     "shipments": [
       {
         "isd_code": "+91",
-        "courier": "Delhivery Reverse Surface",
-        "sr_courier_id": 61,
+        "courier": "",
+        "sr_courier_id": "",
         "weight": "0.14",
         "length": "27",
         "breadth": "22",
         "height": "3",
         "volumetric_weight": 0.356,
-        "awb": "19041923150825",
+        "awb": "",
         "etd": null
       }
     ],
@@ -1243,8 +1429,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN PICKUP GENERATED",
-    "status_code": 28,
+    "status": "CANCELLATION REQUESTED",
+    "status_code": 18,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -1261,7 +1447,7 @@
         "sku": "1030525",
         "custom_field": "",
         "custom_field_value": "",
-        "status": "UNDEFINED",
+        "status": "CANCELLATION REQUESTED",
         "hsn": "95036090",
         "channel_product_id": "1966935762"
       }
@@ -1408,8 +1594,8 @@
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN IN TRANSIT",
-    "status_code": 25,
+    "status": "RETURN OUT FOR DELIVERY",
+    "status_code": 48,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
@@ -2416,170 +2602,6 @@
     "pickup_exception_remark": null,
     "refund_detail": {
       "return_reason": "NA"
-    },
-    "return_shipping_charges": 0
-  },
-  {
-    "id": 1332582927,
-    "channel_id": 3938392,
-    "channel_name": "CUSTOM",
-    "store_name": "CUSTOM (3938392)",
-    "channel_status": 1,
-    "base_channel_code": "CS",
-    "channel_order_id": "R_202000309397",
-    "customer_name": "Brainlytic Solutions Private Limited (CUBELELO) ",
-    "customer_email": "shipping@cubelelo.com",
-    "customer_phone": "xxxxxxxxxx",
-    "customer_alternate_phone": "",
-    "customer_pincode": "492001",
-    "pickup_person_name": "Not Authorized",
-    "pickup_person_email": "Not Authorized",
-    "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "822116",
-    "delivery_address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, Palamau, Jharkhand, India",
-    "payment_status": "",
-    "total": "599.00",
-    "expedited": 0,
-    "sla": "2 days",
-    "shipping_method": "SR",
-    "status": "RETURN CANCELLED",
-    "status_code": 27,
-    "payment_method": "prepaid",
-    "is_international": 0,
-    "purpose_of_shipment": 0,
-    "channel_created_at": "8 May 2026, 12:00 AM",
-    "created_at": "8 May 2026, 03:22 PM",
-    "products": [
-      {
-        "id": 1980563923,
-        "name": "Drift 2x2, 3x3  4x4 Stickerless Gift Box",
-        "channel_sku": "1460503b",
-        "channel_order_product_id": "1946079721",
-        "quantity": 1,
-        "product_id": 149732051,
-        "sku": "1460503b",
-        "custom_field": "",
-        "custom_field_value": "",
-        "status": "CANCELED",
-        "hsn": "",
-        "channel_product_id": "1946079721"
-      }
-    ],
-    "delivery_code": "492001",
-    "cod": 0,
-    "shipment_id": 1328865366,
-    "in_queue": 0,
-    "shipments": [
-      {
-        "isd_code": "+91",
-        "courier": "Xpressbees Reverse Surface",
-        "sr_courier_id": 125,
-        "weight": "0.33",
-        "length": "17",
-        "breadth": "6",
-        "height": "6",
-        "volumetric_weight": 0.122,
-        "awb": "24319860311054",
-        "etd": null
-      }
-    ],
-    "return_reason": "Quality not as expected",
-    "insurance_excluded": false,
-    "refund_method": "NA",
-    "suggested_refund_method": null,
-    "suggested_refund_amount": 0,
-    "upi_address": "N/A",
-    "bank_ifsc": "N/A",
-    "account_number": "N/A",
-    "account_holder_name": "N/A",
-    "bank_name": "N/A",
-    "qc_status": "N/A",
-    "qc_status_value": "",
-    "qc_failed_reason": null,
-    "qc_image": "",
-    "qc_count": 0,
-    "qc_settings": [],
-    "mark_as_refunded_date": "",
-    "refunded_action": "",
-    "refund_status": "NA",
-    "refund_acknowledged_date": "",
-    "return_amount_shopify": "599.00",
-    "refund_error_remarks": "",
-    "coupon_code": "",
-    "refund_utr": "",
-    "tooltip_log": "",
-    "previously_cancelled_via": "",
-    "previous_cancelation_reason": "",
-    "is_insurance_opt": null,
-    "return_fees": 0,
-    "refund_amount": 599,
-    "buyer_comments": "",
-    "seller_comments": "",
-    "seller_request": null,
-    "buyer_images": [],
-    "seller_ack_comment": "",
-    "return_pickup_address": {
-      "address": "Not Authorized",
-      "address_2": "Not Authorized",
-      "city": "Palamau",
-      "state": "Jharkhand",
-      "pin_code": "822116",
-      "country": "India",
-      "name": "Not Authorized",
-      "phone": "xxxxxxxxxx"
-    },
-    "return_delivery_address": {
-      "name": "Brainlytic Solutions Private Limited (CUBELELO) ",
-      "phone": "xxxxxxxxxx",
-      "address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex",
-      "address2": "Shree Siddhi Vinayak Marriage Palace, DD Nagar, Ring Road No 1",
-      "city": "Raipur",
-      "state": "Chhattisgarh",
-      "country": "India",
-      "pincode": "492001"
-    },
-    "extra_info": {
-      "qc_check": 0,
-      "qc_params": "",
-      "order_type": "",
-      "is_mysr_order": true,
-      "order_metadata": [],
-      "forward_order_id": "",
-      "is_promise_assured": 0,
-      "is_revenue_assured_opt": false,
-      "other_courier_dg_status": false,
-      "insurance_config_snapshot": {
-        "tier_config": {
-          "maximum_insurance_liability": 475000,
-          "minimum_insurance_threshold": 2500
-        },
-        "seller_config": {
-          "rto_claim_percent": 40,
-          "insurance_config_set": 0,
-          "return_claim_percent": 50,
-          "secure_shipment_disabled": 0,
-          "maximum_insurance_liability": 475000,
-          "minimum_insurance_threshold": 2500,
-          "secure_shipment_disabled_ip": 0,
-          "disable_insurance_dynamic_pricing": 0
-        },
-        "courier_config": {
-          "courier_id": 125,
-          "courier_name": "Xpressbees Reverse Surface",
-          "secure_shipment_disabled": 0,
-          "maximum_insurance_liability": 475000
-        },
-        "config_overwrite_by_seller": 0,
-        "final_maximum_insurance_liability": 475000,
-        "final_minimum_insurance_threshold": 2500
-      },
-      "insurace_opted_at_order_creation": false,
-      "is_wac_insurance_auto_secure_force_enabled": 0
-    },
-    "pickup_exception_remark": "Shipment Handedover to other courier",
-    "refund_detail": {
-      "return_reason": "Quality not as expected"
     },
     "return_shipping_charges": 0
   }

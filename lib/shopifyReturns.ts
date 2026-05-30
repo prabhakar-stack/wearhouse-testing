@@ -109,7 +109,6 @@ function findArray(value: any): any[] | null {
   return null;
 }
 
-
 async function fetchPagedRecords({
   url,
   headers,
@@ -301,68 +300,190 @@ function parseDate(value: any): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function firstShipment(record: JsonRecord) {
+  const shipments = Array.isArray(record.shipments) ? record.shipments : [];
+  return shipments.length > 0 ? shipments[0] : null;
+}
+
 function mapReturnPrimeReturn(record: JsonRecord, item: JsonRecord) {
   const trackingLookup = extractTrackingLookup(record);
   const refund = item.refund;
-  const shopMoneyAmount = refund?.refunded_amount?.shop_money?.amount;
-  const refundedAmount = shopMoneyAmount ? parseFloat(shopMoneyAmount) : 0;
 
   return {
     id: String(item.id),
-    requestNumber: record.request_number !== undefined && record.request_number !== null ? String(record.request_number) : null,
-    requestType: record.request_type !== undefined && record.request_type !== null ? String(record.request_type) : null,
-    status: record.status !== undefined && record.status !== null ? String(record.status) : null,
-    channel: record.channel !== undefined && record.channel !== null ? String(record.channel) : null,
-    orderId: record.order?.id !== undefined && record.order?.id !== null ? String(record.order.id) : null,
-    orderName: record.order?.name !== undefined && record.order?.name !== null ? String(record.order.name) : null,
-    orderCreatedAt: parseDate(record.order?.created_at),
-    fulfillmentId: record.order?.fulfillments?.[0]?.id !== undefined && record.order?.fulfillments?.[0]?.id !== null ? String(record.order.fulfillments[0].id) : null,
-    deliveryStatus: record.order?.fulfillments?.[0]?.delivery_status !== undefined && record.order?.fulfillments?.[0]?.delivery_status !== null ? String(record.order.fulfillments[0].delivery_status) : null,
-    deliveryDate: parseDate(record.order?.fulfillments?.[0]?.delivery_date),
-    customerEmail: record.customer?.email !== undefined && record.customer?.email !== null ? String(record.customer.email) : null,
-    postalCode: record.customer?.address?.postal_code !== undefined && record.customer?.address?.postal_code !== null ? String(record.customer.address.postal_code) : null,
-    receivedStatus: record.received?.status || false,
-    inspectedStatus: record.inspected?.status || false,
-    rejectedStatus: record.rejected?.status || false,
-    archivedStatus: record.archived?.status || false,
-    refundStatus: refund?.status || null,
-    eligibleRefundStatus: refund ? true : false,
-    refundedAmount: refundedAmount,
-    originalProductId: item.original_product?.product_id !== undefined && item.original_product?.product_id !== null ? String(item.original_product.product_id) : null,
-    sku: item.original_product?.sku !== undefined && item.original_product?.sku !== null ? String(item.original_product.sku) : null,
-    trackingNumber: trackingLookup.awbCode || trackingLookup.shipmentId || null,
-    quantity: item.quantity !== undefined && item.quantity !== null ? parseInt(String(item.quantity), 10) : 1,
-    actualAmount: item.shop_price?.actual_amount !== undefined && item.shop_price?.actual_amount !== null ? parseFloat(String(item.shop_price.actual_amount)) : null,
-    imageSrc: item.original_product?.image?.src !== undefined && item.original_product?.image?.src !== null ? String(item.original_product.image.src) : null,
-    rawPayload: record,
+    request_number:
+      record.request_number !== undefined && record.request_number !== null
+        ? String(record.request_number)
+        : null,
+    request_type:
+      record.request_type !== undefined && record.request_type !== null
+        ? String(record.request_type)
+        : null,
+    status:
+      record.status !== undefined && record.status !== null
+        ? String(record.status)
+        : null,
+    channel:
+      record.channel !== undefined && record.channel !== null
+        ? String(record.channel)
+        : null,
+    order_id:
+      record.order?.id !== undefined && record.order?.id !== null
+        ? String(record.order.id)
+        : null,
+    order_name:
+      record.order?.name !== undefined && record.order?.name !== null
+        ? String(record.order.name)
+        : null,
+    recevied_status: record.received?.status ?? null,
+    rejected_status: record.rejected?.status ?? null,
+    archived_status: record.archived?.status ?? null,
+    refund_status: refund?.status || null,
+    sku:
+      item.original_product?.sku !== undefined &&
+      item.original_product?.sku !== null
+        ? String(item.original_product.sku)
+        : null,
+    traking_number: trackingLookup.awbCode || trackingLookup.shipmentId || null,
+    quantity:
+      item.quantity !== undefined && item.quantity !== null
+        ? parseInt(String(item.quantity), 10)
+        : 1,
+    actual_amount:
+      item.shop_price?.actual_amount !== undefined &&
+      item.shop_price?.actual_amount !== null
+        ? parseFloat(String(item.shop_price.actual_amount))
+        : null,
+    image_src:
+      item.original_product?.image?.src !== undefined &&
+      item.original_product?.image?.src !== null
+        ? String(item.original_product.image.src)
+        : null,
   };
 }
 
 function mapShiprocketReturn(record: JsonRecord, product: JsonRecord) {
   const trackingLookup = extractTrackingLookup(record);
+  const shipment = firstShipment(record);
 
   return {
     id: product.id ? String(product.id) : randomUUID(),
-    requestNumber: record.channel_order_id !== undefined && record.channel_order_id !== null ? String(record.channel_order_id) : null,
-    requestType: record.purpose_of_shipment !== undefined && record.purpose_of_shipment !== null ? String(record.purpose_of_shipment) : null,
-    status: record.status !== undefined && record.status !== null ? String(record.status) : null,
-    channel: record.channel_name !== undefined && record.channel_name !== null ? String(record.channel_name) : null,
-    orderId: record.channel_order_id !== undefined && record.channel_order_id !== null ? String(record.channel_order_id) : null,
-    orderName: record.channel_order_id !== undefined && record.channel_order_id !== null ? String(record.channel_order_id) : null,
+    requestNumber:
+      record.channel_order_id !== undefined && record.channel_order_id !== null
+        ? String(record.channel_order_id)
+        : null,
+    requestType:
+      record.purpose_of_shipment !== undefined &&
+      record.purpose_of_shipment !== null
+        ? String(record.purpose_of_shipment)
+        : null,
+    status:
+      record.status !== undefined && record.status !== null
+        ? String(record.status)
+        : null,
+    channel:
+      record.channel_name !== undefined && record.channel_name !== null
+        ? String(record.channel_name)
+        : null,
+    orderId:
+      record.channel_order_id !== undefined && record.channel_order_id !== null
+        ? String(record.channel_order_id)
+        : null,
+    orderName:
+      record.channel_order_id !== undefined && record.channel_order_id !== null
+        ? String(record.channel_order_id)
+        : null,
     orderCreatedAt: parseDate(record.channel_created_at),
-    fulfillmentId: record.fulfillment_id !== undefined && record.fulfillment_id !== null ? String(record.fulfillment_id) : null,
-    deliveryStatus: record.delivery_status !== undefined && record.delivery_status !== null ? String(record.delivery_status) : null,
+    fulfillmentId:
+      record.fulfillment_id !== undefined && record.fulfillment_id !== null
+        ? String(record.fulfillment_id)
+        : null,
+    deliveryStatus:
+      record.delivery_status !== undefined && record.delivery_status !== null
+        ? String(record.delivery_status)
+        : null,
     deliveryDate: parseDate(record.delivery_date),
-    customerEmail: record.customer_email !== undefined && record.customer_email !== null ? String(record.customer_email) : null,
-    postalCode: record.customer_pincode !== undefined && record.customer_pincode !== null ? String(record.customer_pincode) : null,
-    courierName: record.courier_name !== undefined && record.courier_name !== null ? String(record.courier_name) : null,
-    courierSlug: record.courier_slug !== undefined && record.courier_slug !== null ? String(record.courier_slug) : null,
-    shipmentId: record.shipment_id !== undefined && record.shipment_id !== null ? String(record.shipment_id) : null,
-    trackingNumber: record.tracking_number || trackingLookup.awbCode || null,
-    sku: product.sku !== undefined && product.sku !== null ? String(product.sku) : null,
-    productName: product.name !== undefined && product.name !== null ? String(product.name) : null,
-    quantity: product.quantity !== undefined && product.quantity !== null ? parseInt(String(product.quantity), 10) : null,
-    amount: record.total !== undefined && record.total !== null ? parseFloat(String(record.total)) : null,
+    customerEmail:
+      record.customer_email !== undefined && record.customer_email !== null
+        ? String(record.customer_email)
+        : null,
+    postalCode:
+      record.customer_pincode !== undefined && record.customer_pincode !== null
+        ? String(record.customer_pincode)
+        : null,
+    courierName:
+      record.courier_name !== undefined && record.courier_name !== null
+        ? String(record.courier_name)
+        : null,
+    courierSlug:
+      record.courier_slug !== undefined && record.courier_slug !== null
+        ? String(record.courier_slug)
+        : null,
+    productId:
+      product.product_id !== undefined && product.product_id !== null
+        ? String(product.product_id)
+        : null,
+    price:
+      product.price !== undefined && product.price !== null
+        ? parseFloat(String(product.price))
+        : record.total !== undefined && record.total !== null
+          ? parseFloat(String(record.total))
+          : null,
+    shipmentId:
+      record.shipment_id !== undefined && record.shipment_id !== null
+        ? String(record.shipment_id)
+        : null,
+    shipmentsId:
+      record.shipment_id !== undefined && record.shipment_id !== null
+        ? String(record.shipment_id)
+        : null,
+    trackingNumber:
+      record.tracking_number || trackingLookup.awbCode || shipment?.awb || null,
+    rtoAwb:
+      record.rto_awb !== undefined && record.rto_awb !== null
+        ? String(record.rto_awb)
+        : null,
+    returnAwb:
+      shipment?.awb !== undefined && shipment?.awb !== null
+        ? String(shipment.awb)
+        : trackingLookup.awbCode || null,
+    etd: parseDate(shipment?.etd),
+    rtoInitiatedDate: parseDate(
+      record.rto_initiated_date ||
+        record.rto_initiated_at ||
+        record.created_at ||
+        record.channel_created_at,
+    ),
+    orderItemsSku:
+      product.channel_sku !== undefined && product.channel_sku !== null
+        ? String(product.channel_sku)
+        : null,
+    packageId:
+      product.channel_order_product_id !== undefined &&
+      product.channel_order_product_id !== null
+        ? String(product.channel_order_product_id)
+        : product.channel_product_id !== undefined &&
+            product.channel_product_id !== null
+          ? String(product.channel_product_id)
+          : product.id !== undefined && product.id !== null
+            ? String(product.id)
+            : null,
+    sku:
+      product.sku !== undefined && product.sku !== null
+        ? String(product.sku)
+        : null,
+    productName:
+      product.name !== undefined && product.name !== null
+        ? String(product.name)
+        : null,
+    quantity:
+      product.quantity !== undefined && product.quantity !== null
+        ? parseInt(String(product.quantity), 10)
+        : null,
+    amount:
+      record.total !== undefined && record.total !== null
+        ? parseFloat(String(record.total))
+        : null,
     rawPayload: record,
   };
 }
@@ -405,7 +526,7 @@ async function syncB2CReturns(records: JsonRecord[]) {
       trackingLookup.awbCode ||
       (trackingLookup.orderId && trackingLookup.channelId)
     ) {
-      const firstItem = items.find(i => i.id);
+      const firstItem = items.find((i) => i.id);
       if (firstItem) {
         trackingSeeds.push({
           ...trackingLookup,
@@ -458,7 +579,7 @@ async function syncB2BReturns(records: JsonRecord[]) {
       trackingLookup.awbCode ||
       (trackingLookup.orderId && trackingLookup.channelId)
     ) {
-      const firstProduct = products.find(p => p.id);
+      const firstProduct = products.find((p) => p.id);
       if (firstProduct) {
         trackingSeeds.push({
           ...trackingLookup,
@@ -546,7 +667,11 @@ export async function runShopifyReturnsJob() {
       results.trackingErrors += 1;
       console.error(
         "[Shopify Returns] Tracking sync failed:",
-        job.shipmentId || job.awbCode || (job.orderId && job.channelId ? `${job.orderId}:${job.channelId}` : job.sourceId),
+        job.shipmentId ||
+          job.awbCode ||
+          (job.orderId && job.channelId
+            ? `${job.orderId}:${job.channelId}`
+            : job.sourceId),
         error,
       );
     }
@@ -554,7 +679,10 @@ export async function runShopifyReturnsJob() {
 
   // Persist tracking payload for audit / debugging (project‑root location)
   const trackingOutPath = path.join(process.cwd(), "shiprocket_tracking.json");
-  await fs.promises.writeFile(trackingOutPath, JSON.stringify(trackingRecords, null, 2));
+  await fs.promises.writeFile(
+    trackingOutPath,
+    JSON.stringify(trackingRecords, null, 2),
+  );
   console.log(`Saved Shiprocket tracking raw payload to ${trackingOutPath}`);
 
   return results;
@@ -569,7 +697,4 @@ export async function fetchShopifyReturnSources() {
   return { b2cRecords, b2bRecords };
 }
 
-export {
-  fetchReturnPrimeReturns,
-  fetchShiprocketReturns,
-};
+export { fetchReturnPrimeReturns, fetchShiprocketReturns };

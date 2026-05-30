@@ -33,15 +33,14 @@
       "address": {
         "first_name": "Karuthappandian V",
         "last_name": null,
-        "postal_code": "620009",
+        "postal_code": "620027 ",
         "city": "TIRUCHIRAPPALLI",
         "province": "Tamil Nadu",
         "country_code": "IN",
         "province_code": "TN",
         "address_line_1": "3/303 J Poondimatha nagar Pirattiyur Trichy Tamil Nadu",
         "address_line_2": null,
-        "country": "India",
-        "address_line_3": ""
+        "country": "India"
       },
       "bank": {
         "account_holder_name": "",
@@ -212,15 +211,14 @@
       "address": {
         "first_name": "Karuthappandian V",
         "last_name": null,
-        "postal_code": "620009",
+        "postal_code": "620027 ",
         "city": "TIRUCHIRAPPALLI",
         "province": "Tamil Nadu",
         "country_code": "IN",
         "province_code": "TN",
         "address_line_1": "3/303 J Poondimatha nagar Pirattiyur Trichy Tamil Nadu",
         "address_line_2": null,
-        "country": "India",
-        "address_line_3": ""
+        "country": "India"
       },
       "bank": {
         "account_holder_name": "",
@@ -505,7 +503,7 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822592661",
-            "tracking_updated_at": "2026-05-29T07:26:30.538Z",
+            "tracking_updated_at": "2026-05-30T05:36:43.594Z",
             "labels": [],
             "shipment_status": "Issue with pickup from customer",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822592661"
@@ -710,7 +708,7 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822592661",
-            "tracking_updated_at": "2026-05-29T07:26:29.941Z",
+            "tracking_updated_at": "2026-05-30T05:36:43.594Z",
             "labels": [],
             "shipment_status": "Issue with pickup from customer",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822592661"
@@ -1824,9 +1822,9 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822592563",
-            "tracking_updated_at": "2026-05-29T08:45:47.803Z",
+            "tracking_updated_at": "2026-05-30T06:45:48.507Z",
             "labels": [],
-            "shipment_status": "Out for pickup from customer",
+            "shipment_status": "On the way to warehouse",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822592563"
           }
         ],
@@ -2042,9 +2040,9 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822592563",
-            "tracking_updated_at": "2026-05-29T08:45:46.981Z",
+            "tracking_updated_at": "2026-05-30T06:45:50.155Z",
             "labels": [],
-            "shipment_status": "Out for pickup from customer",
+            "shipment_status": "On the way to warehouse",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822592563"
           }
         ],
@@ -4938,7 +4936,7 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822589298",
-            "tracking_updated_at": "2026-05-29T07:26:27.976Z",
+            "tracking_updated_at": "2026-05-30T05:36:41.793Z",
             "labels": [],
             "shipment_status": "Issue with pickup from customer",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822589298"
@@ -5143,7 +5141,7 @@
             "shipping_company": "shiprocket",
             "tracking_available": true,
             "awb": "24319822589298",
-            "tracking_updated_at": "2026-05-29T07:26:27.976Z",
+            "tracking_updated_at": "2026-05-30T05:36:41.793Z",
             "labels": [],
             "shipment_status": "Issue with pickup from customer",
             "tracking_url": "https://cubelelo.shiprocket.co/tracking/24319822589298"
