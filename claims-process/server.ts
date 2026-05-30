@@ -328,21 +328,13 @@ async function setupDatabaseSchema(db: pg.Pool) {
           SELECT DISTINCT ON (lpn)
             lpn,
             "orderId",
-            "manifestId",
-            "type",
-            "orderDriveLink",
-            "lpnDriveLink",
-            "status"
+            "manifestId"
           FROM "Evidence"
           ` : `
           SELECT 
             NULL::text AS lpn,
             NULL::text AS "orderId",
-            NULL::text AS "manifestId",
-            NULL::text AS "type",
-            NULL::text AS "orderDriveLink",
-            NULL::text AS "lpnDriveLink",
-            NULL::text AS "status"
+            NULL::text AS "manifestId"
           LIMIT 0
           `}
         ),
@@ -416,8 +408,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
             
             -- type mapping
             CASE
-              WHEN ev.lpn IS NOT NULL AND ev.type::text = 'RECEIVER_REJECTION' THEN 'Rejected'
-              WHEN ev.lpn IS NOT NULL AND ev.status = 'Claimed' THEN 'Claimed'
               WHEN ev.lpn IS NOT NULL THEN 'Damaged'
               ELSE 'Missing'
             END AS type,
@@ -429,53 +419,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
             1::integer AS qty
             
           FROM base_returns br
-          JOIN evidences ev ON br.lpn = ev.lpn
-
-          UNION ALL
-
-          -- Part 2: Shopify Returns Queue (RTO Channel classification)
-          -- Match srt.trackingNumber inside shiprocket_returns
-          SELECT
-            sr.id AS lpn,
-            COALESCE(srt."orderId", sr."orderId") AS "orderId",
-            srt."trackingNumber" AS "trackingId",
-            sr.sku AS sku,
-            NULL::text AS fnsku,
-            sr."productName" AS "productName",
-            'Shopify RTO'::text AS channel,
-            'RejectedDelivery'::text AS type,
-            -- Pull drive links from Evidence matched either by orderId or lpn
-            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "driveLink",
-            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", sr."orderId") OR e.lpn = sr.id LIMIT 1) AS "orderDriveLink",
-            sr."createdAt" AS "createdAt",
-            sr.quantity AS qty
-          FROM "shopify_return_tracking" srt
-          JOIN "shiprocket_returns" sr ON srt."trackingNumber" = sr."trackingNumber"
-
-          UNION ALL
-
-          -- Part 3: Shopify Returns Queue (RTV Channel classification)
-          -- Match srt.trackingNumber inside return_prime_returns AND approved requestType
-          SELECT
-            rpr.id AS lpn,
-            COALESCE(srt."orderId", rpr."orderId") AS "orderId",
-            srt."trackingNumber" AS "trackingId",
-            rpr.sku AS sku,
-            NULL::text AS fnsku,
-            NULL::text AS "productName",
-            'Shopify RTV'::text AS channel,
-            'CustomerReturn'::text AS type,
-            -- Pull drive links from Evidence matched either by orderId or lpn
-            (SELECT COALESCE(e."lpnDriveLink", e."orderDriveLink") FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "driveLink",
-            (SELECT e."orderDriveLink" FROM "Evidence" e WHERE e."orderId" = COALESCE(srt."orderId", rpr."orderId") OR e.lpn = rpr.id LIMIT 1) AS "orderDriveLink",
-            rpr."createdAt" AS "createdAt",
-            rpr.quantity AS qty
-          FROM "shopify_return_tracking" srt
-          JOIN "return_prime_returns" rpr ON srt."trackingNumber" = rpr."trackingNumber"
-          WHERE rpr."requestType" = 'approved'
-            AND NOT EXISTS (
-              SELECT 1 FROM "shiprocket_returns" sr2 WHERE sr2."trackingNumber" = srt."trackingNumber"
-            )
+          LEFT JOIN evidences ev ON br.lpn = ev.lpn
         )
         SELECT 
           mcr.lpn,
@@ -1323,6 +1267,20 @@ async function startServer() {
       let rawRows = [];
 
       if (pool) {
+         // Query Evidence table to find valid identifiers
+        let evidenceOrderIds = new Set<string>();
+        let evidenceLpns = new Set<string>();
+        try {
+          const evidenceRes = await pool.query('SELECT DISTINCT "orderId", "lpn" FROM "Evidence"');
+          evidenceRes.rows.forEach(r => {
+            if (r.orderId) evidenceOrderIds.add(String(r.orderId).trim().toLowerCase());
+            if (r.lpn) evidenceLpns.add(String(r.lpn).trim().toLowerCase());
+          });
+        } catch (e: any) {
+          console.warn('[DB WARNING] Could not query "Evidence" table matching identifiers:', e.message);
+        }
+
+        
         try {
           const result = await pool.query(`
             SELECT c.*, s.status AS db_status, s."claimId" AS db_claim_id, s.bot_log_reason 
@@ -1345,6 +1303,14 @@ async function startServer() {
             }
           }
         }
+        
+        // Apply robust Evidence existence filtering: do not fetch/show entry if it has no record in the Evidence table
+        rawRows = rawRows.filter((row: any) => {
+          const oId = (row.orderId || row.orderid || "").trim().toLowerCase();
+          const lpn = (row.lpn || "").trim().toLowerCase();
+          return (oId && evidenceOrderIds.has(oId)) || (lpn && evidenceLpns.has(lpn));
+        });
+
       } else {
         rawRows = [...mockClaims];
       }
