@@ -160,7 +160,7 @@ model AMZRemovalOrder {
   serviceSpeed      String?   @map("service-speed")
   orderStatus       String?   @map("order-status")
   lastUpdatedDate   DateTime? @map("last-updated-date")
-  sku               String?   @map("sku")
+  sku               String   @map("sku")
   fnsku             String?   @map("fnsku")
   disposition       String?   @map("disposition")
   requestedQuantity Int?      @map("requested-quantity")
