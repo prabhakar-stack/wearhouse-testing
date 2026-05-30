@@ -466,6 +466,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
       `);
       console.log('✅ Fallback physical table "claims_all" created.');
     }
+
   } catch (err: any) {
     console.error('❌ setupDatabaseSchema error:', err.message);
   }

@@ -233,45 +233,33 @@ model AMZCustomerReturn {
 }
 
 model ReturnPrimeReturn {
-  id                   String      @id
-  requestNumber        String?
-  requestType          String?
-  status               String?
-  channel              String?
-  orderId              String?
-  orderName            String?
-  orderCreatedAt       DateTime?
-  fulfillmentId        String?
-  deliveryStatus       String?
-  deliveryDate         DateTime?
-  customerEmail        String?
-  postalCode           String?
-  receivedStatus       Boolean     @default(false)
-  inspectedStatus      Boolean     @default(false)
-  rejectedStatus       Boolean     @default(false)
-  archivedStatus       Boolean     @default(false)
-  refundStatus         String?
-  eligibleRefundStatus Boolean     @default(false)
-  refundedAmount       Float?      @default(0)
-  originalProductId    String?
-  sku                  String?
-  trackingNumber       String?
-  quantity             Int?
-  actualAmount         Float?
-  imageSrc             String?
-  marketplace          Marketplace @default(SHOPIFY)
-  rawPayload           Json?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
+  id               String   @id
+  request_number   String?
+  request_type     String?
+  status           String?
+  channel          String?
+  order_id         String?
+  order_name       String?
+  recevied_status  Boolean?
+  rejected_status  Boolean?
+  archived_status  Boolean?
+  refund_status    String?
+  sku              String?
+  traking_number   String?
+  quantity         Int?
+  actual_amount    Float?
+  image_src        String?
 
-  @@index([orderId])
-  @@index([trackingNumber])
+  @@index([order_id])
+  @@index([traking_number])
   @@map("return_prime_returns")
 }
 
 model ShiprocketReturn {
   id             String      @id
+  channelId      String?
   requestNumber  String?
+  channelOrderId String?
   requestType    String?
   status         String?
   channel        String?
@@ -283,10 +271,20 @@ model ShiprocketReturn {
   deliveryDate   DateTime?
   customerEmail  String?
   postalCode     String?
+  awb            String?
   courierName    String?
   courierSlug    String?
+  productId      String?
+  price          Float?
   shipmentId     String?
+  shipmentsId    String?
   trackingNumber String?
+  rtoAwb         String?
+  returnAwb      String?
+  etd            DateTime?
+  rtoInitiatedDate DateTime?
+  orderItemsSku  String?
+  packageId      String?
   sku            String?
   productName    String?
   quantity       Int?
@@ -297,6 +295,8 @@ model ShiprocketReturn {
   updatedAt      DateTime    @updatedAt
 
   @@index([orderId])
+  @@index([channelId])
+  @@index([channelOrderId])
   @@index([shipmentId])
   @@index([trackingNumber])
   @@map("shiprocket_returns")
