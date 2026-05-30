@@ -179,7 +179,7 @@ model AMZRemovalShipment {
   requestDate     DateTime? @map("request-date")
   orderId         String?   @map("order-id")
   shipmentDate    DateTime? @map("shipment-date")
-  sku             String?   @map("sku")
+  sku             String   @map("sku")
   fnsku           String?   @map("fnsku")
   disposition     String?   @map("disposition")
   shippedQuantity Int?      @map("shipped-quantity")
