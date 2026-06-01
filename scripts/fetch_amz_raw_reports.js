@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
 import { fileURLToPath } from "url";
+import { main as repopulateMain } from "./repopulate_incremental.js";
 
 const prisma = new PrismaClient();
 
@@ -13,7 +14,7 @@ const REMOVAL_ORDERS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DAT
 const REMOVAL_SHIPMENTS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA";
 
 const REPORT_POLL_INTERVAL_MS = 15000;
-const REPORT_MAX_WAIT_MS = 45000;
+const REPORT_MAX_WAIT_MS = 120000;
 
 // Field definitions mapping database fields to Amazon report headers
 const REMOVAL_ORDER_FIELDS = {
@@ -858,16 +859,30 @@ async function syncCoreReimbursements(rows) {
 async function syncCoreRemovalOrdersToOrders(rows) {
   if (!rows || rows.length === 0) return 0;
   console.log(
-    `Syncing ${rows.length} Removal Orders to operational Order table...`,
+    `Grouping and syncing ${rows.length} Removal Order SKU rows to operational Order table...`,
   );
-  let successCount = 0;
+  
+  const groups = {};
   for (const rawRow of rows) {
     const row = normalizeRow(rawRow);
     const orderId = getOrderId(row);
     if (!orderId) continue;
+    
+    if (!groups[orderId]) {
+      groups[orderId] = [];
+    }
+    groups[orderId].push(row);
+  }
 
-    const requestDate = toDate(pick(row.request_date), new Date());
-    const removalFee = toFloat(pick(row.removal_fee));
+  let successCount = 0;
+  for (const [orderId, groupRows] of Object.entries(groups)) {
+    const totalAmount = groupRows.reduce((sum, r) => sum + (toFloat(pick(r.removal_fee)) || 0), 0);
+    const requestDate = toDate(pick(groupRows[0].request_date), new Date());
+    const totalQuantity = groupRows.reduce((sum, r) => {
+      const shipped = toInt(pick(r.shipped_quantity), null);
+      const requested = toInt(pick(r.requested_quantity), 0);
+      return sum + (shipped !== null && shipped > 0 ? shipped : requested);
+    }, 0);
 
     try {
       await prisma.order.upsert({
@@ -875,14 +890,16 @@ async function syncCoreRemovalOrdersToOrders(rows) {
         update: {
           marketplace: "AMAZON",
           requestDate: requestDate,
-          totalAmount: removalFee,
+          totalAmount: totalAmount,
+          totalQuantity: totalQuantity,
           fulfillmentChannel: "AMAZON_REMOVAL",
         },
         create: {
           marketplace: "AMAZON",
           platformOrderId: orderId,
           requestDate: requestDate,
-          totalAmount: removalFee,
+          totalAmount: totalAmount,
+          totalQuantity: totalQuantity,
           fulfillmentChannel: "AMAZON_REMOVAL",
         },
       });
@@ -895,7 +912,7 @@ async function syncCoreRemovalOrdersToOrders(rows) {
     }
   }
   console.log(
-    `Successfully synced ${successCount}/${rows.length} Removal Orders to operational Order table.`,
+    `Successfully synced ${successCount} grouped Removal Orders to operational Order table.`,
   );
   return successCount;
 }
@@ -976,13 +993,8 @@ async function main() {
   if (!process.env.DISABLE_REPOPULATE) {
     try {
       console.log("\nTriggering incremental repopulation task (repopulate_incremental.js)...");
-      const repopulate = await import("./repopulate_incremental.js");
-      if (repopulate && typeof repopulate.main === "function") {
-        await repopulate.main();
-        console.log("Incremental repopulation task finished.");
-      } else {
-        console.log("Incremental repopulation module did not export a main() function.");
-      }
+      await repopulateMain();
+      console.log("Incremental repopulation task finished.");
     } catch (err) {
       console.error("[WARN] Incremental repopulation task failed:", err?.message || err);
     }

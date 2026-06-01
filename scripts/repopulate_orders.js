@@ -35,12 +35,12 @@ async function main() {
     const trackingNumber = shipments.find(s => s.trackingNumber)?.trackingNumber || `TRK-VIRT-${orderId}`;
 
     // Get removal order fee and request date
-    const rawOrder = await prisma.aMZRemovalOrder.findFirst({
+    const rawOrders = await prisma.aMZRemovalOrder.findMany({
       where: { orderId: orderId }
     });
 
-    const requestDate = rawOrder?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
-    const totalAmount = rawOrder?.removalFee || 0.0;
+    const requestDate = rawOrders[0]?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
+    const totalAmount = rawOrders.reduce((sum, o) => sum + (o.removalFee || 0.0), 0.0);
 
     // Create manifest
     const manifest = await prisma.manifest.upsert({

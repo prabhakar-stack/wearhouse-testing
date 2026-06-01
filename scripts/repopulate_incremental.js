@@ -34,9 +34,9 @@ async function main(batchSize = 100) {
     try {
       const trackingNumber = shipments.find(s => s.trackingNumber)?.trackingNumber || `TRK-VIRT-${orderId}`;
 
-      const rawOrder = orderId.startsWith('__no_order__') ? null : await prisma.aMZRemovalOrder.findFirst({ where: { orderId } });
-      const requestDate = rawOrder?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
-      const totalAmount = rawOrder?.removalFee || 0.0;
+      const rawOrders = orderId.startsWith('__no_order__') ? [] : await prisma.aMZRemovalOrder.findMany({ where: { orderId } });
+      const requestDate = rawOrders[0]?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
+      const totalAmount = rawOrders.reduce((sum, o) => sum + (o.removalFee || 0.0), 0.0);
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
       let resolvedStatus = 'EXPECTED';
