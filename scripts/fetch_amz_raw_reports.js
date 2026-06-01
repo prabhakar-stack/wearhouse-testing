@@ -14,7 +14,7 @@ const REMOVAL_ORDERS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_ORDER_DETAIL_DAT
 const REMOVAL_SHIPMENTS_REPORT_TYPE = "GET_FBA_FULFILLMENT_REMOVAL_SHIPMENT_DETAIL_DATA";
 
 const REPORT_POLL_INTERVAL_MS = 15000;
-const REPORT_MAX_WAIT_MS = 120000;
+const REPORT_MAX_WAIT_MS = 300000;
 
 // Field definitions mapping database fields to Amazon report headers
 const REMOVAL_ORDER_FIELDS = {
@@ -884,6 +884,44 @@ async function syncCoreRemovalOrdersToOrders(rows) {
       return sum + (shipped !== null && shipped > 0 ? shipped : requested);
     }, 0);
 
+    const matchingShipment = await prisma.aMZRemovalShipment.findFirst({
+      where: {
+        orderId: orderId,
+        trackingNumber: { not: null, not: "" },
+      },
+      select: {
+        trackingNumber: true,
+        carrier: true,
+        shipmentDate: true,
+      },
+    });
+
+    let manifestId = null;
+    let trackingNumber = null;
+
+    if (matchingShipment && matchingShipment.trackingNumber) {
+      trackingNumber = matchingShipment.trackingNumber;
+      
+      const manifest = await prisma.manifest.upsert({
+        where: { trackingId: trackingNumber },
+        update: {
+          marketplace: "AMAZON",
+          removalOrderId: orderId,
+          courierName: matchingShipment.carrier || "Amazon Logistics",
+          expectedDate: matchingShipment.shipmentDate || requestDate,
+        },
+        create: {
+          trackingId: trackingNumber,
+          marketplace: "AMAZON",
+          removalOrderId: orderId,
+          courierName: matchingShipment.carrier || "Amazon Logistics",
+          expectedDate: matchingShipment.shipmentDate || requestDate,
+          status: "EXPECTED",
+        },
+      });
+      manifestId = manifest.id;
+    }
+
     try {
       await prisma.order.upsert({
         where: { platformOrderId: orderId },
@@ -893,6 +931,8 @@ async function syncCoreRemovalOrdersToOrders(rows) {
           totalAmount: totalAmount,
           totalQuantity: totalQuantity,
           fulfillmentChannel: "AMAZON_REMOVAL",
+          trackingNumber: trackingNumber || undefined,
+          manifestId: manifestId || undefined,
         },
         create: {
           marketplace: "AMAZON",
@@ -901,6 +941,8 @@ async function syncCoreRemovalOrdersToOrders(rows) {
           totalAmount: totalAmount,
           totalQuantity: totalQuantity,
           fulfillmentChannel: "AMAZON_REMOVAL",
+          trackingNumber: trackingNumber,
+          manifestId: manifestId,
         },
       });
       successCount++;
