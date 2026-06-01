@@ -172,6 +172,8 @@ model AMZRemovalOrder {
   currency          String?   @map("currency")
 
   @@map("AMZ_removal_orders")
+
+  @@unique([orderId, sku], name: "orderId_sku")
 }
 
 model AMZRemovalShipment {
