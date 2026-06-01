@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
 import { fileURLToPath } from "url";
-import { main as repopulateMain } from "./repopulate_incremental.js";
 
 const prisma = new PrismaClient();
 
@@ -141,9 +140,9 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
   start.setDate(start.getDate() - startDaysAgo);
 
   try {
-    // console.log(`\n======================================`);
-    // console.log(`SP-API: Requesting ${reportType}`);
-    // console.log(`Time Range: ${start.toISOString()} to ${end.toISOString()}`);
+    console.log(`\n======================================`);
+    console.log(`SP-API: Requesting ${reportType}`);
+    console.log(`Time Range: ${start.toISOString()} to ${end.toISOString()}`);
 
     const report = await Promise.race([
       sp.callAPI({
@@ -157,11 +156,11 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
         },
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("createReport timeout")), 60000),
+        setTimeout(() => reject(new Error("createReport timeout")), 180000),
       ),
     ]);
 
-    // console.log(`Report created successfully. ID: ${report.reportId}`);
+    console.log(`Report created successfully. ID: ${report.reportId}`);
 
     let reportStatus;
     const startedAt = Date.now();
@@ -173,7 +172,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
         path: { reportId: report.reportId },
       });
 
-      // console.log(`Report status: ${reportStatus.processingStatus}`);
+      console.log(`Report processing status: ${reportStatus.processingStatus}`);
 
       if (
         reportStatus.processingStatus === "DONE" ||
@@ -199,7 +198,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
 
     if (reportStatus.processingStatus !== "DONE") {
       console.log(
-        `[WARN] SP-API report generation ${reportType} failed with status: ${reportStatus.processingStatus}`,
+        `[WARN] SP-API report generation ${reportType} failed/incomplete with status: ${reportStatus.processingStatus}`,
       );
       if (fs.existsSync(localPath)) {
         console.log(`Falling back to local file: ${fileName}.tsv`);
@@ -208,7 +207,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
       return null;
     }
 
-    // console.log("Downloading report document...");
+    console.log("Downloading report document from Amazon...");
     const document = await sp.callAPI({
       operation: "getReportDocument",
       endpoint: "reports",
@@ -217,7 +216,7 @@ async function fetchReportData(reportType, fileName, startDaysAgo, endDaysAgo) {
 
     const reportData = await sp.download(document);
     fs.writeFileSync(localPath, reportData);
-    // console.log(`Saved report output locally to ${fileName}.tsv`);
+    console.log(`Saved downloaded report output locally to ${fileName}.tsv`);
     return reportData.toString();
   } catch (error) {
     console.error(
@@ -331,6 +330,11 @@ async function syncRemovalOrders(rows) {
     }
 
     try {
+      // ----------------------------------------------------
+      // [DATABASE LOAD POINT] Staging Table Insertion
+      // Target: AMZRemovalOrder (Staging/Raw Table)
+      // Operation: Upserting record using combined key orderId_sku
+      // ----------------------------------------------------
       await prisma.aMZRemovalOrder.upsert({
         where: { 
           orderId_sku: { 
@@ -386,10 +390,20 @@ async function syncRemovalShipments(rows) {
       });
 
       if (!existing) {
+        // ----------------------------------------------------
+        // [DATABASE LOAD POINT] Staging Table Insertion
+        // Target: AMZRemovalShipment (Staging/Raw Table)
+        // Operation: Creating new record since no duplicate was found
+        // ----------------------------------------------------
         await prisma.aMZRemovalShipment.create({
           data: mapped,
         });
       } else {
+        // ----------------------------------------------------
+        // [DATABASE LOAD POINT] Staging Table Update
+        // Target: AMZRemovalShipment (Staging/Raw Table)
+        // Operation: Updating existing record with matching key fields
+        // ----------------------------------------------------
         await prisma.aMZRemovalShipment.update({
           where: { id: existing.id },
           data: mapped,
@@ -428,6 +442,11 @@ async function syncReimbursements(rows) {
     }
 
     try {
+      // ----------------------------------------------------
+      // [DATABASE LOAD POINT] Staging Table Insertion
+      // Target: AMZReimbursement (Staging/Raw Table)
+      // Operation: Upserting record using reimbursementId key
+      // ----------------------------------------------------
       await prisma.aMZReimbursement.upsert({
         where: { reimbursementId: mapped.reimbursementId },
         update: mapped,
@@ -466,6 +485,11 @@ async function syncCustomerReturns(rows) {
     }
 
     try {
+      // ----------------------------------------------------
+      // [DATABASE LOAD POINT] Staging Table Insertion
+      // Target: AMZCustomerReturn (Staging/Raw Table)
+      // Operation: Upserting record using LPN (License Plate Number)
+      // ----------------------------------------------------
       await prisma.aMZCustomerReturn.upsert({
         where: { lpn: mapped.lpn },
         update: mapped,
@@ -485,431 +509,13 @@ async function syncCustomerReturns(rows) {
   return successCount;
 }
 
-// ==========================================
-// Core Application Mapping & Sync Functions
-// ==========================================
-
-function pick(...values) {
-  for (const value of values) {
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
-      return String(value).trim();
-    }
-  }
-  return null;
-}
-
-function toInt(value, fallback = 1) {
-  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function toFloat(value) {
-  const parsed = Number.parseFloat(
-    String(value ?? "").replace(/[^0-9.-]/g, ""),
-  );
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toDate(value, fallback = null) {
-  if (!value) return fallback;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
-
-function normalizeRow(row) {
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [
-      key.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-      value,
-    ]),
-  );
-}
-
-function getOrderId(row) {
-  return pick(
-    row.amazon_order_id,
-    row.order_id,
-    row.orderid,
-    row.merchant_order_id,
-  );
-}
-
-function mapReturnRow(row) {
-  const normalized = normalizeRow(row);
-
-  const orderId = getOrderId(normalized);
-
-  const lpn = pick(
-    normalized.license_plate_number,
-    normalized.license_plate,
-    normalized.lpn,
-    normalized.return_authorization_id,
-  );
-
-  return {
-    orderId,
-    lpn,
-    sku:
-      pick(normalized.sku, normalized.merchant_sku, normalized.asin) ||
-      lpn ||
-      orderId,
-    asin: pick(normalized.asin),
-    fnsku: pick(normalized.fnsku),
-    productName: pick(
-      normalized.product_name,
-      normalized.item_name,
-      normalized.title,
-    ),
-    quantity: toInt(pick(normalized.quantity, normalized.qty), 1),
-    reason:
-      pick(
-        normalized.return_reason,
-        normalized.reason,
-        normalized.customer_comment,
-        normalized.customer_comments,
-      ) || "Unknown",
-    customerComments: pick(
-      normalized.customer_comments,
-      normalized.customer_comment,
-    ),
-    detailedDisposition: pick(
-      normalized.detailed_disposition,
-      normalized.disposition,
-    ),
-    itemPrice: toFloat(
-      pick(normalized.item_price, normalized.price, normalized.item_amount),
-    ),
-    requestDate: toDate(
-      pick(
-        normalized.purchase_date,
-        normalized.order_date,
-        normalized.created_date,
-        normalized.return_date,
-      ),
-    ),
-  };
-}
-
-async function syncCoreReturns(rows) {
-  if (!rows || rows.length === 0) {
-    console.log("No rows for Core Returns to sync.");
-    return 0;
-  }
-
-  console.log(`Syncing ${rows.length} Customer Returns to Core Tables...`);
-  let successCount = 0;
-
-  for (const group of chunkArray(rows, 10)) {
-    const groupSaved = await Promise.all(
-      group.map(async (rawRow) => {
-        const mapped = mapReturnRow(rawRow);
-
-        if (!mapped.orderId || !mapped.lpn) {
-          console.log(
-            "[WARN] Skipping Core Return row without orderId or lpn:",
-            rawRow,
-          );
-          return null;
-        }
-
-        const rawLpns = mapped.lpn;
-        const lpns =
-          typeof rawLpns === "string"
-            ? rawLpns
-                .split(/[,\s]+/)
-                .map((s) => s.trim().toUpperCase())
-                .filter(Boolean)
-            : [mapped.lpn];
-
-        const qty = Math.max(mapped.quantity || 1, lpns.length);
-        const returnItems = [];
-
-        try {
-          for (let i = 0; i < qty; i++) {
-            const lpnVal = lpns[i] || `${lpns[0] || "LPN"}-${i}`;
-
-            const returnItem = await prisma.returnItem.upsert({
-              where: { lpn: lpnVal },
-              update: {
-                orderId: mapped.orderId,
-                sku: mapped.sku,
-                asin: mapped.asin,
-                fnsku: mapped.fnsku,
-                productName: mapped.productName,
-                returnDate: mapped.requestDate,
-                fulfillmentCenterId: pick(
-                  rawRow.fulfillment_center_id,
-                  rawRow.fulfillmentcenterid,
-                ),
-                reason: mapped.reason,
-                customerComments: mapped.customerComments,
-                detailedDisposition: mapped.detailedDisposition,
-                itemPrice: mapped.itemPrice,
-              },
-              create: {
-                orderId: mapped.orderId,
-                sku: mapped.sku,
-                lpn: lpnVal,
-                asin: mapped.asin,
-                fnsku: mapped.fnsku,
-                productName: mapped.productName,
-                returnDate: mapped.requestDate,
-                fulfillmentCenterId: pick(
-                  rawRow.fulfillment_center_id,
-                  rawRow.fulfillmentcenterid,
-                ),
-                reason: mapped.reason,
-                customerComments: mapped.customerComments,
-                detailedDisposition: mapped.detailedDisposition,
-                itemPrice: mapped.itemPrice,
-              },
-            });
-            returnItems.push(returnItem);
-          }
-          return returnItems[0] || null;
-        } catch (e) {
-          console.error(
-            `[ERROR] Failed to upsert Core Return orderId=${mapped.orderId} lpn=${mapped.lpn}:`,
-            e.message,
-          );
-          return null;
-        }
-      }),
-    );
-
-    successCount += groupSaved.filter(Boolean).length;
-  }
-
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Customer Returns to Core Tables.`,
-  );
-  return successCount;
-}
-
-async function findOrCreateReturnItemForReimbursement(row) {
-  const normalized = normalizeRow(row);
-  const orderId = getOrderId(normalized);
-  const sku = pick(normalized.sku, normalized.asin, normalized.fnsku);
-  const lpn = pick(
-    normalized.original_reimbursement_id,
-    normalized.reimbursement_id,
-    `reimbursement_${orderId || "unknown"}_${sku || "unknown"}`,
-  );
-
-  if (!sku) {
-    return null;
-  }
-
-  const identityFilters = [
-    sku ? { sku } : null,
-    pick(normalized.fnsku) ? { fnsku: pick(normalized.fnsku) } : null,
-    pick(normalized.asin) ? { asin: pick(normalized.asin) } : null,
-  ].filter(Boolean);
-
-  const existing =
-    identityFilters.length > 0
-      ? await prisma.returnItem.findFirst({
-          where: {
-            OR: identityFilters,
-          },
-        })
-      : null;
-
-  if (existing) {
-    return existing;
-  }
-
-  return prisma.returnItem.upsert({
-    where: { lpn },
-    update: {
-      orderId,
-      sku,
-      reason:
-        pick(normalized.reason, normalized.original_reimbursement_type) ||
-        "Reimbursement",
-      productName: pick(normalized.product_name),
-      fnsku: pick(normalized.fnsku),
-      asin: pick(normalized.asin),
-      itemPrice: toFloat(
-        pick(normalized.amount_per_unit, normalized.amount_total),
-      ),
-    },
-    create: {
-      orderId,
-      sku,
-      lpn,
-      reason:
-        pick(normalized.reason, normalized.original_reimbursement_type) ||
-        "Reimbursement",
-      productName: pick(normalized.product_name),
-      fnsku: pick(normalized.fnsku),
-      asin: pick(normalized.asin),
-      itemPrice: toFloat(
-        pick(normalized.amount_per_unit, normalized.amount_total),
-      ),
-    },
-  });
-}
-
-async function syncCoreReimbursements(rows) {
-  if (!rows || rows.length === 0) return 0;
-
-  console.log(`Syncing ${rows.length} Reimbursements to Core Tables...`);
-  let successCount = 0;
-
-  for (const rawRow of rows) {
-    const row = normalizeRow(rawRow);
-    const reimbursementId = pick(row.reimbursement_id);
-    let orderId = getOrderId(row);
-
-    if (!reimbursementId) {
-      console.log(
-        "[WARN] Skipping core reimbursement row without reimbursementId:",
-        rawRow,
-      );
-      continue;
-    }
-
-    try {
-      const returnItem = await findOrCreateReturnItemForReimbursement(row);
-      if (!returnItem) {
-        console.log(
-          "[WARN] Skipping core reimbursement row without a matching return item:",
-          rawRow,
-        );
-        continue;
-      }
-
-      orderId = orderId || returnItem.orderId;
-
-      if (!orderId) {
-        console.log(
-          "[WARN] Skipping reimbursement because orderId is missing:",
-          reimbursementId,
-        );
-        continue;
-      }
-
-      const order = await prisma.order.upsert({
-        where: { platformOrderId: orderId },
-        update: {
-          marketplace: "AMAZON",
-        },
-        create: {
-          marketplace: "AMAZON",
-          platformOrderId: orderId,
-          requestDate: toDate(pick(row.approval_date), new Date()),
-        },
-      });
-
-      const reimbursementData = {
-        returnItemId: returnItem.lpn,
-        platformReimbursementId: reimbursementId,
-        amountReimbursed:
-          toFloat(pick(row.amount_total, row.amount_per_unit)) || 0,
-        currency: pick(row.currency_unit) || "INR",
-        reimbursementReason: pick(row.reason, row.original_reimbursement_type),
-        status: pick(row.condition) || "DONE",
-        filedAt: toDate(pick(row.approval_date)),
-        resolvedAt: toDate(pick(row.approval_date)),
-      };
-
-      const reimbursementByPlatformId = await prisma.reimbursement.findUnique({
-        where: { platformReimbursementId: reimbursementId },
-      });
-      const reimbursementByReturnItem = await prisma.reimbursement.findUnique({
-        where: { returnItemId: returnItem.lpn },
-      });
-
-      if (
-        reimbursementByPlatformId &&
-        reimbursementByReturnItem &&
-        reimbursementByPlatformId.id !== reimbursementByReturnItem.id
-      ) {
-        console.log(
-          "[WARN] Skipping core reimbursement row with conflicting platformReimbursementId and returnItemId:",
-          rawRow,
-        );
-        continue;
-      }
-
-      const existingReimbursement =
-        reimbursementByPlatformId || reimbursementByReturnItem;
-
-      if (existingReimbursement) {
-        await prisma.reimbursement.update({
-          where: { id: existingReimbursement.id },
-          data: reimbursementData,
-        });
-      } else {
-        await prisma.reimbursement.create({
-          data: reimbursementData,
-        });
-      }
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to sync Core Reimbursement platformReimbursementId=${reimbursementId}:`,
-        e.message,
-      );
-    }
-  }
-
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Reimbursements to Core Tables.`,
-  );
-  return successCount;
-}
-
-async function syncCoreRemovalOrdersToOrders(rows) {
-  if (!rows || rows.length === 0) return 0;
-  console.log(
-    `Syncing ${rows.length} Removal Orders to operational Order table...`,
-  );
-  let successCount = 0;
-  for (const rawRow of rows) {
-    const row = normalizeRow(rawRow);
-    const orderId = getOrderId(row);
-    if (!orderId) continue;
-
-    const requestDate = toDate(pick(row.request_date), new Date());
-    const removalFee = toFloat(pick(row.removal_fee));
-
-    try {
-      await prisma.order.upsert({
-        where: { platformOrderId: orderId },
-        update: {
-          marketplace: "AMAZON",
-          requestDate: requestDate,
-          totalAmount: removalFee,
-          fulfillmentChannel: "AMAZON_REMOVAL",
-        },
-        create: {
-          marketplace: "AMAZON",
-          platformOrderId: orderId,
-          requestDate: requestDate,
-          totalAmount: removalFee,
-          fulfillmentChannel: "AMAZON_REMOVAL",
-        },
-      });
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to sync operational Order for Removal Order ${orderId}:`,
-        e.message,
-      );
-    }
-  }
-  console.log(
-    `Successfully synced ${successCount}/${rows.length} Removal Orders to operational Order table.`,
-  );
-  return successCount;
-}
-
 async function main() {
-  console.log("STARTING AMAZON RAW AND CORE REPORTS SYNC TASK...");
+  console.log("STARTING AMAZON RAW DATA FETCH TASK...");
 
-  // 1. Sync Removal Orders
+  // =========================================================================
+  // STAGE 1: REMOVAL ORDERS RAW FETCH & STAGING
+  // =========================================================================
+  console.log("\n[STAGE 1] Fetching and Staging Removal Orders...");
   const removalOrdersTSV = await fetchReportData(
     REMOVAL_ORDERS_REPORT_TYPE,
     "removal_orders_0_30",
@@ -917,11 +523,14 @@ async function main() {
     0,
   );
   const removalOrderRows = parseTSV(removalOrdersTSV);
+  
+  console.log("[STAGE 1.1] Loading raw data into AMZRemovalOrder staging table...");
   const syncedRemovalOrders = await syncRemovalOrders(removalOrderRows);
-  const syncedCoreOrders =
-    await syncCoreRemovalOrdersToOrders(removalOrderRows);
 
-  // 2. Sync Removal Shipments
+  // =========================================================================
+  // STAGE 2: REMOVAL SHIPMENTS RAW FETCH & STAGING
+  // =========================================================================
+  console.log("\n[STAGE 2] Fetching and Staging Removal Shipments...");
   const removalShipmentsTSV = await fetchReportData(
     REMOVAL_SHIPMENTS_REPORT_TYPE,
     "removal_shipments_0_30",
@@ -929,10 +538,15 @@ async function main() {
     0,
   );
   const removalShipmentRows = parseTSV(removalShipmentsTSV);
+  
+  console.log("[STAGE 2.1] Loading raw data into AMZRemovalShipment staging table...");
   const syncedRemovalShipments =
     await syncRemovalShipments(removalShipmentRows);
 
-  // 3. Sync Reimbursements
+  // =========================================================================
+  // STAGE 3: REIMBURSEMENTS RAW FETCH & STAGING
+  // =========================================================================
+  console.log("\n[STAGE 3] Fetching and Staging Reimbursements...");
   const reimbursementsTSV = await fetchReportData(
     REIMBURSEMENTS_REPORT_TYPE,
     "reimbursements_0_30",
@@ -940,11 +554,14 @@ async function main() {
     0,
   );
   const reimbursementRows = parseTSV(reimbursementsTSV);
+  
+  console.log("[STAGE 3.1] Loading raw data into AMZReimbursement staging table...");
   const syncedReimbursements = await syncReimbursements(reimbursementRows);
-  const syncedCoreReimbursements =
-    await syncCoreReimbursements(reimbursementRows);
 
-  // 4. Sync Customer Returns
+  // =========================================================================
+  // STAGE 4: CUSTOMER RETURNS RAW FETCH & STAGING
+  // =========================================================================
+  console.log("\n[STAGE 4] Fetching and Staging Customer Returns...");
   const customerReturnsTSV = await fetchReportData(
     RETURNS_REPORT_TYPE,
     "customer_returns_0_30",
@@ -952,51 +569,24 @@ async function main() {
     0,
   );
   const customerReturnRows = parseTSV(customerReturnsTSV);
+  
+  console.log("[STAGE 4.1] Loading raw data into AMZCustomerReturn staging table...");
   const syncedCustomerReturns = await syncCustomerReturns(customerReturnRows);
-  const syncedCoreReturns = await syncCoreReturns(customerReturnRows);
 
   console.log("\n======================================");
-  console.log("SYNC SUMMARY:");
-  console.log(
-    `- AMZRemovalOrders: ${syncedRemovalOrders} records synced to Raw`,
-  );
-  console.log(
-    `- Orders (from Removal Orders): ${syncedCoreOrders} records synced to Core`,
-  );
-  console.log(
-    `- AMZRemovalShipments: ${syncedRemovalShipments} records synced to Raw`,
-  );
-  console.log(
-    `- AMZReimbursements: ${syncedReimbursements} records synced to Raw`,
-  );
-  console.log(
-    `- Reimbursements: ${syncedCoreReimbursements} records synced to Core`,
-  );
-  console.log(
-    `- AMZCustomerReturns: ${syncedCustomerReturns} records synced to Raw`,
-  );
-  console.log(`- ReturnItems: ${syncedCoreReturns} records synced to Core`);
+  console.log("RAW FETCH AND STAGE SUMMARY:");
+  console.log(`- AMZRemovalOrders: ${syncedRemovalOrders} records loaded to staging`);
+  console.log(`- AMZRemovalShipments: ${syncedRemovalShipments} records loaded to staging`);
+  console.log(`- AMZReimbursements: ${syncedReimbursements} records loaded to staging`);
+  console.log(`- AMZCustomerReturns: ${syncedCustomerReturns} records loaded to staging`);
   console.log("======================================");
-
-  // Run the incremental repopulator after the fetch completes
-  if (!process.env.DISABLE_REPOPULATE) {
-    try {
-      console.log("\nTriggering incremental repopulation task (repopulate_incremental.js)...");
-      await repopulateMain();
-      console.log("Incremental repopulation task finished.");
-    } catch (err) {
-      console.error("[WARN] Incremental repopulation task failed:", err?.message || err);
-    }
-  } else {
-    console.log("DISABLE_REPOPULATE is set - skipping repopulation task.");
-  }
 }
 
 // Equivalent of require.main === module in ES Modules
 const __filename = fileURLToPath(import.meta.url);
 if (process.argv[1] === __filename) {
   main()
-    .catch((e) => console.error("[FATAL ERROR] Sync process failed:", e))
+    .catch((e) => console.error("[FATAL ERROR] Fetch task failed:", e))
     .finally(async () => {
       await prisma.$disconnect().catch(() => {});
     });

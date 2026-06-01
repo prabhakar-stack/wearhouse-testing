@@ -3,6 +3,15 @@ import { fetchTrackingSnapshot } from "@/lib/trackcourier";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
 
+// Helper to get carrier name from AMZRemovalShipment by tracking number
+async function getCarrierByTracking(trackingNumber: string): Promise<string | null> {
+  const rec = await prisma.aMZRemovalShipment.findFirst({
+    where: { trackingNumber },
+    select: { carrier: true },
+  });
+  return rec?.carrier ?? null;
+}
+
 export const HOUR_MS = 60 * 60 * 1000;
 export const HALF_DAY_MS = 12 * HOUR_MS;
 export const FIVE_DAYS_MS = 5 * 24 * HOUR_MS;
@@ -119,6 +128,26 @@ export async function runExpectedTrackingJob() {
       },
     },
   });
+// Update manifest status based on expectedDate
+const now = new Date();
+for (const m of manifests) {
+  if (m.expectedDate) {
+    const expected = new Date(m.expectedDate);
+    let newStatus: any = null;
+    if (expected > now) {
+      newStatus = "IN_TRANSIT";
+    } else if (expected.getTime() === now.setHours(0,0,0,0)) {
+      newStatus = "EXPECTED";
+    }
+    if (newStatus && m.status !== newStatus) {
+      await prisma.manifest.update({
+        where: { id: m.id },
+        data: { status: newStatus },
+      });
+      m.status = newStatus;
+    }
+  }
+}
 
   const refreshed: Array<{
     manifestId: string;
@@ -147,7 +176,7 @@ export async function runExpectedTrackingJob() {
         OR: [
           {
             orderId: {
-              in: manifest.orders.map((order) => order.platformOrderId),
+              in: (manifest.orders ?? []).map((order: any) => order.platformOrderId),
             },
           },
           {
@@ -155,7 +184,7 @@ export async function runExpectedTrackingJob() {
               in: [
                 manifest.trackingId,
                 manifest.removalOrderId,
-                ...(manifest.orders || []).map((order) => order.trackingNumber),
+                ...(manifest.orders ?? []).map((order: any) => order.trackingNumber),
               ].filter((value): value is string => !!value),
             },
           },
@@ -176,8 +205,8 @@ export async function runExpectedTrackingJob() {
     );
 
     for (const trackingNumber of trackingNumbers) {
-      const existingSnapshot = (manifest.trackingSnapshots || []).find(
-        (snapshot) => snapshot.trackingNumber === trackingNumber,
+      const existingSnapshot = (manifest.trackingSnapshots ?? []).find(
+        (snapshot: any) => snapshot.trackingNumber === trackingNumber,
       );
       trackingTasks.push({
         manifestId: manifest.id,
@@ -194,13 +223,16 @@ export async function runExpectedTrackingJob() {
   let taskIndex = 0;
   for (const task of trackingTasks) {
     taskIndex++;
-    console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] Refreshing tracking ID: ${task.trackingNumber} (${task.courierName || 'Unknown Courier'})...`);
+    // Obtain carrier from shipment table (fallback to existing courierName)
+    const carrierFromShipment = await getCarrierByTracking(task.trackingNumber);
+    console.log(`Fetched carrier for ${task.trackingNumber}: ${carrierFromShipment}`);
+    const courier = carrierFromShipment ?? task.courierName;
+    console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] Refreshing tracking ID: ${task.trackingNumber} (${courier || 'Unknown Courier'})...`);
     try {
-      
       // Run the Playwright tracking check
       const snapshot = await fetchTrackingSnapshot(
         task.trackingNumber,
-        task.courierName,
+        courier,
       );
 
       // A. First update the shipmentTracking table's scheduledDelivery column
