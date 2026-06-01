@@ -11,15 +11,12 @@ export async function GET(req: Request) {
       return authError;
     }
 
-    void runExpectedTrackingJob().catch((error: any) => {
-      console.error("[Cron Expected Tracking] Background job failed:", error);
-    });
-
+    const result = await runExpectedTrackingJob();
     return NextResponse.json({
       success: true,
-      queued: true,
-      message: "Expected tracking job started",
-    }, { status: 202 });
+      message: "Expected tracking job completed successfully",
+      result,
+    }, { status: 200 });
   } catch (error: any) {
     console.error("[Cron Expected Tracking] Error:", error);
     return NextResponse.json(
