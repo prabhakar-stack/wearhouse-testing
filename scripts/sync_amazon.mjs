@@ -122,7 +122,7 @@ async function fetchReport(reportType, fileName, daysBack) {
         console.log(`  [INFO] ${reportType} → ${processingStatus}`);
         break;
       }
-      if (Date.now() - startedAt >= 300000 || attempt >= 20) {
+      if (Date.now() - startedAt >= 45000 || attempt >= 10) {
         console.warn(`  [WARN] ${reportType} timed out (${processingStatus})`);
         break;
       }

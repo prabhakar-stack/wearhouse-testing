@@ -332,7 +332,7 @@ async function syncRemovalOrders(rows) {
 
     try {
       await prisma.aMZRemovalOrder.upsert({
-        where: { orderId_sku: { orderId: mapped.orderId, sku: mapped.sku } },
+        where: { orderId: mapped.orderId },
         update: mapped,
         create: mapped,
       });
@@ -859,68 +859,16 @@ async function syncCoreReimbursements(rows) {
 async function syncCoreRemovalOrdersToOrders(rows) {
   if (!rows || rows.length === 0) return 0;
   console.log(
-    `Grouping and syncing ${rows.length} Removal Order SKU rows to operational Order table...`,
+    `Syncing ${rows.length} Removal Orders to operational Order table...`,
   );
-  
-  const groups = {};
+  let successCount = 0;
   for (const rawRow of rows) {
     const row = normalizeRow(rawRow);
     const orderId = getOrderId(row);
     if (!orderId) continue;
-    
-    if (!groups[orderId]) {
-      groups[orderId] = [];
-    }
-    groups[orderId].push(row);
-  }
 
-  let successCount = 0;
-  for (const [orderId, groupRows] of Object.entries(groups)) {
-    const totalAmount = groupRows.reduce((sum, r) => sum + (toFloat(pick(r.removal_fee)) || 0), 0);
-    const requestDate = toDate(pick(groupRows[0].request_date), new Date());
-    const totalQuantity = groupRows.reduce((sum, r) => {
-      const shipped = toInt(pick(r.shipped_quantity), null);
-      const requested = toInt(pick(r.requested_quantity), 0);
-      return sum + (shipped !== null && shipped > 0 ? shipped : requested);
-    }, 0);
-
-    const matchingShipment = await prisma.aMZRemovalShipment.findFirst({
-      where: {
-        orderId: orderId,
-        trackingNumber: { not: null, not: "" },
-      },
-      select: {
-        trackingNumber: true,
-        carrier: true,
-        shipmentDate: true,
-      },
-    });
-
-    let manifestId = null;
-    let trackingNumber = null;
-
-    if (matchingShipment && matchingShipment.trackingNumber) {
-      trackingNumber = matchingShipment.trackingNumber;
-      
-      const manifest = await prisma.manifest.upsert({
-        where: { trackingId: trackingNumber },
-        update: {
-          marketplace: "AMAZON",
-          removalOrderId: orderId,
-          courierName: matchingShipment.carrier || "Amazon Logistics",
-          expectedDate: matchingShipment.shipmentDate || requestDate,
-        },
-        create: {
-          trackingId: trackingNumber,
-          marketplace: "AMAZON",
-          removalOrderId: orderId,
-          courierName: matchingShipment.carrier || "Amazon Logistics",
-          expectedDate: matchingShipment.shipmentDate || requestDate,
-          status: "EXPECTED",
-        },
-      });
-      manifestId = manifest.id;
-    }
+    const requestDate = toDate(pick(row.request_date), new Date());
+    const removalFee = toFloat(pick(row.removal_fee));
 
     try {
       await prisma.order.upsert({
@@ -928,21 +876,15 @@ async function syncCoreRemovalOrdersToOrders(rows) {
         update: {
           marketplace: "AMAZON",
           requestDate: requestDate,
-          totalAmount: totalAmount,
-          totalQuantity: totalQuantity,
+          totalAmount: removalFee,
           fulfillmentChannel: "AMAZON_REMOVAL",
-          trackingNumber: trackingNumber || undefined,
-          manifestId: manifestId || undefined,
         },
         create: {
           marketplace: "AMAZON",
           platformOrderId: orderId,
           requestDate: requestDate,
-          totalAmount: totalAmount,
-          totalQuantity: totalQuantity,
+          totalAmount: removalFee,
           fulfillmentChannel: "AMAZON_REMOVAL",
-          trackingNumber: trackingNumber,
-          manifestId: manifestId,
         },
       });
       successCount++;
@@ -954,7 +896,7 @@ async function syncCoreRemovalOrdersToOrders(rows) {
     }
   }
   console.log(
-    `Successfully synced ${successCount} grouped Removal Orders to operational Order table.`,
+    `Successfully synced ${successCount}/${rows.length} Removal Orders to operational Order table.`,
   );
   return successCount;
 }

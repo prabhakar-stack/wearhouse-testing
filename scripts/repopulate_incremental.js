@@ -34,49 +34,30 @@ async function main(batchSize = 100) {
     try {
       const trackingNumber = shipments.find(s => s.trackingNumber)?.trackingNumber || `TRK-VIRT-${orderId}`;
 
-      const rawOrders = orderId.startsWith('__no_order__') ? [] : await prisma.aMZRemovalOrder.findMany({ where: { orderId } });
-      const requestDate = rawOrders[0]?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
-      const totalAmount = rawOrders.reduce((sum, o) => sum + (o.removalFee || 0.0), 0.0);
+      const rawOrder = orderId.startsWith('__no_order__') ? null : await prisma.aMZRemovalOrder.findFirst({ where: { orderId } });
+      const requestDate = rawOrder?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
+      const totalAmount = rawOrder?.removalFee || 0.0;
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
-      let resolvedStatus = 'EXPECTED';
-      const courierName = shipments[0]?.carrier || 'Amazon Logistics';
-
-      // Upsert manifest with initial status
+      // Upsert manifest
       const manifest = await prisma.manifest.upsert({
         where: { trackingId: trackingNumber },
         update: {
-          status: resolvedStatus,
+          status: 'EXPECTED',
           marketplace: 'AMAZON',
-          courierName: courierName,
+          courierName: shipments[0]?.carrier || 'Amazon Logistics',
           removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
           expectedDate: requestDate,
         },
         create: {
           trackingId: trackingNumber,
-          status: resolvedStatus,
+          status: 'EXPECTED',
           marketplace: 'AMAZON',
-          courierName: courierName,
+          courierName: shipments[0]?.carrier || 'Amazon Logistics',
           removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
           expectedDate: requestDate,
         }
       });
-
-      // Create initial ShipmentTracking placeholder if it doesn't exist
-      if (trackingNumber && !trackingNumber.startsWith('TRK-VIRT-')) {
-        await prisma.shipmentTracking.upsert({
-          where: { trackingNumber },
-          update: {
-            manifestId: manifest.id,
-            courierName,
-          },
-          create: {
-            trackingNumber,
-            manifestId: manifest.id,
-            courierName,
-          }
-        });
-      }
 
       // Upsert order
       if (!orderId.startsWith('__no_order__')) {
