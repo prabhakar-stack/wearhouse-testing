@@ -21,3 +21,4 @@ tracking-data.json
 # Ignore build outputs if necessary
 claims-process/dist/
 node_modules/
+note.md
