@@ -332,7 +332,12 @@ async function syncRemovalOrders(rows) {
 
     try {
       await prisma.aMZRemovalOrder.upsert({
-        where: { orderId: mapped.orderId },
+        where: { 
+          orderId_sku: { 
+            orderId: mapped.orderId, 
+            sku: mapped.sku 
+          } 
+        },
         update: mapped,
         create: mapped,
       });
