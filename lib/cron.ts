@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { PackageState } from "@prisma/client";
 import { fetchTrackingSnapshot } from "@/lib/trackcourier";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
+import { ALERT_RULE_BY_TYPE } from "./alertRules";
+
 
 // Helper to get carrier name from AMZRemovalShipment by tracking number
 async function getCarrierByTracking(trackingNumber: string): Promise<string | null> {
@@ -50,13 +53,17 @@ export function resolveManifestStatus(
   const today = new Date();
   today.setHours(0, 0, 0, 0); // Start of today
 
-  // authorative check on expectedDate: if expectedDate >= today, it should be EXPECTED. Otherwise if in transit, it stays IN_TRANSIT.
+  // authoritative check on expectedDate: if expectedDate > today, it is IN_TRANSIT. If <= today, it is EXPECTED.
   let dateStatus: "EXPECTED" | "IN_TRANSIT" | null = null;
   if (expectedDate) {
     const expDate = new Date(expectedDate);
     expDate.setHours(0, 0, 0, 0);
-    if (!Number.isNaN(expDate.getTime()) && expDate.getTime() >= today.getTime()) {
-      dateStatus = "EXPECTED";
+    if (!Number.isNaN(expDate.getTime())) {
+      if (expDate.getTime() > today.getTime()) {
+        dateStatus = "IN_TRANSIT";
+      } else {
+        dateStatus = "EXPECTED";
+      }
     }
   }
 
@@ -64,12 +71,16 @@ export function resolveManifestStatus(
   if (scheduledDelivery) {
     const scheduledDate = new Date(scheduledDelivery);
     scheduledDate.setHours(0, 0, 0, 0);
-    if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate.getTime() >= today.getTime()) {
-      dateStatus = "EXPECTED";
+    if (!Number.isNaN(scheduledDate.getTime())) {
+      if (scheduledDate.getTime() > today.getTime()) {
+        dateStatus = "IN_TRANSIT";
+      } else {
+        dateStatus = "EXPECTED";
+      }
     }
   }
 
-  if (dateStatus === "EXPECTED") {
+  if (dateStatus === "EXPECTED" && !normalized) {
     return "EXPECTED";
   }
 
@@ -86,7 +97,7 @@ export function resolveManifestStatus(
   }
 
   if (
-    /in transit|in-transit|picked up|inscan|shipment|dispatched|on the way|collected|accepted|processed/.test(
+    /in transit|in-transit|picked up|inscan|shipment|dispatched|on the way|collected|accepted|processed|connected|delay|pending/.test(
       normalized,
     )
   ) {
@@ -128,32 +139,40 @@ export async function runExpectedTrackingJob() {
       },
     },
   });
-// Update manifest status based on expectedDate
-const now = new Date();
-for (const m of manifests) {
-  if (m.expectedDate) {
-    const expected = new Date(m.expectedDate);
-    let newStatus: any = null;
-    if (expected > now) {
-      newStatus = "IN_TRANSIT";
-    } else if (expected.getTime() === now.setHours(0,0,0,0)) {
-      newStatus = "EXPECTED";
-    }
-    if (newStatus && m.status !== newStatus) {
-      await prisma.manifest.update({
-        where: { id: m.id },
-        data: { status: newStatus },
-      });
-      m.status = newStatus;
+
+  // Update manifest status based on expectedDate and current status
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const m of manifests) {
+    if (m.expectedDate) {
+      const expected = new Date(m.expectedDate);
+      expected.setHours(0, 0, 0, 0);
+      // Use enum PackageState for status updates
+      let newStatus: PackageState | null = null;
+      if (expected > today) {
+        // Future expected date => IN_TRANSIT
+        newStatus = PackageState.IN_TRANSIT;
+      } else if (expected <= today && m.status === PackageState.IN_TRANSIT) {
+        // Expected today/past and currently IN_TRANSIT => EXPECTED
+        newStatus = PackageState.EXPECTED;
+      }
+      if (newStatus && m.status !== newStatus) {
+        await prisma.manifest.update({
+          where: { id: m.id },
+          data: { status: newStatus },
+        });
+        m.status = newStatus;
+      }
     }
   }
-}
 
+  // Containers for refreshed data and errors
   const refreshed: Array<{
     manifestId: string;
     trackingNumber: string;
     status: string | null;
   }> = [];
+
   const errors: Array<{
     manifestId: string;
     trackingNumber: string;
@@ -198,6 +217,7 @@ for (const m of manifests) {
     const trackingNumbers = Array.from(
       new Set(
         [
+          manifest.trackingId,
           ...(manifest.orders || []).map((order) => order.trackingNumber),
           ...shipmentTrackingNumbers.map((shipment) => shipment.trackingNumber),
         ].filter((value): value is string => !!value),
@@ -219,6 +239,50 @@ for (const m of manifests) {
     }
   }
 
+  const now = new Date();
+  const activeGhostAlerts = await prisma.alert.findMany({
+    where: {
+      manifestId: { in: manifests.map((m) => m.id) },
+      type: { startsWith: "GHOST_DELIVERY_T1" },
+      resolved: false,
+    },
+  });
+
+  const activeAlertsByManifest: Record<string, any[]> = {};
+  for (const alert of activeGhostAlerts) {
+    if (alert.manifestId) {
+      if (!activeAlertsByManifest[alert.manifestId]) {
+        activeAlertsByManifest[alert.manifestId] = [];
+      }
+      activeAlertsByManifest[alert.manifestId].push(alert);
+    }
+  }
+
+  const alertsToCreate: Array<{
+    level: "L1" | "L2" | "L3" | "L4";
+    type: string;
+    title: string;
+    description: string;
+    manifestId: string;
+  }> = [];
+  const alertsToResolve: string[] = [];
+
+  function parseDeliveryDate(snap: any): Date {
+    if (snap.checkpoints && snap.checkpoints.length > 0) {
+      const cp = snap.checkpoints.find((c: any) =>
+        /delivered|completed|received|proof of delivery/i.test(c.status || "")
+      );
+      if (cp && cp.date) {
+        const timeStr = cp.time ? ` ${cp.time}` : "";
+        const parsed = new Date(`${cp.date}${timeStr}`);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+    }
+    return new Date(snap.fetchedAt || Date.now());
+  }
+
   // 2. Iterate sequentially over the flat tracking array (always refresh when job is run)
   let taskIndex = 0;
   for (const task of trackingTasks) {
@@ -235,6 +299,21 @@ for (const m of manifests) {
         courier,
       );
 
+      // Resolve scheduled delivery from snapshot, with fallback to current date + 5 days if null or invalid (NaN)
+      let finalScheduledDelivery: Date | null = null;
+      if (snapshot.scheduledDelivery) {
+        const parsed = new Date(snapshot.scheduledDelivery);
+        if (!Number.isNaN(parsed.getTime())) {
+          finalScheduledDelivery = parsed;
+        }
+      }
+
+      if (!finalScheduledDelivery) {
+        const fallback = new Date();
+        fallback.setDate(fallback.getDate() + 5); // Fallback: Current Date + 5 days
+        finalScheduledDelivery = fallback;
+      }
+
       // A. First update the shipmentTracking table's scheduledDelivery column
       const trackingRecord = await prisma.shipmentTracking.upsert({
         where: { trackingNumber: task.trackingNumber },
@@ -244,9 +323,7 @@ for (const m of manifests) {
           courierSlug: snapshot.courierSlug,
           latestStatus: snapshot.latestStatus,
           latestLocation: snapshot.latestLocation,
-          scheduledDelivery: snapshot.scheduledDelivery
-            ? new Date(snapshot.scheduledDelivery)
-            : null,
+          scheduledDelivery: finalScheduledDelivery,
           checkpointCount: snapshot.checkpointCount,
           checkpoints: snapshot.checkpoints,
           rawText: snapshot.rawText,
@@ -259,9 +336,7 @@ for (const m of manifests) {
           courierSlug: snapshot.courierSlug,
           latestStatus: snapshot.latestStatus,
           latestLocation: snapshot.latestLocation,
-          scheduledDelivery: snapshot.scheduledDelivery
-            ? new Date(snapshot.scheduledDelivery)
-            : null,
+          scheduledDelivery: finalScheduledDelivery,
           checkpointCount: snapshot.checkpointCount,
           checkpoints: snapshot.checkpoints,
           rawText: snapshot.rawText,
@@ -269,14 +344,25 @@ for (const m of manifests) {
         },
       });
 
+      // A2. Also keep the AMZRemovalShipment (shipment query table) status in sync
+      if (snapshot.latestStatus) {
+        await prisma.aMZRemovalShipment.updateMany({
+          where: { trackingNumber: task.trackingNumber },
+          data: { shipmentStatus: snapshot.latestStatus },
+        });
+      }
+
       // B. Retrieve the saved scheduledDelivery from the DB and update the Manifest's expectedDate
       let updatedExpectedDate = task.expectedDate;
       if (trackingRecord.scheduledDelivery) {
-        await prisma.manifest.update({
-          where: { id: task.manifestId },
-          data: { expectedDate: trackingRecord.scheduledDelivery },
-        });
-        updatedExpectedDate = trackingRecord.scheduledDelivery;
+        const scheduled = new Date(trackingRecord.scheduledDelivery);
+        if (!Number.isNaN(scheduled.getTime())) {
+          await prisma.manifest.update({
+            where: { id: task.manifestId },
+            data: { expectedDate: scheduled },
+          });
+          updatedExpectedDate = scheduled;
+        } // else: invalid scheduledDelivery, keep existing expectedDate
       }
 
       // C. Resolve and update status
@@ -286,11 +372,78 @@ for (const m of manifests) {
         updatedExpectedDate,
       );
 
+      console.log(`[Status Debug] Manifest: ${task.manifestId} | Current: ${task.currentStatus} | Resolved: ${nextStatus} (ETA: ${updatedExpectedDate?.toISOString().slice(0,10)})`);
+
       if (nextStatus && task.currentStatus !== nextStatus) {
         await prisma.manifest.update({
           where: { id: task.manifestId },
-          data: { status: nextStatus },
+          data: { status: nextStatus as any },
         });
+      }
+
+      // D. Event-driven alert check for Ghost Delivery
+      const isDelivered = /delivered|completed|received|proof of delivery/i.test(
+        snapshot.latestStatus || "",
+      );
+      if (
+        isDelivered &&
+        (task.currentStatus === "EXPECTED" || task.currentStatus === "IN_TRANSIT")
+      ) {
+        const deliveryDate = parseDeliveryDate(snapshot);
+        const hoursSinceDelivery =
+          (now.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60);
+
+        let targetAlertType: string | null = null;
+        if (hoursSinceDelivery >= 24) {
+          targetAlertType = "GHOST_DELIVERY_T1_24H";
+        } else if (hoursSinceDelivery >= 12) {
+          targetAlertType = "GHOST_DELIVERY_T1_12H";
+        } else if (hoursSinceDelivery >= 6) {
+          targetAlertType = "GHOST_DELIVERY_T1_6H";
+        }
+
+        if (targetAlertType) {
+          const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+          if (rule) {
+            const manifestAlerts = activeAlertsByManifest[task.manifestId] || [];
+            const exactAlertExists = manifestAlerts.some(
+              (a) => a.type === targetAlertType,
+            );
+
+            if (!exactAlertExists) {
+              const GHOST_TIER_PRIORITY: Record<string, number> = {
+                GHOST_DELIVERY_T1_6H: 1,
+                GHOST_DELIVERY_T1_12H: 2,
+                GHOST_DELIVERY_T1_24H: 3,
+              };
+
+              const targetPriority = GHOST_TIER_PRIORITY[targetAlertType] ?? 0;
+              let shouldCreate = true;
+
+              for (const activeAlert of manifestAlerts) {
+                const activePriority = GHOST_TIER_PRIORITY[activeAlert.type] ?? 0;
+                if (activePriority < targetPriority) {
+                  alertsToResolve.push(activeAlert.id);
+                } else if (activePriority > targetPriority) {
+                  shouldCreate = false;
+                }
+              }
+
+              if (shouldCreate) {
+                alertsToCreate.push({
+                  level: rule.level as any,
+                  type: rule.type,
+                  title: rule.title,
+                  description: rule.description.replace(
+                    "{trackingId}",
+                    task.trackingNumber,
+                  ),
+                  manifestId: task.manifestId,
+                });
+              }
+            }
+          }
+        }
       }
 
       refreshed.push({
@@ -308,6 +461,27 @@ for (const m of manifests) {
       console.error(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] ❌ Failed to refresh tracking ID ${task.trackingNumber}: ${error.message || error}`);
     }
   }
+
+  // 3. Batch execute database changes for event-driven alerts
+  if (alertsToResolve.length > 0) {
+    await prisma.alert.updateMany({
+      where: { id: { in: alertsToResolve } },
+      data: {
+        resolved: true,
+        resolvedAt: new Date(),
+        resolution: "Automatically resolved due to higher-tier alert escalation.",
+      },
+    });
+    console.log(`[Tracking Sync] Bulk-resolved ${alertsToResolve.length} lower-tier ghost delivery alerts.`);
+  }
+
+  if (alertsToCreate.length > 0) {
+    await prisma.alert.createMany({
+      data: alertsToCreate,
+    });
+    console.log(`[Tracking Sync] Bulk-inserted ${alertsToCreate.length} new ghost delivery alerts.`);
+  }
+
 
   return {
     refreshedCount: refreshed.length,

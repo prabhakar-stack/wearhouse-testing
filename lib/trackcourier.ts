@@ -27,6 +27,10 @@ const COURIER_SLUG_ALIASES: Record<string, string> = {
   bluedart: "blue-dart-courier",
   "delhivery courier": "delhivery-courier",
   delhivery: "delhivery-courier",
+  "delhivery ground": "delhivery-courier",
+  dlv: "delhivery-courier",
+  "dlv ground b2b std": "delhivery-courier",
+  "dlv_ground_b2b_std": "delhivery-courier",
   "amazon logistics": "amazon-logistics",
   dtdc: "dtdc",
   fedex: "fedex-courier",
@@ -35,17 +39,21 @@ const COURIER_SLUG_ALIASES: Record<string, string> = {
   shadowfax: "shadowfax",
   shiprocket: "shiprocket",
   "blue dart": "blue-dart-courier",
+  dhl: "dhl-courier",
+  ups: "ups-courier",
+  gati: "gati-courier",
+  xpressbees: "xpressbees-courier",
+  "india post": "india-post",
+  aramex: "aramex-courier",
 };
 
 function slugifyCourierName(courierName: string | null | undefined) {
   const normalized = (courierName || "").trim().toLowerCase();
   if (!normalized) return "blue-dart-courier";
 
-  // Check aliases first
   const alias = COURIER_SLUG_ALIASES[normalized];
   if (alias) return alias;
 
-  // Smart prefix and fuzzy mapping for variations (e.g. bluedart_ground_std, delhivery_surface)
   if (normalized.startsWith("bluedart") || normalized.startsWith("blue-dart") || normalized.includes("blue dart")) {
     return "blue-dart-courier";
   }
@@ -82,6 +90,28 @@ function normalizeLines(text: string) {
     .filter(Boolean);
 }
 
+function formatToCourierDate(rawInfo: string | null | undefined): string | null {
+  if (!rawInfo) return null;
+
+  const firstDigitIdx = rawInfo.search(/\d/);
+  if (firstDigitIdx === -1) return null;
+  const strippedLeading = rawInfo.slice(firstDigitIdx).trim();
+
+  const coreDateStr = strippedLeading.split(",")[0].trim();
+
+  const standardForm = coreDateStr.replace(/-/g, " ");
+  const parsedDate = new Date(standardForm);
+
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[parsedDate.getMonth()];
+  const year = parsedDate.getFullYear();
+
+  return `${day}-${month}-${year}`;
+}
+
 function parseTrackingText(
   rawText: string,
 ): Pick<
@@ -96,12 +126,14 @@ function parseTrackingText(
   const lines = normalizeLines(rawText);
   const checkpoints: TrackingCheckpoint[] = [];
 
+  // ✅ FIX 1: Flexible line finder to scan for any form of delivery status headers
   const scheduledLine = lines.find((line) =>
-    /^Scheduled Delivery:/i.test(line),
+    /(Scheduled|Expected|Estimated|Delivery)\s*Delivery/i.test(line)
   );
-  const scheduledDelivery = scheduledLine
-    ? scheduledLine.replace(/^Scheduled Delivery:\s*/i, "").trim()
-    : null;
+  const scheduledDelivery = scheduledLine ? formatToCourierDate(scheduledLine) : null;
+
+  // ✅ FIX 2: Flexible pattern allowing spaces or hyphens for checkpoint logs
+  const flexibleDateRegex = /^\d{1,2}[- ][A-Za-z]{3,9}[- ]\d{4}$/;
 
   for (let index = 0; index < lines.length; index++) {
     const dateLine = lines[index];
@@ -109,11 +141,11 @@ function parseTrackingText(
     const maybeStatus = lines[index + 2] || null;
     const maybeLocation = lines[index + 3] || null;
 
-    if (!/^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(dateLine)) {
+    if (!flexibleDateRegex.test(dateLine)) {
       continue;
     }
 
-    if (!timeLine || !/^\d{1,2}:\d{2}$/.test(timeLine)) {
+    if (!timeLine || !/^\d{1,2}:\d{2}/.test(timeLine)) {
       continue;
     }
 
@@ -127,11 +159,11 @@ function parseTrackingText(
     }
 
     checkpoints.push({
-      date: dateLine,
+      date: formatToCourierDate(dateLine) || dateLine, // Standardize to DD-MMM-YYYY format
       time: timeLine,
       status: maybeStatus,
       location:
-        maybeLocation && !/^\d{1,2}-[A-Za-z]{3}-\d{4}$/.test(maybeLocation)
+        maybeLocation && !flexibleDateRegex.test(maybeLocation)
           ? maybeLocation
           : null,
     });
@@ -151,7 +183,7 @@ function parseTrackingText(
     checkpointCount: checkpoints.length,
     checkpoints,
     found: lines.some((line) =>
-      /(Delivered|Out For Delivery|Arrived|Picked Up|Pending)/i.test(line),
+      /(Delivered|Out For Delivery|Arrived|Picked Up|Pending|Shipment)/i.test(line),
     ),
   };
 }
@@ -171,42 +203,119 @@ export async function fetchTrackingSnapshot(
     const page = await browser.newPage({
       viewport: { width: 1440, height: 900 },
     });
-    await page.goto(trackingUrl, { waitUntil: "networkidle", timeout: 90000 });
 
-    // Wait 20 seconds strictly to ensure dynamic tracking status completely loads
-    console.log(`[Playwright Browser] Navigation to track-and-trace complete. Waiting 20 seconds for page to update...`);
-    await page.waitForTimeout(30000);
+    let apiResponseJson: any = null;
+    page.on("response", async (response: any) => {
+      try {
+        if (response.url().includes("get_checkpoints_table")) {
+          apiResponseJson = await response.json();
+        }
+      } catch (err) {
+        // ignore
+      }
+    });
+
+    console.log(`[Playwright Browser] Navigating to URL: ${trackingUrl}`);
+    await page.goto(trackingUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+
+    // Dynamic polling helper checking every 5 seconds for success
+    const pollForData = async (maxSeconds: number): Promise<boolean> => {
+      const startTime = Date.now();
+      while (Date.now() - startTime < maxSeconds * 1000) {
+        if (apiResponseJson && apiResponseJson.Checkpoints && apiResponseJson.Checkpoints.length > 0) {
+          return true;
+        }
+
+        const rawText = decodeHtmlEntities(await page.evaluate(() => document.body.innerText || ""));
+        const parsed = parseTrackingText(rawText);
+
+        if (parsed.found && parsed.checkpointCount > 0) {
+          return true;
+        }
+
+        await page.waitForTimeout(5000);
+      }
+      return false;
+    };
+
+    console.log(`[Playwright Browser] Beginning dynamic status polling (up to 60 seconds)...`);
+    let success = await pollForData(60);
+
+    // If first round failed to get a good status, trigger single page reload as fallback
+    if (!success) {
+      console.log(`[Playwright Browser] First polling round failed. Triggering single page reload to bypass glitches...`);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      console.log(`[Playwright Browser] Reload complete. Polling again for up to 30 seconds...`);
+      success = await pollForData(30);
+    }
+
+    // Mark as unable to track if polling still unsuccessful after 2nd round
+    if (!success) {
+      console.log(`[Playwright Browser] Final result: Unable to track this shipment.`);
+      return {
+        trackingNumber,
+        courierName: courierName || null,
+        courierSlug,
+        trackingUrl,
+        rawText: "Unable to track this",
+        fetchedAt: new Date().toISOString(),
+        scheduledDelivery: null,
+        latestStatus: "Unable to track this",
+        latestLocation: null,
+        checkpointCount: 0,
+        checkpoints: [],
+        found: false,
+      } satisfies TrackingSnapshot;
+    }
+
+    // If clean JSON API response was intercepted during direct page load, use it immediately!
+    if (
+      apiResponseJson &&
+      apiResponseJson.Checkpoints &&
+      apiResponseJson.Checkpoints.length > 0
+    ) {
+      console.log("[Playwright Browser] Intercepted clean JSON from direct page load!");
+      const cps: TrackingCheckpoint[] = apiResponseJson.Checkpoints.map(
+        (c: any) => ({
+          date: formatToCourierDate(c.Date) || c.Date,
+          time: c.Time || null,
+          status: c.Activity || c.CheckpointState || "",
+          location: c.Location || null,
+        }),
+      );
+
+      return {
+        trackingNumber,
+        courierName: courierName || null,
+        courierSlug,
+        trackingUrl,
+        rawText: JSON.stringify(apiResponseJson),
+        fetchedAt: new Date().toISOString(),
+        scheduledDelivery: formatToCourierDate(apiResponseJson?.AdditionalInfo) || null,
+        latestStatus: (apiResponseJson?.MostRecentStatus)?.split('-')[0].trim() || null,
+        latestLocation: (cps[0] && cps[0].location) || null,
+        checkpointCount: cps.length,
+        checkpoints: cps,
+        found: true,
+      } satisfies TrackingSnapshot;
+    }
 
     const rawText = decodeHtmlEntities(
       await page.evaluate(() => document.body.innerText || ""),
     );
+
     const parsed = parseTrackingText(rawText);
 
-    // If parsing the direct track-and-trace page found nothing useful,
-    // try the homepage UI flow which triggers the `get_checkpoints_table` API.
     if (
       (!parsed.found || parsed.checkpointCount === 0) &&
       typeof page.getByRole === "function"
     ) {
       try {
-        // Navigate to homepage and trigger the UI flow
         await page.goto("https://trackcourier.io/", {
-          waitUntil: "networkidle",
+          waitUntil: "domcontentloaded",
           timeout: 90000,
         });
 
-        let apiResponseJson: any = null;
-        page.on("response", async (response: any) => {
-          try {
-            if (response.url().includes("get_checkpoints_table")) {
-              apiResponseJson = await response.json();
-            }
-          } catch (err) {
-            // ignore
-          }
-        });
-
-        // Try to focus and fill the tracking input
         try {
           await page
             .getByRole("searchbox", { name: "Enter tracking number here." })
@@ -230,14 +339,12 @@ export async function fetchTrackingSnapshot(
             .catch(() => {});
         }
 
-        // select courier if present
         try {
           await page.locator("#courierList").selectOption(courierSlug);
         } catch (_) {
           // ignore
         }
 
-        // Click the track button
         try {
           await page.getByRole("button", { name: /Track/i }).click();
         } catch (_) {
@@ -247,7 +354,6 @@ export async function fetchTrackingSnapshot(
             .catch(() => {});
         }
 
-        // wait for API response
         try {
           await page.waitForResponse(
             (r: any) => r.url().includes("get_checkpoints_table"),
@@ -264,7 +370,7 @@ export async function fetchTrackingSnapshot(
         ) {
           const cps: TrackingCheckpoint[] = apiResponseJson.Checkpoints.map(
             (c: any) => ({
-              date: c.Date || "",
+              date: formatToCourierDate(c.Date) || c.Date,
               time: c.Time || null,
               status: c.Activity || c.CheckpointState || "",
               location: c.Location || null,
@@ -276,21 +382,11 @@ export async function fetchTrackingSnapshot(
             courierName: courierName || null,
             courierSlug,
             trackingUrl,
-            rawText: apiResponseJson
-              ? JSON.stringify(apiResponseJson)
-              : rawText,
+            rawText: apiResponseJson ? JSON.stringify(apiResponseJson) : rawText,
             fetchedAt: new Date().toISOString(),
-            scheduledDelivery:
-              apiResponseJson?.AdditionalInfo?.replace(
-                /^Scheduled Delivery:\s*/i,
-                "",
-              ) ||
-              parsed.scheduledDelivery ||
-              null,
-            latestStatus:
-              apiResponseJson?.MostRecentStatus || parsed.latestStatus,
-            latestLocation:
-              (cps[0] && cps[0].location) || parsed.latestLocation,
+            scheduledDelivery: formatToCourierDate(apiResponseJson?.AdditionalInfo) || parsed.scheduledDelivery || null,
+            latestStatus: (apiResponseJson?.MostRecentStatus || parsed.latestStatus)?.split('-')[0].trim(),
+            latestLocation: (cps[0] && cps[0].location) || parsed.latestLocation,
             checkpointCount: cps.length,
             checkpoints: cps,
             found: true,

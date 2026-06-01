@@ -88,3 +88,10 @@ Fetch latest OTP for a tracking id:
 ```
 GET /api/otp/latest?trackingId=REMOVAL_ORDER_12345
 ```
+
+## Tracking Sync & Dynamic Fallback ETAs
+
+For tracking IDs that do not return a scheduled delivery date from the courier (e.g. initial checkpoints or incomplete tracking details), the sync job dynamically applies a fallback expected delivery date:
+* **Fallback calculation**: If the ETA is empty, `null`, or invalid (`NaN`), it is resolved as **`currentDate + 5 days`** at run time.
+* **On-going Updates**: The engine evaluates and recalculates this fallback dynamically on every subsequent execution to keep dates active and forward-moving until the courier updates its official ETA.
+
