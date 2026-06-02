@@ -1520,7 +1520,7 @@ function AlertsTab() {
   const fetchAlerts = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/alerts");
+      const res = await fetch("/api/alerts?dashboard=true");
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);

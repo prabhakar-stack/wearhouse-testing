@@ -4,6 +4,7 @@ import { fetchTrackingSnapshot } from "@/lib/trackcourier";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
 import { ALERT_RULE_BY_TYPE } from "./alertRules";
+import { calculateWarehouseWorkingHours } from "./timeUtils";
 
 
 // Helper to get carrier name from AMZRemovalShipment by tracking number
@@ -240,6 +241,22 @@ export async function runExpectedTrackingJob() {
   }
 
   const now = new Date();
+  
+  // Fetch warehouse operational hours settings from system config
+  const configRecord = await (prisma as any).systemConfig.findUnique({
+    where: { key: "warehouse_hours" },
+  });
+  let startTimeStr: string | null = null;
+  let endTimeStr: string | null = null;
+  if (configRecord) {
+    try {
+      const config = JSON.parse(configRecord.value);
+      startTimeStr = config.startTime;
+      endTimeStr = config.endTime;
+    } catch (e) {
+      // Ignored
+    }
+  }
   const activeGhostAlerts = await prisma.alert.findMany({
     where: {
       manifestId: { in: manifests.map((m) => m.id) },
@@ -390,8 +407,13 @@ export async function runExpectedTrackingJob() {
         (task.currentStatus === "EXPECTED" || task.currentStatus === "IN_TRANSIT")
       ) {
         const deliveryDate = parseDeliveryDate(snapshot);
-        const hoursSinceDelivery =
-          (now.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60);
+        const hoursSinceDelivery = calculateWarehouseWorkingHours(
+          deliveryDate,
+          now,
+          startTimeStr,
+          endTimeStr,
+          "Asia/Kolkata"
+        );
 
         let targetAlertType: string | null = null;
         if (hoursSinceDelivery >= 24) {

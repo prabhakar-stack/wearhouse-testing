@@ -41,6 +41,8 @@ export default function ClaimsSpecialistDashboard({
     }
   };
 
+  const claimsUrl = process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
       {/* Header */}
@@ -211,7 +213,7 @@ export default function ClaimsSpecialistDashboard({
 
         {activeTab === "triage" && (
           <iframe
-            src="http://localhost:5000/triage"
+            src={`${claimsUrl}/triage`}
             className="w-full h-full border-none"
             title="Claims Triage"
             style={{
@@ -222,7 +224,7 @@ export default function ClaimsSpecialistDashboard({
 
         {activeTab === "smartfiling" && (
           <iframe
-            src="http://localhost:5000/smartfiling"
+            src={`${claimsUrl}/smartfiling`}
             className="w-full h-full border-none"
             title="Smart Filing Monitor"
             style={{

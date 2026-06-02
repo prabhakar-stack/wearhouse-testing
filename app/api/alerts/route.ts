@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SOP_MAP } from '@/lib/alertRules';
 
-// Alert level access policy:
-//   ADMIN       → L1–L4 (all operational levels)
-//   SUPER_ACCESS → all levels including L4 (critical: phone + WhatsApp to leadership)
-//   RECEIVER    → L1, L2 only
-const ADMIN_VISIBLE_LEVELS = ['L1', 'L2', 'L3', 'L4'];
-const ALL_LEVELS            = ['L1', 'L2', 'L3', 'L4'];
+// Alert level hierarchies
+const LEVEL_VALUES: Record<string, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,46 +15,128 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const showResolved = searchParams.get('resolved') === 'true';
 
-    // Determine which levels this role can see
-    let visibleLevels = role === 'SUPER_ACCESS' ? ALL_LEVELS : (role === 'RECEIVER' || role === 'INSPECTOR') ? ['L1', 'L2'] : ADMIN_VISIBLE_LEVELS;
-
     const sessionUserId = req.headers.get('x-user-id');
     const sessionUserEmail = req.headers.get('x-user-email');
+
+    // 1. Resolve user's hierarchical alert level (DB config is checked first; admin/super-access default to L4)
+    let userLevel = 'L1';
+    let dbUser = null;
     if (sessionUserId) {
-      const dbUser = await prisma.user.findUnique({
+      dbUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
         select: { alertLevel: true }
       });
-      if (dbUser && dbUser.alertLevel) {
-        visibleLevels = [dbUser.alertLevel];
+    }
+
+    if (dbUser && dbUser.alertLevel) {
+      userLevel = dbUser.alertLevel;
+    } else if (role === 'SUPER_ACCESS' || role === 'ADMIN') {
+      userLevel = 'L4';
+    }
+
+    const dashboard = searchParams.get('dashboard') === 'true';
+    const userLevelVal = LEVEL_VALUES[userLevel] || 1;
+    const emailLower = sessionUserEmail?.toLowerCase() || '';
+
+    // 2. Build visibility conditions exactly as sets
+    // Related items: targeted to user, or received/inspected by them
+    const relationConditions = [
+      { targetUserId: sessionUserId || undefined },
+      { manifest: { receivedBy: emailLower } },
+      { manifest: { inspectedBy: emailLower } }
+    ];
+
+    const isL4 = userLevel === 'L4';
+    const isL3 = userLevel === 'L3';
+    const isL2 = userLevel === 'L2';
+
+    const visibilityOrConditions: any[] = [];
+
+    if (dashboard) {
+      // Dashboard view: do not show high level alerts to lower level users at all
+      if (isL4) {
+        visibilityOrConditions.push(
+          { level: 'L1' },
+          { level: 'L2' },
+          { level: 'L3' },
+          { level: 'L4' }
+        );
+      } else if (isL3) {
+        visibilityOrConditions.push(
+          { level: 'L3' },
+          { level: 'L2', OR: relationConditions },
+          { level: 'L1', OR: relationConditions }
+        );
+      } else if (isL2) {
+        visibilityOrConditions.push(
+          { level: 'L2' },
+          { level: 'L1', OR: relationConditions }
+        );
+      } else {
+        // L1 sees L1 only if related
+        visibilityOrConditions.push(
+          { level: 'L1', OR: relationConditions }
+        );
+      }
+    } else {
+      // Notification dropdown (bell) view: let them see related higher level alerts too
+      if (isL4) {
+        // L4 user sees all levels unconditionally
+        visibilityOrConditions.push(
+          { level: 'L1' },
+          { level: 'L2' },
+          { level: 'L3' },
+          { level: 'L4' }
+        );
+      } else if (isL3) {
+        // L3 user sees L3 & L4 unconditionally, L1 & L2 only if related
+        visibilityOrConditions.push(
+          { level: 'L3' },
+          { level: 'L4' },
+          { level: 'L2', OR: relationConditions },
+          { level: 'L1', OR: relationConditions }
+        );
+      } else if (isL2) {
+        // L2 user sees L2, L3, & L4 unconditionally, L1 only if related
+        visibilityOrConditions.push(
+          { level: 'L2' },
+          { level: 'L3' },
+          { level: 'L4' },
+          { level: 'L1', OR: relationConditions }
+        );
+      } else {
+        // L1 user sees all levels ONLY if related
+        visibilityOrConditions.push(
+          { level: 'L1', OR: relationConditions },
+          { level: 'L2', OR: relationConditions },
+          { level: 'L3', OR: relationConditions },
+          { level: 'L4', OR: relationConditions }
+        );
       }
     }
 
-    // Build the dynamic where clause
+    // Combine conditions with role-based type exclusions (e.g. Inspectors cannot see Receiver alerts)
+    const isInspector = role === 'INSPECTOR';
+    const isReceiver = role === 'RECEIVER';
+    const receiverAlertTypes = ['RECEIVE_UPDATE_PENDING', 'RECV_INSP_HANDSHAKE'];
+    const inspectorAlertTypes = ['INSPECTION_PENDING', 'INSPECTION_QC_FAILED', 'INSP_RECOVERY_HANDSHAKE', 'INSP_QC_HANDSHAKE'];
+
+    const exclusionConditions: any[] = [];
+    if (isInspector) {
+      receiverAlertTypes.forEach(prefix => {
+        exclusionConditions.push({ type: { not: { startsWith: prefix } } });
+      });
+    } else if (isReceiver) {
+      inspectorAlertTypes.forEach(prefix => {
+        exclusionConditions.push({ type: { not: { startsWith: prefix } } });
+      });
+    }
+
     const whereClause: any = {
       resolved: showResolved,
-      level: { in: visibleLevels as any },
+      AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
+      OR: visibilityOrConditions
     };
-
-    // Filter L1 alerts for RECEIVER or INSPECTOR roles to only see their own processed/targeted items
-    if (role === 'RECEIVER' || role === 'INSPECTOR') {
-      const emailLower = sessionUserEmail?.toLowerCase() || '';
-      whereClause.OR = [
-        {
-          level: { not: 'L1' }
-        },
-        {
-          level: 'L1',
-          OR: role === 'RECEIVER' ? [
-            { targetUserId: sessionUserId || undefined },
-            { manifest: { receivedBy: emailLower } }
-          ] : [
-            { targetUserId: sessionUserId || undefined },
-            { manifest: { inspectedBy: emailLower } }
-          ]
-        }
-      ];
-    }
 
     const alerts = await prisma.alert.findMany({
       where: whereClause,
@@ -79,7 +157,7 @@ export async function GET(req: NextRequest) {
       ]
     });
 
-    // Construct SOP steps from central alertRules registry (all 42 types included)
+    // Construct SOP steps from central alertRules registry
     const alertTypes = [...new Set(alerts.map(a => a.type))];
     const sopMap: Record<string, { id: string; stepOrder: number; instruction: string }[]> = {};
     for (const type of alertTypes) {
@@ -99,26 +177,9 @@ export async function GET(req: NextRequest) {
     if (!showResolved) {
       const unresolvedWhere: any = {
         resolved: false,
-        level: { in: visibleLevels as any },
+        AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
+        OR: visibilityOrConditions
       };
-      if (role === 'RECEIVER' || role === 'INSPECTOR') {
-        const emailLower = sessionUserEmail?.toLowerCase() || '';
-        unresolvedWhere.OR = [
-          {
-            level: { not: 'L1' }
-          },
-          {
-            level: 'L1',
-            OR: role === 'RECEIVER' ? [
-              { targetUserId: sessionUserId || undefined },
-              { manifest: { receivedBy: emailLower } }
-            ] : [
-              { targetUserId: sessionUserId || undefined },
-              { manifest: { inspectedBy: emailLower } }
-            ]
-          }
-        ];
-      }
 
       const countResult = await prisma.alert.groupBy({
         by: ['level'],
@@ -138,26 +199,9 @@ export async function GET(req: NextRequest) {
     const statsWhere: any = {
       resolved: true,
       resolvedAt: { gte: startOfToday },
-      level: { in: visibleLevels as any },
+      AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
+      OR: visibilityOrConditions
     };
-    if (role === 'RECEIVER' || role === 'INSPECTOR') {
-      const emailLower = sessionUserEmail?.toLowerCase() || '';
-      statsWhere.OR = [
-        {
-          level: { not: 'L1' }
-        },
-        {
-          level: 'L1',
-          OR: role === 'RECEIVER' ? [
-            { targetUserId: sessionUserId || undefined },
-            { manifest: { receivedBy: emailLower } }
-          ] : [
-            { targetUserId: sessionUserId || undefined },
-            { manifest: { inspectedBy: emailLower } }
-          ]
-        }
-      ];
-    }
 
     const resolvedTodayCount = await prisma.alert.count({
       where: statsWhere
@@ -173,7 +217,7 @@ export async function GET(req: NextRequest) {
       adherenceRate: resolvedTodayCount > 0 ? Math.round((sopFollowedTodayCount / resolvedTodayCount) * 100) : 100
     };
 
-    return NextResponse.json({ alerts, sopMap, counts, role, stats });
+    return NextResponse.json({ alerts, sopMap, counts, role, stats, userLevel });
   } catch (error: any) {
     console.error('Alerts GET error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
@@ -193,7 +237,7 @@ function checkResolvable(
   const t = alertType;
   const id = trackingId || 'this package';
 
-  const PAST_DOCK       = ['IN_INSPECTION', 'INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
+  const PAST_DOCK = ['IN_INSPECTION', 'INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
   const FULLY_PROCESSED = ['INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
 
   // Delivery breaches / ghost delivery → package must have arrived
@@ -264,6 +308,24 @@ export async function PATCH(req: NextRequest) {
     // Handle bulk resolves: if alertId is an array, resolve all
     const ids: string[] = Array.isArray(alertId) ? alertId : [alertId];
 
+    // Resolve user's hierarchical alert level to enforce resolution permissions (DB config checked first)
+    let userLevel = 'L1';
+    let dbUser = null;
+    if (userId) {
+      dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { alertLevel: true }
+      });
+    }
+
+    if (dbUser && dbUser.alertLevel) {
+      userLevel = dbUser.alertLevel;
+    } else if (role === 'SUPER_ACCESS' || role === 'ADMIN') {
+      userLevel = 'L4';
+    }
+
+    const userLevelVal = LEVEL_VALUES[userLevel] || 1;
+
     const resolved = [];
     const blocked = [];
 
@@ -278,6 +340,21 @@ export async function PATCH(req: NextRequest) {
 
       if (!alertRecord) { blocked.push({ id, reason: 'Alert not found' }); continue; }
       if (alertRecord.resolved) { resolved.push({ id, skipped: true }); continue; }
+
+      // Enforce set-based resolution permissions: L4 resolves all, L1 can be resolved by anyone, otherwise userLevel must match alertLevel exactly
+      const canResolveAlert =
+        userLevel === 'L4' ||
+        alertRecord.level === 'L1' ||
+        alertRecord.level === userLevel;
+
+      if (!canResolveAlert) {
+        blocked.push({
+          id,
+          reason: `Forbidden: You are at level ${userLevel}, but this alert requires level ${alertRecord.level} to resolve.`,
+          dataIssue: false
+        });
+        continue;
+      }
 
       // Skip data check if forceResolve=true (super-admin override) or no manifest
       if (!forceResolve) {

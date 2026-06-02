@@ -3029,7 +3029,7 @@ function NotificationsTab() {
   const [resolveError, setResolveError] = useState('');
 
   const fetchAlerts = useCallback(() => {
-    fetch('/api/alerts')
+    fetch('/api/alerts?dashboard=true')
       .then(r => r.json())
       .then(d => {
         if (d.alerts) setAlerts(d.alerts);

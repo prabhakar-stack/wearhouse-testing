@@ -414,18 +414,25 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
             {activeTab === 'claims'   && <ClaimsTab />}
-            {activeTab === 'triage' && canAccessTriage && (
-              <iframe src="http://localhost:5000/triage?embed=true" className="w-full h-screen border-none" />
-            )}
-            {activeTab === 'smart-filing' && canAccessSmartFiling && (
-              <iframe src="http://localhost:5000/smartfiling?embed=true" className="w-full h-screen border-none" />
-            )}
-            {activeTab === 'recovery' && canAccessRecovery && (
-              <iframe src="http://localhost:5000/recoveryhubtab?embed=true" className="w-full h-screen border-none" />
-            )}
-            {activeTab === 'qc' && canAccessQC && (
-              <iframe src="http://localhost:5000/qcaudittab?embed=true" className="w-full h-screen border-none" />
-            )}
+            {(() => {
+              const claimsUrl = process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000";
+              return (
+                <>
+                  {activeTab === 'triage' && canAccessTriage && (
+                    <iframe src={`${claimsUrl}/triage?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                  {activeTab === 'smart-filing' && canAccessSmartFiling && (
+                    <iframe src={`${claimsUrl}/smartfiling?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                  {activeTab === 'recovery' && canAccessRecovery && (
+                    <iframe src={`${claimsUrl}/recoveryhubtab?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                  {activeTab === 'qc' && canAccessQC && (
+                    <iframe src={`${claimsUrl}/qcaudittab?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </main>
@@ -960,6 +967,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
+  const [currentUserLevel, setCurrentUserLevel] = useState<string>('L1');
   const [sopChecked, setSopChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -979,13 +987,14 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const fetchAlerts = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/alerts?resolved=${showResolved}`);
+      const res = await fetch(`/api/alerts?resolved=${showResolved}&dashboard=true`);
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);
         setSopMap(data.sopMap || {});
         if (data.counts) setCounts(data.counts);
         if (data.stats) setStats(data.stats);
+        if (data.userLevel) setCurrentUserLevel(data.userLevel);
       }
     } finally {
       setLoading(false);
@@ -1270,7 +1279,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
             const cfg = LEVEL_CONFIG[alert.level] || LEVEL_CONFIG.L1;
             const isExpanded = expandedId === alert.id;
             const sopSteps = sopMap[alert.type] || [];
-            const canResolve = true;
+            const canResolve = currentUserLevel === 'L4' || alert.level === 'L1' || alert.level === currentUserLevel;
 
             return (
               <div
@@ -1327,7 +1336,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
                   </div>
                   </button>
                   {/* Quick Resolve Button */}
-                  {!alert.resolved && !showResolved && (
+                  {!alert.resolved && !showResolved && canResolve && (
                     <div
                       className="flex items-center px-3 shrink-0 border-l border-black/5"
                       onClick={e => e.stopPropagation()}
@@ -1444,7 +1453,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
                         {!canResolve ? (
                           <div className="flex items-center space-x-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                             <ShieldAlert size={14} className="text-red-500 shrink-0" />
-                            <p className="text-xs text-red-700 font-bold">L4 Critical alerts can only be resolved by Super Access.</p>
+                            <p className="text-xs text-red-700 font-bold">This alert requires alert level {alert.level} to resolve, but your configuration is {currentUserLevel}.</p>
                           </div>
                         ) : (
                           <div className="flex flex-col space-y-3 pt-2">

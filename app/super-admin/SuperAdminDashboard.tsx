@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Shield, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import SettingsTab from './SettingsTab';
 
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
 
 export default function SuperAdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc'>('alerts');
+  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc' | 'settings'>('alerts');
   
   const userRoleLower = role?.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
   const isAdminOrSuper = userRoleLower === 'admin' || userRoleLower === 'super access' || userRoleLower === 'super_access' || userRoleLower === 'super-access';
@@ -309,6 +310,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
           {canAccessQC && (
             <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           )}
+          <TabButton id="settings" icon={<Clock size={14} />} label="Operational Settings" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
         </nav>
 
         {/* Sidebar Footer */}
@@ -409,21 +411,29 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab />}
             {activeTab === 'claims'   && <ClaimsTab />}
-           {activeTab === 'triage' && canAccessTriage && (
-                  <iframe 
-                    src="http://localhost:5000/triage?embed=true" 
-                    className="w-full h-screen border-none" 
-                  />
-                )}
-            {activeTab === 'smart-filing' && canAccessSmartFiling && (
-              <iframe src="http://localhost:5000/smartfiling?embed=true" className="w-full h-screen border-none" />
-            )}
-            {activeTab === 'recovery' && canAccessRecovery && (
-              <iframe src="http://localhost:5000/recoveryhubtab?embed=true" className="w-full h-screen border-none" />
-            )}
-            {activeTab === 'qc' && canAccessQC && (
-              <iframe src="http://localhost:5000/qcaudittab?embed=true" className="w-full h-screen border-none" />
-            )}
+            {(() => {
+              const claimsUrl = process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000";
+              return (
+                <>
+                  {activeTab === 'triage' && canAccessTriage && (
+                    <iframe 
+                      src={`${claimsUrl}/triage?embed=true`} 
+                      className="w-full h-screen border-none" 
+                    />
+                  )}
+                  {activeTab === 'smart-filing' && canAccessSmartFiling && (
+                    <iframe src={`${claimsUrl}/smartfiling?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                  {activeTab === 'recovery' && canAccessRecovery && (
+                    <iframe src={`${claimsUrl}/recoveryhubtab?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                  {activeTab === 'qc' && canAccessQC && (
+                    <iframe src={`${claimsUrl}/qcaudittab?embed=true`} className="w-full h-screen border-none" />
+                  )}
+                </>
+              );
+            })()}
+            {activeTab === 'settings' && <SettingsTab />}
           </div>
         </div>
       </main>
@@ -1038,7 +1048,7 @@ function AlertsTab() {
   const fetchAlerts = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/alerts?resolved=${showResolved}`);
+      const res = await fetch(`/api/alerts?resolved=${showResolved}&dashboard=true`);
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);

@@ -140,7 +140,7 @@ export default function QcAgentDashboard({
 
         {/* Main Panel */}
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-          <iframe src="http://localhost:5000/qcaudittab" className="w-full h-screen border-none" style={{
+          <iframe src={`${process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000"}/qcaudittab`} className="w-full h-screen border-none" style={{
               height: "calc(100vh - 200px)", 
             }}/>
         </div>

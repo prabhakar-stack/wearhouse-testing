@@ -442,3 +442,9 @@ enum EvidenceType {
   INSPECTION_VIDEO
   PRODUCT_DAMAGE_PHOTO
 }
+
+model SystemConfig {
+  key       String   @id
+  value     String   // Stores JSON config
+  updatedAt DateTime @updatedAt
+}
