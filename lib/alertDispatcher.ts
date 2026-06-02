@@ -1,17 +1,14 @@
-import nodemailer from 'nodemailer';
-import { prisma } from './prisma';
-import { ALERT_RULE_BY_TYPE } from './alertRules';
+// import nodemailer from 'nodemailer';
+import { prisma } from './prisma.ts';
+import { ALERT_RULE_BY_TYPE } from './alertRules.ts';
 
-// Initialize transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.resend.com',
-  port: parseInt(process.env.SMTP_PORT || '587', 10),
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASSWORD || '',
-  },
-});
+// Email transport removed – email sending disabled
+// const transporter = nodemailer.createTransport({
+//   host: process.env.SMTP_HOST || 'smtp.resend.com',
+//   port: parseInt(process.env.SMTP_PORT || '587', 10),
+//   secure: process.env.SMTP_SECURE === 'true',
+//   auth: { user: process.env.SMTP_USER || '', pass: process.env.SMTP_PASSWORD || '' },
+// });
 
 /**
  * Dispatches notification alerts via active channels (Google Chat, email, dashboard).
@@ -38,17 +35,36 @@ export async function dispatchAlert(alertId: string) {
       return;
     }
 
-    // 2. Identify the target email address(es)
-    let recipientEmails: string[] = [];
+    // Resolve targeted users from rule.targetRoles dynamically (can contain alert levels, roles, and direct emails)
+    const { alertLevels, roles, directEmails } = getPrismaUserQuery(rule.targetRoles);
+    
+    let targetEmailsFromDb: string[] = [];
+    if (alertLevels.length > 0 || roles.length > 0) {
+      const targetUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            alertLevels.length > 0 ? { alertLevel: { in: alertLevels } } : {},
+            roles.length > 0 ? { role: { in: roles } } : {},
+          ].filter(cond => Object.keys(cond).length > 0),
+        },
+        select: {
+          email: true,
+        },
+      });
+      targetEmailsFromDb = targetUsers.map(u => u.email);
+    }
+
+    let recipientEmails: string[] = [...targetEmailsFromDb, ...directEmails];
+
     if (alert.targetUser?.email) {
       recipientEmails.push(alert.targetUser.email);
     }
-    // Also scan rule targetRoles for direct email addresses as a fallback
-    rule.targetRoles.forEach((role) => {
-      if (role.includes('@')) {
-        recipientEmails.push(role.trim());
-      }
-    });
+
+    // Fallback to a test email address if no target users are configured/found
+    if (recipientEmails.length === 0) {
+      const testEmail = process.env.TEST_EMAIL || 'test@example.com';
+      recipientEmails.push(testEmail);
+    }
 
     // Deduplicate recipient emails
     recipientEmails = [...new Set(recipientEmails)];
@@ -60,10 +76,8 @@ export async function dispatchAlert(alertId: string) {
       try {
         if (channel === 'hangout') {
           await sendHangoutMessage(alert, rule.sopSteps);
-        } else if (channel === 'email') {
-          await sendEmailMessage(alert, recipientEmails, false);
-        } else if (channel === 'email_existing_thread') {
-          await sendEmailMessage(alert, recipientEmails, true);
+        } else if (channel === 'email' || channel === 'email_existing_thread') {
+          await sendEmailMessage(alert, recipientEmails, channel === 'email_existing_thread');
         }
       } catch (err) {
         console.error(`[Alert Dispatcher] Failed to dispatch via channel ${channel}:`, err);
@@ -85,7 +99,7 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
   }
 
   const trackingId = alert.manifest?.trackingId || 'N/A';
-  const sopFormatted = sopSteps.map((step, idx) => `${idx + 1}. ${step}`).join('\n');
+  const dynamicDescription = alert.description.replace(/{trackingId}/g, trackingId);
 
   // Construct Google Chat Card v2 Payload
   const payload = {
@@ -105,17 +119,7 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
               widgets: [
                 {
                   textParagraph: {
-                    text: alert.description,
-                  },
-                },
-              ],
-            },
-            {
-              header: 'SOP Steps for Resolution',
-              widgets: [
-                {
-                  textParagraph: {
-                    text: sopFormatted.replace(/\n/g, '<br>'),
+                    text: dynamicDescription,
                   },
                 },
               ],
@@ -138,70 +142,76 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
 }
 
 /**
- * Sends notification email, replying to the existing thread if requested.
+ * Sends alert notification email by calling the Deno SMTP mail server endpoint.
  */
-async function sendEmailMessage(alert: any, toEmails: string[], replyToThread: boolean) {
-  if (toEmails.length === 0) {
-    console.warn(`[Alert Dispatcher] No recipient email found for alert ${alert.id}. Skipping email.`);
-    return;
-  }
-
-  const fromEmail = process.env.SMTP_FROM || 'alerts@warehouse.local';
+async function sendEmailMessage(alert: any, toEmails: string[], _replyToThread: boolean) {
+  const mailServerUrl = process.env.DENO_MAIL_SERVER_URL || 'http://localhost:8000';
   const trackingId = alert.manifest?.trackingId || 'N/A';
-  const subject = `[Warehouse Alert] [${alert.level}] ${alert.title} (Tracking: ${trackingId})`;
+  const dynamicDescription = alert.description.replace(/{trackingId}/g, trackingId);
+  
+  // Format the email content
+  const subject = alert.title || '⚠️ Process Break Alert';
+  const content = `Alert Details:
+--------------------------------------
+Title: ${alert.title}
+Priority Level: ${alert.level}
+Tracking ID: ${trackingId}
 
-  let headers: Record<string, string> = {};
-  let threadKey = alert.manifestId || alert.manifest?.id || trackingId;
+Description:
+${dynamicDescription}
 
-  // If we should reply to an existing thread, search for a previous alert in the same manifest/tracking
-  if (replyToThread && threadKey) {
-    const parentAlert = await prisma.alert.findFirst({
-      where: {
-        manifestId: alert.manifestId,
-        emailMessageId: { not: null },
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { emailMessageId: true },
-    });
+This alert was generated automatically by the Warehouse Management System.
+`;
 
-    if (parentAlert?.emailMessageId) {
-      headers['In-Reply-To'] = parentAlert.emailMessageId;
-      headers['References'] = parentAlert.emailMessageId;
+  for (const to of toEmails) {
+    try {
+      console.log(`[Alert Dispatcher] Dispatching email to ${to} via Deno mail server...`);
+      const response = await fetch(mailServerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to,
+          subject,
+          content,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Deno mail server returned status ${response.status}: ${await response.text()}`);
+      }
+      console.log(`[Alert Dispatcher] Email alert successfully sent to ${to}`);
+    } catch (err) {
+      console.error(`[Alert Dispatcher] Failed to send email to ${to}:`, err);
+    }
+  }
+}
+
+/**
+ * Maps rule target roles to database query parameters for User alertLevel and role,
+ * while separating direct email addresses.
+ */
+function getPrismaUserQuery(targetRoles: string[]) {
+  const alertLevels: any[] = [];
+  const roles: any[] = [];
+  const directEmails: string[] = [];
+
+  for (const role of targetRoles) {
+    if (role.includes('@')) {
+      directEmails.push(role);
+    } else if (['L1', 'L2', 'L3', 'L4'].includes(role)) {
+      alertLevels.push(role);
+    } else {
+      // Map rule target roles case-insensitively to database Role enum values
+      const upperRole = role.toUpperCase();
+      if (upperRole === 'RECEIVER') roles.push('RECEIVER');
+      else if (upperRole === 'INSPECTOR') roles.push('INSPECTOR');
+      else if (upperRole === 'QC' || upperRole === 'QC_AGENT') roles.push('QC_AGENT');
+      else if (upperRole === 'RECOVERY' || upperRole === 'RECOVERER') roles.push('RECOVERER');
+      else if (upperRole === 'ADMIN') roles.push('ADMIN');
+      else if (upperRole === 'SUPER_ACCESS' || upperRole === 'SUPER-ACCESS') roles.push('SUPER_ACCESS');
+      else if (upperRole === 'CLAIMS_SPECIALIST' || upperRole === 'CLAIMS') roles.push('CLAIMS_SPECIALIST');
     }
   }
 
-  const htmlBody = `
-    <h2>${alert.title}</h2>
-    <p><strong>Priority Level:</strong> ${alert.level}</p>
-    <p><strong>Tracking ID:</strong> ${trackingId}</p>
-    <hr />
-    <p>${alert.description}</p>
-    <h3>Resolution SOP Steps:</h3>
-    <ol>
-      ${ALERT_RULE_BY_TYPE[alert.type]?.sopSteps.map((step) => `<li>${step}</li>`).join('') || '<li>Follow standard return inspection procedure.</li>'}
-    </ol>
-    <br />
-    <p><em>This is an automated system notification. Please resolve this alert on your dashboard.</em></p>
-  `;
-
-  const mailOptions = {
-    from: fromEmail,
-    to: toEmails.join(', '),
-    subject: replyToThread && headers['In-Reply-To'] ? `Re: ${subject}` : subject,
-    html: htmlBody,
-    headers,
-  };
-
-  const info = await transporter.sendMail(mailOptions);
-  
-  if (info.messageId) {
-    // Save the Message-ID so future alerts can reply in the same thread
-    await prisma.alert.update({
-      where: { id: alert.id },
-      data: {
-        emailMessageId: info.messageId,
-        emailThreadKey: threadKey,
-      },
-    });
-  }
+  return { alertLevels, roles, directEmails };
 }
