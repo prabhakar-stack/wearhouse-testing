@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { SOP_MAP } from '@/lib/alertRules';
+import { SOP_MAP, ALERT_RULE_BY_TYPE } from '@/lib/alertRules';
 
 // Alert level hierarchies
 const LEVEL_VALUES: Record<string, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
@@ -268,8 +268,8 @@ function checkResolvable(
     }
   }
 
-  // Inspection QC failed / Recovery rejections / QC rejections → claim must be filed
-  if (t.startsWith('INSPECTION_QC_FAILED') || t.includes('REJECTION')) {
+  // Inspection QC failed / Recovery rejections / QC rejections / Ghost Delivery T2 → claim must be filed
+  if (t.startsWith('INSPECTION_QC_FAILED') || t.includes('REJECTION') || t.startsWith('GHOST_DELIVERY_T2')) {
     if (!claimId) {
       return { canResolve: false, reason: `No claim has been filed for ${id}. File the claim in Amazon Seller Central and add the Claim ID to the manifest before resolving.` };
     }
@@ -341,16 +341,24 @@ export async function PATCH(req: NextRequest) {
       if (!alertRecord) { blocked.push({ id, reason: 'Alert not found' }); continue; }
       if (alertRecord.resolved) { resolved.push({ id, skipped: true }); continue; }
 
-      // Enforce set-based resolution permissions: L4 resolves all, L1 can be resolved by anyone, otherwise userLevel must match alertLevel exactly
+      // Enforce permission: can resolve if user is the targetUserId, or an admin/super-access, or the user's role or level is in the targetRoles
+      const rule = ALERT_RULE_BY_TYPE[alertRecord.type];
+      const targetRoles = rule?.targetRoles || [];
+      const isTargetRole = targetRoles.some(tRole => {
+        const cleanTRole = tRole.trim().toUpperCase();
+        return cleanTRole === role || cleanTRole === userLevel;
+      });
+
       const canResolveAlert =
-        userLevel === 'L4' ||
-        alertRecord.level === 'L1' ||
-        alertRecord.level === userLevel;
+        role === 'ADMIN' ||
+        role === 'SUPER_ACCESS' ||
+        alertRecord.targetUserId === userId ||
+        isTargetRole;
 
       if (!canResolveAlert) {
         blocked.push({
           id,
-          reason: `Forbidden: You are at level ${userLevel}, but this alert requires level ${alertRecord.level} to resolve.`,
+          reason: `Forbidden: You are not targeted for this alert. Only targeted users or administrators can resolve it.`,
           dataIssue: false
         });
         continue;

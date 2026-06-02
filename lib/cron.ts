@@ -5,6 +5,8 @@ import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
 import { ALERT_RULE_BY_TYPE } from "./alertRules";
 import { calculateWarehouseWorkingHours } from "./timeUtils";
+import { resolveTargetUserId } from "./alertTargeting";
+import { dispatchAlert } from "./alertDispatcher";
 
 
 // Helper to get carrier name from AMZRemovalShipment by tracking number
@@ -281,6 +283,7 @@ export async function runExpectedTrackingJob() {
     title: string;
     description: string;
     manifestId: string;
+    targetUserId?: string;
   }> = [];
   const alertsToResolve: string[] = [];
 
@@ -452,6 +455,7 @@ export async function runExpectedTrackingJob() {
               }
 
               if (shouldCreate) {
+                const targetUserId = await resolveTargetUserId(rule.targetRoles);
                 alertsToCreate.push({
                   level: rule.level as any,
                   type: rule.type,
@@ -461,6 +465,7 @@ export async function runExpectedTrackingJob() {
                     task.trackingNumber,
                   ),
                   manifestId: task.manifestId,
+                  targetUserId: targetUserId || undefined,
                 });
               }
             }
@@ -502,6 +507,20 @@ export async function runExpectedTrackingJob() {
       data: alertsToCreate,
     });
     console.log(`[Tracking Sync] Bulk-inserted ${alertsToCreate.length} new ghost delivery alerts.`);
+    
+    // Retrieve newly created alerts to dispatch notifications asynchronously
+    prisma.alert.findMany({
+      where: {
+        manifestId: { in: alertsToCreate.map(a => a.manifestId).filter(Boolean) as string[] },
+        type: { in: alertsToCreate.map(a => a.type) },
+        resolved: false
+      },
+      select: { id: true }
+    }).then(newlyCreated => {
+      for (const a of newlyCreated) {
+        dispatchAlert(a.id).catch(err => console.error('[Alert Dispatcher Error]', err));
+      }
+    }).catch(err => console.error('[Alert Query Error]', err));
   }
 
 
@@ -541,7 +560,11 @@ export async function runEscalationsJob() {
     });
     if (existing) return null;
 
-    return prisma.alert.create({ data });
+    const alert = await prisma.alert.create({ data });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher Error]', err));
+    }
+    return alert;
   };
 
   const l2Manifests = await prisma.manifest.findMany({

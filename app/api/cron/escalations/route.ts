@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ALERT_RULE_BY_TYPE } from "@/lib/alertRules";
 
+import { resolveTargetUserId } from "@/lib/alertTargeting";
+import { dispatchAlert } from "@/lib/alertDispatcher";
+import { calculateWarehouseWorkingHours } from "@/lib/timeUtils";
+
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
@@ -19,6 +23,8 @@ export async function GET(req: Request) {
       deliveryBreaches: 0,
       handshakeAlerts: 0,
       claimStagedAlerts: 0,
+      ghostDeliveryT2Alerts: 0,
+      receiveUpdatePendingAlerts: 0,
     };
 
     // Helper: create an alert using a canonical alertRules.ts rule, only if one
@@ -39,40 +45,89 @@ export async function GET(req: Request) {
       });
       if (existing) return null; // Already raised — skip
 
-      return prisma.alert.create({
+      const targetUserId = await resolveTargetUserId(rule.targetRoles);
+
+      const alert = await prisma.alert.create({
         data: {
           level: rule.level,
           type: rule.type,
           title: rule.title,
           description: rule.description.replace("{trackingId}", trackingId),
           manifestId,
+          targetUserId: targetUserId || undefined,
         },
       });
+
+      if (alert) {
+        dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher Error]', err));
+      }
+      return alert;
     };
 
     // ── 1. DELIVERY ETA BREACH ──────────────────────────────────────────────
     // Use ShipmentTracking.scheduledDelivery as the authoritative ETA —
     // manifest.expectedDate is the Amazon removal request date (not a delivery ETA).
+    // Fetch warehouse operational hours settings from system config
+    const configRecord = await (prisma as any).systemConfig.findUnique({
+      where: { key: "warehouse_hours" },
+    });
+    let startTimeStr: string | null = null;
+    let endTimeStr: string | null = null;
+    if (configRecord) {
+      try {
+        const config = JSON.parse(configRecord.value);
+        startTimeStr = config.startTime;
+        endTimeStr = config.endTime;
+      } catch (e) {
+        // Ignored
+      }
+    }
+
     const overdueSnapshots = await prisma.shipmentTracking.findMany({
       where: {
-        scheduledDelivery: { not: null, lt: now },
         manifest: {
           status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
+          orders: { some: { requestDate: { not: null } } },
         },
       },
       include: {
-        manifest: { select: { id: true, trackingId: true, status: true } },
+        manifest: {
+          select: {
+            id: true,
+            trackingId: true,
+            status: true,
+            orders: {
+              select: { requestDate: true },
+              orderBy: { requestDate: "asc" },
+              take: 1,
+            },
+          },
+        },
       },
     });
 
     // Deduplicate by manifest (a manifest may have multiple tracking numbers)
     const seenManifestIds = new Set<string>();
     for (const snap of overdueSnapshots) {
-      if (!snap.manifest) continue; // skip if no manifest
-      const etaDate = snap.scheduledDelivery ? new Date(snap.scheduledDelivery) : new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // fallback ETA 5 days ahead
+      if (!snap.manifest) continue;
+      const orderRequestDate = snap.manifest.orders?.[0]?.requestDate;
+      if (!orderRequestDate) continue;
       if (seenManifestIds.has(snap.manifest.id)) continue;
       seenManifestIds.add(snap.manifest.id);
-      const hoursOverdue = (now.getTime() - etaDate.getTime()) / (1000 * 60 * 60);
+
+      // Baseline ETA: Order return date + 5 calendar days
+      const etaDate = new Date(new Date(orderRequestDate).getTime() + 5 * 24 * 60 * 60 * 1000);
+      
+      // Skip if the current time has not yet passed the baseline ETA
+      if (now.getTime() <= etaDate.getTime()) continue;
+
+      const hoursOverdue = calculateWarehouseWorkingHours(
+        etaDate,
+        now,
+        startTimeStr,
+        endTimeStr,
+        "Asia/Kolkata"
+      );
 
       let alertType: string | null = null;
       if (hoursOverdue >= 96) alertType = "DELIVERY_ETA_BREACH_96H";
@@ -166,6 +221,100 @@ export async function GET(req: Request) {
         manifest.trackingId,
       );
       if (alert) results.claimStagedAlerts++;
+    }
+
+    // ── 4. GHOST DELIVERY TYPE 2 ─────────────────────────────────────────────
+    // Package QC failed by Receiver (Evidence of type RECEIVER_REJECTION exists)
+    // + No claim created yet (claimId is null)
+    // + Courier tracking marks delivered / undelivered
+    // + 6h, 12h, or 24h elapsed since the rejection evidence was created.
+    const rejectionEvidences = await prisma.evidence.findMany({
+      where: {
+        type: "RECEIVER_REJECTION",
+        manifestId: { not: null },
+        manifest: {
+          claimId: null, // no claim created yet
+        },
+      },
+      include: {
+        manifest: {
+          select: {
+            id: true,
+            trackingId: true,
+            status: true,
+            trackingSnapshots: {
+              select: { latestStatus: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    for (const ev of rejectionEvidences) {
+      if (!ev.manifest) continue;
+      
+      const snapStatus = ev.manifest.trackingSnapshots?.[0]?.latestStatus || "";
+      const isDeliveredOrUndelivered = /delivered|completed|received|proof of delivery|undelivered|returned/i.test(snapStatus);
+      if (!isDeliveredOrUndelivered) continue;
+
+      const hoursOverdue = calculateWarehouseWorkingHours(
+        ev.createdAt,
+        now,
+        startTimeStr,
+        endTimeStr,
+        "Asia/Kolkata"
+      );
+
+      let alertType: string | null = null;
+      if (hoursOverdue >= 24) alertType = "GHOST_DELIVERY_T2_24H";
+      else if (hoursOverdue >= 12) alertType = "GHOST_DELIVERY_T2_12H";
+      else if (hoursOverdue >= 6) alertType = "GHOST_DELIVERY_T2_6H";
+
+      if (!alertType) continue;
+
+      const alert = await createAlertIfNew(
+        alertType,
+        ev.manifest.id,
+        ev.manifest.trackingId,
+      );
+      if (alert) results.ghostDeliveryT2Alerts++;
+    }
+
+    // ── 5. RECEIVE UPDATE PENDING ────────────────────────────────────────────
+    // Manifest has qcCheckedAt not null
+    // + Status is still EXPECTED or IN_TRANSIT (acceptance still pending)
+    // + 2h or 6h elapsed since qcCheckedAt working hours.
+    const pendingManifests = await prisma.manifest.findMany({
+      where: {
+        qcCheckedAt: { not: null },
+        status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
+      },
+    });
+
+    for (const manifest of pendingManifests) {
+      if (!manifest.qcCheckedAt) continue;
+
+      const hoursOverdue = calculateWarehouseWorkingHours(
+        manifest.qcCheckedAt,
+        now,
+        startTimeStr,
+        endTimeStr,
+        "Asia/Kolkata"
+      );
+
+      let alertType: string | null = null;
+      if (hoursOverdue >= 6) alertType = "RECEIVE_UPDATE_PENDING_6H";
+      else if (hoursOverdue >= 2) alertType = "RECEIVE_UPDATE_PENDING_2H";
+
+      if (!alertType) continue;
+
+      const alert = await createAlertIfNew(
+        alertType,
+        manifest.id,
+        manifest.trackingId,
+      );
+      if (alert) results.receiveUpdatePendingAlerts++;
     }
 
     console.log("[Cron Escalations] Results:", results);

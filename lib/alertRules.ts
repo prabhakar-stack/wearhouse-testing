@@ -32,8 +32,6 @@ export interface AlertRule {
   description: string;
   /** Who receives this alert */
   targetRoles: string[];
-  /** Named leaders escalated for L4 alerts */
-  escalateToLeaders?: string[];
   /** Notification delivery channels */
   channels: NotificationChannel[];
   /** SOP resolution steps shown to the person resolving the alert */
@@ -57,7 +55,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Delivery ETA Breach — 48 Hour Overdue',
     description: 'Package {trackingId} is 48 hours past its expected delivery date (Order date + 5 days). Immediate follow-up with the courier is required.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'email'],
     thresholdHours: 48,
     sopSteps: [
@@ -74,7 +72,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Delivery ETA Breach — 72 Hour Overdue',
     description: 'Package {trackingId} is 72 hours past its expected delivery date (Order date + 5 days). Escalation mail has been sent in the existing thread.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 72,
     sopSteps: [
@@ -91,8 +89,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Delivery ETA Breach — 96 Hour Overdue (CRITICAL)',
     description: 'Package {trackingId} is 96 hours past its expected delivery date. Leadership has been notified. Immediate resolution required.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 96,
     sopSteps: [
@@ -113,7 +110,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Ghost Delivery (Type 1) — No Receiver Scan, 6h Without Claim',
     description: 'Package {trackingId} was marked delivered by the courier but has no receiver scan logs. No claim has been raised within 6 hours of the delivery mark.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
@@ -130,7 +127,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Ghost Delivery (Type 1) — No Receiver Scan, 12h Without Claim',
     description: 'Package {trackingId} marked delivered by courier with no receiver scan. Claim still not raised after 12 hours.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
@@ -147,8 +144,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Ghost Delivery (Type 1) — CRITICAL: 24h Without Claim',
     description: 'Package {trackingId} marked delivered by courier with no receiver scan. No claim raised in 24 hours. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -169,7 +165,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Ghost Delivery (Type 2) — Receiver QC Failed, 6h Without Claim',
     description: 'Package {trackingId} QC failed by receiver. Marked delivered/undelivered by the courier. No claim raised within 6 hours.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
@@ -186,7 +182,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Ghost Delivery (Type 2) — Receiver QC Failed, 12h Without Claim',
     description: 'Package {trackingId} QC failed by receiver. No claim raised within 12 hours. Escalation in existing thread.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
@@ -202,8 +198,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Ghost Delivery (Type 2) — CRITICAL: 24h Without Claim',
     description: 'Package {trackingId} QC failed by receiver. No claim raised in 24 hours. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -239,7 +234,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Receive Update Pending — 6 Hours',
     description: 'Package {trackingId} QC passed but delivery acceptance has not been confirmed for over 6 hours. Admin notified.',
-    targetRoles: ['RECEIVER', 'admin'],
+    targetRoles: ['L2','RECEIVER'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 6,
     sopSteps: [
@@ -274,7 +269,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Receiver→Inspector Handshake Pending — 12 PM Breach',
     description: 'Packages received yesterday have not been handed over to the inspector by 12 PM. Admin has been notified.',
-    targetRoles: ['RECEIVER', 'admin'],
+    targetRoles: ['L2','RECEIVER'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: null,
     sopSteps: [
@@ -290,7 +285,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Receiver→Inspector Handshake Pending — 3 PM Critical Breach',
     description: 'Packages received yesterday still not handed over to inspector by 3 PM. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: null,
     sopSteps: [
@@ -306,8 +301,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Receiver→Inspector Handshake — CRITICAL: Day+2 Breach',
     description: 'Packages have gone a full extra day without inspection handover. Leadership has been escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: null,
     sopSteps: [
@@ -343,7 +337,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Inspection Pending — 12 Hours',
     description: 'Package {trackingId} has been with the inspector for 12+ hours. Admin notified.',
-    targetRoles: ['INSPECTOR', 'admin'],
+    targetRoles: ['L2','INSPECTOR'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 12,
     sopSteps: [
@@ -359,7 +353,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Inspection Pending — 18 Hours',
     description: 'Package {trackingId} inspection still pending after 18 hours. Escalation email sent.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 18,
     sopSteps: [
@@ -375,8 +369,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Inspection Pending — CRITICAL: 24 Hours',
     description: 'Package {trackingId} has not been inspected for 24+ hours. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -396,7 +389,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Inspection QC Failed — Claim Not Raised (6h)',
     description: 'Package {trackingId} failed inspection QC. No claim has been raised 6 hours after the inspection failure.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
@@ -413,7 +406,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Inspection QC Failed — Claim Not Raised (12h)',
     description: 'Package {trackingId} failed inspection QC. No claim raised 12 hours after failure. Escalation in existing thread.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
@@ -429,8 +422,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Inspection QC Failed — CRITICAL: Claim Not Raised (24h)',
     description: 'Package {trackingId} failed QC 24+ hours ago with no claim. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -465,7 +457,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Inspector→Recovery Handshake Pending — 18 Hours',
     description: 'SKU from {trackingId} marked for recovery not handed over after 18 hours. Admin notified.',
-    targetRoles: ['INSPECTOR', 'admin'],
+    targetRoles: ['L2','INSPECTOR'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 18,
     sopSteps: [
@@ -484,7 +476,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Recovery Rejection — SKU Marked Damaged',
     description: 'A SKU from {trackingId} handed over to the recovery team has been marked as damaged. Admin action required.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: null, // real-time event
     sopSteps: [
@@ -500,7 +492,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Recovery Rejection — No Admin Action (6h)',
     description: 'SKU from {trackingId} marked damaged in recovery 6+ hours ago. No admin action taken. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
@@ -519,7 +511,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Recovery Rejection — Claim Not Raised Post-Acknowledgement (1h)',
     description: 'Admin acknowledged the recovery damage for {trackingId} but a claim has not been raised within 1 hour.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 1,
     sopSteps: [
@@ -535,7 +527,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Recovery Rejection — Claim Not Raised Post-Acknowledgement (6h)',
     description: 'Admin acknowledged recovery damage for {trackingId} 6+ hours ago but no claim filed. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
@@ -551,8 +543,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Recovery Rejection — CRITICAL: Claim Not Raised (12h)',
     description: 'Acknowledged recovery damage for {trackingId} — claim still unfiled after 12 hours. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
@@ -587,7 +578,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Recovery→QC Handshake Pending — 36 Hours',
     description: 'Recoverable SKU from {trackingId} has not been handed to QC in 36+ hours. Admin notified.',
-    targetRoles: ['RECOVERY', 'admin'],
+    targetRoles: ['L2','RECOVERY'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 36,
     sopSteps: [
@@ -621,7 +612,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Inspector→QC Handshake Pending — 36 Hours',
     description: 'SKU from {trackingId} inventorisation handover to QC delayed 36+ hours. Admin notified.',
-    targetRoles: ['INSPECTOR', 'admin'],
+    targetRoles: ['L2','INSPECTOR'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 36,
     sopSteps: [
@@ -640,7 +631,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'QC Rejection — SKU Marked Damaged at QC',
     description: 'A SKU from {trackingId} handed over to QC has been marked as damaged. Admin action required immediately.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: null,
     sopSteps: [
@@ -656,7 +647,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'QC Rejection — No Admin Action (24h)',
     description: 'SKU from {trackingId} marked damaged at QC 24+ hours ago. No admin action taken. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -675,7 +666,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'QC Rejection — Claim Not Raised Post-Acknowledgement (1h)',
     description: 'Admin acknowledged QC damage for {trackingId}. Claim not filed within 1 hour.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 1,
     sopSteps: [
@@ -690,7 +681,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'QC Rejection — Claim Not Raised Post-Acknowledgement (6h)',
     description: 'Admin acknowledged QC damage for {trackingId} 6+ hours ago. Claim still not filed. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
@@ -706,8 +697,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'QC Rejection — CRITICAL: Claim Not Raised (24h)',
     description: 'Acknowledged QC damage for {trackingId} — claim still unfiled after 24 hours. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -742,7 +732,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L2',
     title: 'Inventorisation Pending — 18 Hours',
     description: 'SKU from {trackingId} at QC for 18+ hours without inventorisation. Admin notified.',
-    targetRoles: ['QC', 'admin'],
+    targetRoles: ['L2','QC'],
     channels: ['dashboard', 'hangout'],
     thresholdHours: 18,
     sopSteps: [
@@ -758,7 +748,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L3',
     title: 'Inventorisation Pending — 24 Hours',
     description: 'SKU from {trackingId} at QC for 24+ hours without inventorisation. Escalation raised.',
-    targetRoles: ['admin'],
+    targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
@@ -774,8 +764,7 @@ export const ALERT_RULES: AlertRule[] = [
     level: 'L4',
     title: 'Inventorisation Pending — CRITICAL: 48 Hours',
     description: 'SKU from {trackingId} at QC for 48+ hours without inventorisation. Leadership escalated.',
-    targetRoles: ['admin'],
-    escalateToLeaders: ['Sunil Deshmukh', 'Harsh Jain'],
+    targetRoles: ['L2', 'L3', 'L4'],
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 48,
     sopSteps: [
