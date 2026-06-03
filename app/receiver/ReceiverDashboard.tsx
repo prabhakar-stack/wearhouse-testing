@@ -667,6 +667,7 @@ function ReceiveTab({
     "IDLE" | "FETCHING" | "NOT_REQUIRED" | "FETCHED" | "ERROR"
   >("IDLE");
   const [fetchedOtp, setFetchedOtp] = useState("");
+  const [manualOtp, setManualOtp] = useState("");
   const [otpRecordId, setOtpRecordId] = useState<string | null>(null);
   const otpPollIntervalRef = useRef<number | null>(null);
   const otpPollTimeoutRef = useRef<number | null>(null);
@@ -977,6 +978,7 @@ function ReceiveTab({
 
   const handleAcceptGood = async () => {
     const trackingIdVal = scannedTrackingId;
+    const finalOtp = otpState === "ERROR" ? manualOtp : fetchedOtp;
     // Show done screen immediately
     setShowDoneScreen(true);
     // Silent background submit
@@ -990,7 +992,7 @@ function ReceiveTab({
             tapeIntact: true,
             boxCrushed: false,
             isTampered: false,
-            otpProvided: fetchedOtp,
+            otpProvided: finalOtp,
             evidenceUrl: "",
           }),
         });
@@ -1404,15 +1406,25 @@ function ReceiveTab({
               </div>
             )}
             {otpState === "ERROR" && (
-              <div className="flex flex-col items-center space-y-3 py-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex flex-col items-center space-y-3 py-4 bg-red-50 border border-red-200 rounded-xl px-4">
                 <AlertOctagon size={36} className="text-red-500" />
-                <p className="text-sm uppercase font-black tracking-widest text-red-700">
+                <p className="text-sm uppercase font-black tracking-widest text-red-700 text-center">
                   OTP Fetch Failed
                 </p>
+                <p className="text-xs text-red-600 font-semibold text-center mb-2">
+                  System offline. Please call the Admin/Device Holder to get the OTP.
+                </p>
+                <input
+                  type="text"
+                  placeholder="ENTER OTP MANUALLY"
+                  value={manualOtp}
+                  onChange={(e) => setManualOtp(e.target.value)}
+                  className="w-full bg-white border-2 border-red-300 text-red-700 p-3 font-mono text-lg focus:outline-none focus:border-red-500 text-center rounded-xl"
+                />
               </div>
             )}
           </div>
-          {["NOT_REQUIRED", "FETCHED"].includes(otpState) && (
+          {(["NOT_REQUIRED", "FETCHED"].includes(otpState) || (otpState === "ERROR" && manualOtp.trim().length > 0)) && (
             <button
               onClick={handleAcceptGood}
               className="w-full py-6 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white uppercase font-black tracking-widest text-xl rounded-2xl shadow-lg flex items-center justify-center space-x-3 transition-all active:scale-95"
