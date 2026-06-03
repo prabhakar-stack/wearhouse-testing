@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
 
@@ -59,7 +60,6 @@ export async function GET(req: Request) {
 
     // 1. HARDWARE ESP32 POLLING
     if (!lpn) {
-      // Read directly from the temporary JSON file!
       if (fs.existsSync(TEMP_FILE_PATH)) {
         const fileData = fs.readFileSync(TEMP_FILE_PATH, "utf-8");
         return NextResponse.json(JSON.parse(fileData));
@@ -67,7 +67,27 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "No products found" }, { status: 404 });
     }
 
-    return NextResponse.json({ error: "Database bypassed for temporary JSON file." }, { status: 400 });
+    // 2. SIMPLIFIED LIVE LPN VERIFICATION (Only uses ReturnItem)
+    const rawReturn = await prisma.returnItem.findUnique({
+      where: { lpn }
+    });
+
+    if (!rawReturn) {
+      return NextResponse.json({ error: "LPN not found in system" }, { status: 404 });
+    }
+
+    const resolvedFnsku = rawReturn.fnsku || rawReturn.sku;
+    const imageUrl = rawReturn.sku ? await fetchShopifyVariantImage(rawReturn.sku) : null;
+
+    return NextResponse.json({
+      success: true,
+      lpn: rawReturn.lpn,
+      sku: rawReturn.sku || "UNKNOWN_SKU",
+      fnsku: resolvedFnsku,
+      productName: rawReturn.productName || `SKU: ${rawReturn.sku}`,
+      customerComments: rawReturn.customerComments || null,
+      imageUrl,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

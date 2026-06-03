@@ -2231,31 +2231,31 @@ function InspectTab({ userId }: { userId?: string }) {
     {
       id: 2,
       title: "Bottom Side",
-      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
+      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 3,
       title: "Front Side",
-      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
+      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 4,
       title: "Back Side",
-      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
+      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 5,
       title: "Left Side",
-      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
+      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
       sampleImg: "/samples/566.png",
     },
     {
       id: 6,
       title: "Right Side",
-      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
+      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
       sampleImg: "/samples/566.png",
     },
     {
