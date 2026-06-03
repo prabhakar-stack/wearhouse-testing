@@ -1,14 +1,6 @@
-// import nodemailer from 'nodemailer';
 import { prisma } from './prisma.ts';
 import { ALERT_RULE_BY_TYPE } from './alertRules.ts';
-
-// Email transport removed – email sending disabled
-// const transporter = nodemailer.createTransport({
-//   host: process.env.SMTP_HOST || 'smtp.resend.com',
-//   port: parseInt(process.env.SMTP_PORT || '587', 10),
-//   secure: process.env.SMTP_SECURE === 'true',
-//   auth: { user: process.env.SMTP_USER || '', pass: process.env.SMTP_PASSWORD || '' },
-// });
+import nodemailer from 'nodemailer';
 
 /**
  * Dispatches notification alerts via active channels (Google Chat, email, dashboard).
@@ -16,11 +8,12 @@ import { ALERT_RULE_BY_TYPE } from './alertRules.ts';
 export async function dispatchAlert(alertId: string) {
   try {
     // 1. Fetch full alert details with target user & manifest
+    // IMPORTANT: Make sure `lastEmailMessageId` is added to your Manifest model in schema.prisma!
     const alert = await prisma.alert.findUnique({
       where: { id: alertId },
       include: {
         targetUser: { select: { email: true, name: true } },
-        manifest: { select: { trackingId: true, id: true } },
+        manifest: { select: { trackingId: true, id: true, lastEmailMessageId: true } },
       },
     });
 
@@ -35,9 +28,9 @@ export async function dispatchAlert(alertId: string) {
       return;
     }
 
-    // Resolve targeted users from rule.targetRoles dynamically (can contain alert levels, roles, and direct emails)
+    // Resolve targeted users from rule.targetRoles dynamically
     const { alertLevels, roles, directEmails } = getPrismaUserQuery(rule.targetRoles);
-    
+
     let targetEmailsFromDb: string[] = [];
     if (alertLevels.length > 0 || roles.length > 0) {
       const targetUsers = await prisma.user.findMany({
@@ -77,7 +70,21 @@ export async function dispatchAlert(alertId: string) {
         if (channel === 'hangout') {
           await sendHangoutMessage(alert, rule.sopSteps);
         } else if (channel === 'email' || channel === 'email_existing_thread') {
-          await sendEmailMessage(alert, recipientEmails, channel === 'email_existing_thread');
+          
+          // Threading Fix: Get the actual SMTP Message-ID from the database
+          const previousMessageId = channel === 'email_existing_thread' ? (alert.manifest?.lastEmailMessageId || undefined) : undefined;
+          
+          // Send the email and return the newly generated Message-ID
+          const newMessageId = await sendEmailMessage(alert, recipientEmails, previousMessageId);
+
+          // Save the new Message-ID back to the database for future replies
+          if (newMessageId && alert.manifest?.id) {
+            await prisma.manifest.update({
+              where: { id: alert.manifest.id },
+              data: { lastEmailMessageId: newMessageId }
+            });
+          }
+          
         }
       } catch (err) {
         console.error(`[Alert Dispatcher] Failed to dispatch via channel ${channel}:`, err);
@@ -142,47 +149,72 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
 }
 
 /**
- * Sends alert notification email by calling the Deno SMTP mail server endpoint.
+ * Sends alert notification email directly using Nodemailer via Gmail SMTP.
+ * Supports email threading by passing an optional previousMessageId.
+ * Returns the generated messageId so it can be saved to the database.
  */
-async function sendEmailMessage(alert: any, toEmails: string[], _replyToThread: boolean) {
-  const mailServerUrl = process.env.DENO_MAIL_SERVER_URL || 'http://localhost:8000';
+async function sendEmailMessage(alert: any, toEmails: string[], previousMessageId?: string): Promise<string | null> {
+  const gmailUser = process.env.SMTP_USER || process.env.GMAIL_ADDRESS;
+  const gmailPass = process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD;
+
+  if (!gmailUser || !gmailPass) {
+    console.warn('[Alert Dispatcher] SMTP_USER or SMTP_PASSWORD not found in environment. Skipping email dispatch.');
+    return null;
+  }
+
   const trackingId = alert.manifest?.trackingId || 'N/A';
   const dynamicDescription = alert.description.replace(/{trackingId}/g, trackingId);
-  
-  // Format the email content
   const subject = alert.title || '⚠️ Process Break Alert';
-  const content = `Alert Details:
---------------------------------------
-Title: ${alert.title}
-Priority Level: ${alert.level}
-Tracking ID: ${trackingId}
 
-Description:
-${dynamicDescription}
+  // Clean HTML Formatting
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+      <h2 style="color: #d9534f; border-bottom: 2px solid #eaeaea; padding-bottom: 10px;">
+        ${subject}
+      </h2>
+      <p><strong>Priority Level:</strong> <span style="background-color: #f0ad4e; color: white; padding: 2px 6px; border-radius: 4px;">${alert.level}</span></p>
+      <p><strong>Tracking ID:</strong> ${trackingId}</p>
+      <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #d9534f; margin: 20px 0;">
+        <p style="margin: 0; white-space: pre-wrap;">${dynamicDescription}</p>
+      </div>
+      <hr style="border: 0; border-top: 1px solid #eaeaea; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #777;">
+        This alert was generated automatically by the Warehouse Management System.
+      </p>
+    </div>
+  `;
 
-This alert was generated automatically by the Warehouse Management System.
-`;
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // true for 465, false for other ports
+    auth: {
+      user: gmailUser,
+      pass: gmailPass,
+    },
+  });
 
-  for (const to of toEmails) {
-    try {
-      console.log(`[Alert Dispatcher] Dispatching email to ${to} via Deno mail server...`);
-      const response = await fetch(mailServerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to,
-          subject,
-          content,
-        }),
-      });
+  const mailOptions: any = {
+    from: `"Warehouse Alerts" <${gmailUser}>`,
+    to: toEmails.join(', '), // Send to all recipients at once
+    subject,
+    html: htmlContent,
+  };
 
-      if (!response.ok) {
-        throw new Error(`Deno mail server returned status ${response.status}: ${await response.text()}`);
-      }
-      console.log(`[Alert Dispatcher] Email alert successfully sent to ${to}`);
-    } catch (err) {
-      console.error(`[Alert Dispatcher] Failed to send email to ${to}:`, err);
-    }
+  // Email Threading Logic
+  if (previousMessageId && typeof previousMessageId === 'string') {
+    mailOptions.inReplyTo = previousMessageId;
+    mailOptions.references = [previousMessageId];
+  }
+
+  try {
+    console.log(`[Alert Dispatcher] Dispatching email to ${toEmails.join(', ')} via Gmail SMTP...`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Alert Dispatcher] Email alert successfully sent! Message ID: ${info.messageId}`);
+    return info.messageId;
+  } catch (err) {
+    console.error(`[Alert Dispatcher] Failed to send email via Nodemailer:`, err);
+    return null;
   }
 }
 

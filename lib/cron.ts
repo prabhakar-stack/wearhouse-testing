@@ -6,6 +6,7 @@ import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
 import { ALERT_RULE_BY_TYPE } from "./alertRules";
 import { calculateWarehouseWorkingHours } from "./timeUtils";
 import { resolveTargetUserId } from "./alertTargeting";
+import { archiveAndScoreAlerts } from "./alertLogger";
 import { dispatchAlert } from "./alertDispatcher";
 
 
@@ -445,13 +446,18 @@ export async function runExpectedTrackingJob() {
               const targetPriority = GHOST_TIER_PRIORITY[targetAlertType] ?? 0;
               let shouldCreate = true;
 
+              const activeAlertsToArchive: string[] = [];
               for (const activeAlert of manifestAlerts) {
                 const activePriority = GHOST_TIER_PRIORITY[activeAlert.type] ?? 0;
                 if (activePriority < targetPriority) {
-                  alertsToResolve.push(activeAlert.id);
+                  activeAlertsToArchive.push(activeAlert.id);
                 } else if (activePriority > targetPriority) {
                   shouldCreate = false;
                 }
+              }
+              
+              if (activeAlertsToArchive.length > 0) {
+                await archiveAndScoreAlerts(activeAlertsToArchive, "ESCALATED");
               }
 
               if (shouldCreate) {
@@ -536,8 +542,24 @@ export async function runEscalationsJob() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+  const configRecord = await (prisma as any).systemConfig.findUnique({
+    where: { key: "warehouse_hours" },
+  });
+  let startTimeStr = '09:00';
+  let endTimeStr = '18:00';
+  const timezoneStr = 'Asia/Kolkata'; // Default
+
+  if (configRecord) {
+    try {
+      const config = JSON.parse(configRecord.value);
+      if (config.startTime) startTimeStr = config.startTime;
+      if (config.endTime) endTimeStr = config.endTime;
+    } catch(e) {}
+  }
+
   const results = {
     l2Alerts: 0,
+    l3Alerts: 0,
     nudges: 0,
     escalations: 0,
     l4Alerts: 0,
@@ -567,58 +589,349 @@ export async function runEscalationsJob() {
     return alert;
   };
 
-  const l2Manifests = await prisma.manifest.findMany({
+  // ── GROUP 5: RECEIVER-INSPECTOR HANDSHAKE PENDING ──
+  const currentHourIST = parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      hour12: false,
+    }).format(now),
+    10
+  );
+
+  const startOfYesterday = new Date(today);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+
+  const atDockManifests = await prisma.manifest.findMany({
     where: {
       status: "AT_DOCK",
       receivedAt: { lt: today },
       inspectedBy: null,
     },
+    include: {
+      alerts: {
+        where: { resolved: false, type: { startsWith: 'RECV_INSP_HANDSHAKE' } }
+      }
+    }
   });
 
-  for (const manifest of l2Manifests) {
-    const alert = await createAlertIfNew({
-      level: "L2",
-      type: "SLA_BREACH",
-      title: `10:30 AM Handover SLA Breach`,
-      description: `Package ${manifest.trackingId} received yesterday has not been handed over to an inspector. Received at: ${manifest.receivedAt ? new Date(manifest.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Unknown"}.`,
-      manifestId: manifest.id,
-    });
-    if (alert) results.l2Alerts++;
-  }
+  for (const manifest of atDockManifests) {
+    if (!manifest.receivedAt) continue;
+    
+    let targetAlertType: string | null = null;
 
-  const claimsManifests = await prisma.manifest.findMany({
-    where: { status: "CLAIMS_STAGING" },
-  });
+    if (manifest.receivedAt < startOfYesterday && currentHourIST >= 10) {
+      targetAlertType = "RECV_INSP_HANDSHAKE_NEXT_DAY";
+    } else if (manifest.receivedAt >= startOfYesterday) { // Received exactly yesterday
+      if (currentHourIST >= 15) {
+        targetAlertType = "RECV_INSP_HANDSHAKE_3PM";
+      } else if (currentHourIST >= 12) {
+        targetAlertType = "RECV_INSP_HANDSHAKE_12PM";
+      } else if (currentHourIST >= 10) {
+        targetAlertType = "RECV_INSP_HANDSHAKE_10AM";
+      }
+    }
 
-  const hours48 = 48 * 60 * 60 * 1000;
-  const hours72 = 72 * 60 * 60 * 1000;
+    if (targetAlertType) {
+      const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+      if (rule) {
+        const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+        
+        if (!exactAlertExists) {
+          const TIER_PRIORITY: Record<string, number> = {
+            RECV_INSP_HANDSHAKE_10AM: 1,
+            RECV_INSP_HANDSHAKE_12PM: 2,
+            RECV_INSP_HANDSHAKE_3PM: 3,
+            RECV_INSP_HANDSHAKE_NEXT_DAY: 4
+          };
+          
+          const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
+          let shouldCreate = true;
+          
+          const activeAlertsToArchive: string[] = [];
+          for (const activeAlert of manifest.alerts) {
+            const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
+            if (activePriority < targetPriority) {
+              activeAlertsToArchive.push(activeAlert.id);
+            } else if (activePriority > targetPriority) {
+              shouldCreate = false;
+            }
+          }
 
-  for (const manifest of claimsManifests) {
-    const startTime = manifest.receivedAt || manifest.createdAt;
-    if (!startTime) continue;
-    const timeStaged = now.getTime() - new Date(startTime).getTime();
+          if (activeAlertsToArchive.length > 0) {
+            await archiveAndScoreAlerts(activeAlertsToArchive, "ESCALATED");
+          }
 
-    if (timeStaged > hours72) {
-      const alert = await createAlertIfNew({
-        level: "L3",
-        type: "CLAIM_STALLED",
-        title: `Claim Stalled Over 72 Hours`,
-        description: `Claim for tracking ID ${manifest.trackingId} has been in staging for over 72 hours without action. Staging started at: ${new Date(startTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}.`,
-        manifestId: manifest.id,
-      });
-      if (alert) results.escalations++;
-    } else if (timeStaged > hours48) {
-      const alert = await createAlertIfNew({
-        level: "L1",
-        type: "CLAIM_NUDGE",
-        title: `Claim Pending — 48 Hour Nudge`,
-        description: `Claim for tracking ID ${manifest.trackingId} has been pending for 48+ hours. Claims specialist should begin filing.`,
-        manifestId: manifest.id,
-      });
-      if (alert) results.nudges++;
+          if (shouldCreate) {
+            const targetUserId = await resolveTargetUserId(rule.targetRoles);
+            const alert = await prisma.alert.create({
+              data: {
+                level: rule.level as any,
+                type: rule.type,
+                title: rule.title,
+                description: rule.description.replace("{trackingId}", manifest.trackingId),
+                manifestId: manifest.id,
+                targetUserId: targetUserId || undefined,
+              }
+            });
+            if (alert) {
+              dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+              if (targetAlertType === "RECV_INSP_HANDSHAKE_12PM") results.l2Alerts++;
+              else if (targetAlertType === "RECV_INSP_HANDSHAKE_NEXT_DAY") results.l4Alerts++;
+              else results.escalations++;
+            }
+          }
+        }
+      }
     }
   }
 
+  // ── GROUP 6: INSPECTION PENDING ──
+  const inspectingManifests = await prisma.manifest.findMany({
+    where: {
+      status: "IN_INSPECTION",
+      inspectorHandoverAt: { not: null }
+    },
+    include: {
+      alerts: {
+        where: { resolved: false, type: { startsWith: 'INSPECTION_PENDING' } }
+      }
+    }
+  });
+
+  for (const manifest of inspectingManifests) {
+    if (!manifest.inspectorHandoverAt) continue;
+
+    const workingHoursElapsed = calculateWarehouseWorkingHours(manifest.inspectorHandoverAt, now, startTimeStr, endTimeStr, timezoneStr);
+    let targetAlertType: string | null = null;
+
+    if (workingHoursElapsed >= 24) {
+      targetAlertType = "INSPECTION_PENDING_24H";
+    } else if (workingHoursElapsed >= 18) {
+      targetAlertType = "INSPECTION_PENDING_18H";
+    } else if (workingHoursElapsed >= 12) {
+      targetAlertType = "INSPECTION_PENDING_12H";
+    } else if (workingHoursElapsed >= 6) {
+      targetAlertType = "INSPECTION_PENDING_6H";
+    }
+
+    if (targetAlertType) {
+      const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+      if (rule) {
+        const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+        
+        if (!exactAlertExists) {
+          const TIER_PRIORITY: Record<string, number> = {
+            INSPECTION_PENDING_6H: 1,
+            INSPECTION_PENDING_12H: 2,
+            INSPECTION_PENDING_18H: 3,
+            INSPECTION_PENDING_24H: 4
+          };
+          
+          const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
+          let shouldCreate = true;
+          
+          const activeAlertsToArchive: string[] = [];
+          for (const activeAlert of manifest.alerts) {
+            const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
+            if (activePriority < targetPriority) {
+              activeAlertsToArchive.push(activeAlert.id);
+            } else if (activePriority > targetPriority) {
+              shouldCreate = false;
+            }
+          }
+
+          if (activeAlertsToArchive.length > 0) {
+            await archiveAndScoreAlerts(activeAlertsToArchive, "ESCALATED");
+          }
+
+          if (shouldCreate) {
+            let finalTargetId: string | null = null;
+            if (manifest.inspectedBy) {
+              const inspectorUser = await prisma.user.findUnique({ where: { email: manifest.inspectedBy } });
+              if (inspectorUser) finalTargetId = inspectorUser.id;
+            }
+            if (!finalTargetId) {
+              finalTargetId = await resolveTargetUserId(rule.targetRoles);
+            }
+
+            const alert = await prisma.alert.create({
+              data: {
+                level: rule.level as any,
+                type: rule.type,
+                title: rule.title,
+                description: rule.description.replace("{trackingId}", manifest.trackingId),
+                manifestId: manifest.id,
+                targetUserId: finalTargetId || undefined,
+              }
+            });
+            if (alert) {
+              dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+              if (targetAlertType === "INSPECTION_PENDING_12H") results.l2Alerts++;
+              else if (targetAlertType === "INSPECTION_PENDING_24H") results.l4Alerts++;
+              else results.escalations++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── GROUP 7: INSPECTION QC FAILED (CLAIMS STAGING) ──
+  const claimsManifests = await prisma.manifest.findMany({
+    where: { 
+      status: "CLAIMS_STAGING",
+      claimId: null,
+      inspectedAt: { not: null }
+    },
+    include: {
+      alerts: {
+        where: { resolved: false, type: { startsWith: 'INSPECTION_QC_FAILED' } }
+      }
+    }
+  });
+
+  for (const manifest of claimsManifests) {
+    if (!manifest.inspectedAt) continue;
+
+    const workingHoursElapsed = calculateWarehouseWorkingHours(manifest.inspectedAt, now, startTimeStr, endTimeStr, timezoneStr);
+    let targetAlertType: string | null = null;
+
+    if (workingHoursElapsed >= 24) {
+      targetAlertType = "INSPECTION_QC_FAILED_24H";
+    } else if (workingHoursElapsed >= 12) {
+      targetAlertType = "INSPECTION_QC_FAILED_12H";
+    } else if (workingHoursElapsed >= 6) {
+      targetAlertType = "INSPECTION_QC_FAILED_6H";
+    }
+
+    if (targetAlertType) {
+      const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+      if (rule) {
+        const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+        
+        if (!exactAlertExists) {
+          const TIER_PRIORITY: Record<string, number> = {
+            INSPECTION_QC_FAILED_6H: 1,
+            INSPECTION_QC_FAILED_12H: 2,
+            INSPECTION_QC_FAILED_24H: 3,
+          };
+          
+          const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
+          let shouldCreate = true;
+          
+          const activeAlertsToArchive: string[] = [];
+          for (const activeAlert of manifest.alerts) {
+            const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
+            if (activePriority < targetPriority) {
+              activeAlertsToArchive.push(activeAlert.id);
+            } else if (activePriority > targetPriority) {
+              shouldCreate = false;
+            }
+          }
+
+          if (activeAlertsToArchive.length > 0) {
+            await archiveAndScoreAlerts(activeAlertsToArchive, "ESCALATED");
+          }
+
+          if (shouldCreate) {
+            const targetUserId = await resolveTargetUserId(rule.targetRoles);
+            const alert = await prisma.alert.create({
+              data: {
+                level: rule.level as any,
+                type: rule.type,
+                title: rule.title,
+                description: rule.description.replace("{trackingId}", manifest.trackingId),
+                manifestId: manifest.id,
+                targetUserId: targetUserId || undefined,
+              }
+            });
+            if (alert) {
+              dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+              if (targetAlertType === "INSPECTION_QC_FAILED_12H") results.l3Alerts++;
+              else if (targetAlertType === "INSPECTION_QC_FAILED_24H") results.l4Alerts++;
+              else results.escalations++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // --- GROUP 8: Inspector-Recovery Handshake Pending ---
+  // Query ItemStatus where status === 'RECOVERY' and recoveryHandoverAt is null
+  const pendingRecoveryItems = await prisma.itemStatus.findMany({
+    where: {
+      status: 'RECOVERY',
+      recoveryHandoverAt: null,
+      manifestId: { not: null }
+    },
+    include: { manifest: true }
+  });
+
+  for (const item of pendingRecoveryItems) {
+    if (!item.manifest) continue;
+
+    // Use warehouse working hours to measure time elapsed since it was marked for recovery (createdAt)
+    const hoursPending = calculateWarehouseWorkingHours(
+      item.createdAt,
+      now,
+      startTimeStr,
+      endTimeStr,
+      "Asia/Kolkata"
+    );
+
+    let targetAlertType: "INSP_RECOVERY_HANDSHAKE_18H" | "INSP_RECOVERY_HANDSHAKE_12H" | null = null;
+    let targetAlertLevel: "L2" | "L1" | null = null;
+    let targetUserId: string | null = null;
+
+    if (hoursPending >= 18) {
+      targetAlertType = "INSP_RECOVERY_HANDSHAKE_18H";
+      targetAlertLevel = "L2";
+    } else if (hoursPending >= 12) {
+      targetAlertType = "INSP_RECOVERY_HANDSHAKE_12H";
+      targetAlertLevel = "L1";
+      // L1 targets the inspector
+      if (item.manifest.inspectedBy) {
+        const inspectorUser = await prisma.user.findFirst({ where: { email: item.manifest.inspectedBy } });
+        if (inspectorUser) targetUserId = inspectorUser.id;
+      }
+    }
+
+    if (targetAlertType && targetAlertLevel) {
+      const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+      if (rule) {
+        // Find if this alert already exists and is unresolved
+        const existingAlert = await prisma.alert.findFirst({
+          where: {
+            manifestId: item.manifest.id,
+            type: targetAlertType,
+            resolved: false
+          }
+        });
+
+        if (!existingAlert) {
+          const alert = await prisma.alert.create({
+            data: {
+              level: targetAlertLevel,
+              type: rule.type,
+              title: rule.title,
+              description: rule.description.replace("{trackingId}", item.manifest.trackingId),
+              manifestId: item.manifest.id,
+              targetUserId: targetUserId || undefined,
+            }
+          });
+          if (alert) {
+            dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+            if (targetAlertLevel === 'L1') results.nudges++;
+            else if (targetAlertLevel === 'L2') results.l2Alerts++;
+          }
+        }
+      }
+    }
+  }
+
+  const hours48 = 48 * 60 * 60 * 1000;
   const hours48Ago = new Date(now.getTime() - hours48);
 
   const ghostDeliveries = await prisma.manifest.findMany({
@@ -671,6 +984,13 @@ export async function runEscalationsJob() {
       });
     }
   }
+
+  // ── ARCHIVE PRUNING ──
+  const oneYearAgo = new Date();
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  await prisma.alertLog.deleteMany({
+    where: { createdAt: { lt: oneYearAgo } }
+  });
 
   return { results };
 }

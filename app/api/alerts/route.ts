@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SOP_MAP, ALERT_RULE_BY_TYPE } from '@/lib/alertRules';
+import { archiveAndScoreAlerts } from '@/lib/alertLogger';
 
 // Alert level hierarchies
 const LEVEL_VALUES: Record<string, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
@@ -196,19 +197,21 @@ export async function GET(req: NextRequest) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const statsWhere: any = {
-      resolved: true,
-      resolvedAt: { gte: startOfToday },
-      AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
-      OR: visibilityOrConditions
+    const logWhere: any = {
+      status: "RESOLVED",
+      createdAt: { gte: startOfToday },
     };
+    if (sessionUserId && !isL4 && !isL3) {
+       // Only filter by user ID if they aren't higher level management
+       logWhere.targetUserIds = { has: sessionUserId };
+    }
 
-    const resolvedTodayCount = await prisma.alert.count({
-      where: statsWhere
+    const resolvedTodayCount = await prisma.alertLog.count({
+      where: logWhere
     });
 
-    const sopFollowedTodayCount = await prisma.alert.count({
-      where: { ...statsWhere, sopAcknowledged: true }
+    const sopFollowedTodayCount = await prisma.alertLog.count({
+      where: { ...logWhere, sopFollowed: true }
     });
 
     const stats = {
@@ -400,11 +403,11 @@ export async function PATCH(req: NextRequest) {
         updateData.resolvedById = null;
       }
 
-      const updated = await prisma.alert.update({
-        where: { id },
-        data: updateData
-      });
-      resolved.push(updated);
+      const sopFollowed = !!sopAcknowledged;
+
+      await archiveAndScoreAlerts([id], "RESOLVED", sopFollowed, updateData.resolvedById);
+
+      resolved.push({ ...alertRecord, resolved: true, resolvedAt: new Date(), resolution: updateData.resolution });
     }
 
     // Single alert resolve — return the original shape for backwards compat

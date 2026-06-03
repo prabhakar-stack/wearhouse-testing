@@ -109,7 +109,8 @@ export async function POST(req: NextRequest) {
         where: { id: manifest.id },
         data: { 
           status: 'IN_INSPECTION',
-          inspectedBy: userEmail
+          inspectedBy: userEmail,
+          inspectorHandoverAt: new Date()
         },
         include: {
           orders: true

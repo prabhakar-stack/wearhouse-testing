@@ -178,6 +178,7 @@ export async function POST(req: Request) {
                 orderId: orderPlatformId,
                 lpnDriveLink: evidenceUrl || null,
                 orderDriveLink: orderDriveLink || null,
+                manifestId: manifest.id,
               } as any,
               create: {
                 lpn: normalizedLpnVal,
@@ -186,6 +187,7 @@ export async function POST(req: Request) {
                 orderId: orderPlatformId,
                 lpnDriveLink: evidenceUrl || null,
                 orderDriveLink: orderDriveLink || null,
+                manifestId: manifest.id,
               } as any,
             });
           // 2. Delete any Evidence for this LPN (no longer needed for GOOD)
@@ -203,6 +205,7 @@ export async function POST(req: Request) {
                 orderId: orderPlatformId,
                 lpnDriveLink: evidenceUrl || null,
                 orderDriveLink: orderDriveLink || null,
+                manifestId: manifest.id,
               } as any,
               create: {
                 lpn: normalizedLpnVal,
@@ -211,6 +214,7 @@ export async function POST(req: Request) {
                 orderId: orderPlatformId,
                 lpnDriveLink: evidenceUrl || null,
                 orderDriveLink: orderDriveLink || null,
+                manifestId: manifest.id,
               } as any,
             });
           // 4. Delete any Evidence for this LPN (not needed for RECOVERY)
@@ -344,7 +348,10 @@ export async function POST(req: Request) {
 
       await tx.manifest.update({
         where: { id: manifest.id },
-        data: { status: targetStatus }
+        data: { 
+          status: targetStatus,
+          inspectedAt: new Date()
+        }
       });
 
       // Increment inspector's itemsProcessed count

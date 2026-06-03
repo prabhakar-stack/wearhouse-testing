@@ -13,13 +13,27 @@ model User {
   email          String      @unique
   name           String?
   role           Role
-  itemsProcessed Int         @default(0)
-  accuracyRate   Float       @default(100.0)
-  alertLevel     AlertLevel?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  alertsResolved Alert[]     @relation("AlertResolver")
-  alertsTargeted Alert[]     @relation("AlertTarget")
+  itemsProcessed  Int         @default(0)
+  accuracyRate    Float       @default(100.0)
+  alertsReceived  Int         @default(0)
+  alertsResolved  Int         @default(0)
+  alertsEscalated Int         @default(0)
+  alertLevel      AlertLevel?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  alertsResolvedByUser Alert[] @relation("AlertResolver")
+  alertsTargeted  Alert[]     @relation("AlertTarget")
+}
+
+model AlertLog {
+  id              String   @id @default(uuid())
+  trackingId      String
+  alertType       String
+  targetUserIds   String[]
+  status          String
+  sopFollowed     Boolean  @default(false)
+  resolvedById    String?
+  createdAt       DateTime @default(now())
 }
 
 model Manifest {
@@ -33,6 +47,7 @@ model Manifest {
   receivedAt        DateTime?
   receivedBy        String?
   inspectedBy       String?
+  inspectorHandoverAt DateTime?
   claimId           String?
   createdAt         DateTime           @default(now())
   courierName       String?
@@ -41,6 +56,9 @@ model Manifest {
   orders            Order[]
   trackingSnapshots ShipmentTracking[]
   qcCheckedAt       DateTime?
+  lastEmailMessageId String?
+  inspectedAt       DateTime?
+  itemStatuses      ItemStatus[]
 }
 
 
@@ -142,6 +160,9 @@ model ItemStatus {
   orderId        String?
   lpnDriveLink   String?
   orderDriveLink String?
+  recoveryHandoverAt DateTime?
+  manifestId     String?
+  manifest       Manifest? @relation(fields: [manifestId], references: [id])
   createdAt      DateTime @default(now())
 }
 
