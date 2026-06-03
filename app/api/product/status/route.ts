@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { kv } from "@vercel/kv";
 
 // ─── Shopify Variant Image Fetcher ─────────────────────────────────────────
 async function fetchShopifyVariantImage(sku: string): Promise<string | null> {
@@ -57,42 +58,41 @@ function mapToEspCondition(cond?: string | null) {
   return "BAD";
 }
 
-
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const lpn = searchParams.get("lpn")?.trim().toUpperCase();
     const trackingId = searchParams.get("trackingId")?.trim() || searchParams.get("orderId")?.trim();
 
-    // If no specific LPN is requested, fallback to returning the latest ReturnItem (legacy dashboard poll)
+    // 1. HARDWARE ESP32 POLLING (No LPN parameter)
     if (!lpn) {
-      const latestItem = await prisma.returnItem.findFirst({
-        orderBy: [{ returnDate: "desc" }, { lpn: "desc" }],
-        select: {
-          lpn: true,
-        },
+      // Retrieve from KV as per RULE 2
+      const data = await kv.get("hardware:latest_status");
+
+      if (data) {
+        return NextResponse.json(data);
+      }
+
+      // Fallback to database if KV has expired or not set yet
+      const latestItemStatus = await prisma.itemStatus.findFirst({
+        orderBy: { createdAt: "desc" },
       });
 
-      if (!latestItem) {
+      if (!latestItemStatus) {
         return NextResponse.json({ error: "No products found" }, { status: 404 });
       }
 
-      // Look up its condition from ItemStatus
-      const itemStatus = await prisma.itemStatus.findUnique({
-        where: { lpn: latestItem.lpn }
-      });
-
-      const condition = itemStatus ? (itemStatus.status === 'GOOD' ? 'GOOD_SELLABLE' : 'PACKAGING_DAMAGED') : 'PRODUCT_DAMAGED';
+      const condition = latestItemStatus.status === 'GOOD' ? 'GOOD_SELLABLE' 
+                      : (latestItemStatus.status === 'RECOVERY' ? 'PACKAGING_DAMAGED' : 'PRODUCT_DAMAGED');
 
       return NextResponse.json({
-        lpn: latestItem.lpn,
+        lpn: latestItemStatus.lpn,
         condition: condition,
         espCondition: mapToEspCondition(condition),
       });
     }
 
-    // Live LPN verification - search in ReturnItem
+    // 2. LIVE LPN VERIFICATION
     const rawReturn = await prisma.returnItem.findUnique({
       where: { lpn }
     });
@@ -105,7 +105,6 @@ export async function GET(req: Request) {
 
     // Validate the FNSKU against shipments for the provided trackingId / manifest
     if (trackingId) {
-      // Find the manifest linked to this trackingId or orderId or removalOrderId
       const manifest = await prisma.manifest.findFirst({
         where: {
           OR: [
@@ -116,18 +115,16 @@ export async function GET(req: Request) {
             { orders: { some: { trackingNumber: trackingId } } }
           ]
         },
-        include: {
-          orders: true
-        }
+        include: { orders: true }
       });
 
       let shipments: any[] = [];
       if (manifest) {
-        const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
+        const orderIds = (manifest.orders || []).map((o: any) => o.platformOrderId);
         const trackingNumbers = [
           manifest.trackingId,
           manifest.removalOrderId,
-          ...(manifest.orders || []).map(o => o.trackingNumber)
+          ...(manifest.orders || []).map((o: any) => o.trackingNumber)
         ].filter((t): t is string => !!t);
 
         shipments = await prisma.aMZRemovalShipment.findMany({
@@ -139,7 +136,6 @@ export async function GET(req: Request) {
           }
         });
       } else {
-        // Fallback: look up shipments directly by tracking number or orderId
         shipments = await prisma.aMZRemovalShipment.findMany({
           where: {
             OR: [
@@ -150,7 +146,7 @@ export async function GET(req: Request) {
         });
       }
 
-      const isExpected = shipments.some(s => 
+      const isExpected = shipments.some((s: any) =>
         (s.sku && s.sku === rawReturn.sku) ||
         (s.fnsku && s.fnsku === resolvedFnsku) ||
         (s.sku && s.sku === resolvedFnsku) ||
@@ -165,7 +161,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // Fetch the Shopify variant reference image (non-blocking, best-effort)
     const imageUrl = rawReturn.sku ? await fetchShopifyVariantImage(rawReturn.sku) : null;
 
     return NextResponse.json({
@@ -177,7 +172,6 @@ export async function GET(req: Request) {
       customerComments: rawReturn.customerComments || null,
       imageUrl,
     });
-
   } catch (error: any) {
     console.error("GET Product Status Error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -188,49 +182,39 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const lpn = typeof body?.lpn === "string" ? body.lpn.trim().toUpperCase() : "";
-    const orderPlatformId =
-      typeof body?.orderPlatformId === "string" ? body.orderPlatformId.trim() : "";
-    const condition =
-      typeof body?.condition === "string" ? body.condition.trim() : "";
-    const recoveryType =
-      typeof body?.recoveryType === "string" ? body.recoveryType.trim() : "";
+    const orderPlatformId = typeof body?.orderPlatformId === "string" ? body.orderPlatformId.trim() : "";
+    const condition = typeof body?.condition === "string" ? body.condition.trim() : "";
+    const recoveryType = typeof body?.recoveryType === "string" ? body.recoveryType.trim() : "";
 
     if (!lpn || !condition) {
-      return NextResponse.json(
-        { error: "Missing lpn or condition" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing lpn or condition" }, { status: 400 });
     }
 
     if (!ALLOWED_CONDITIONS.has(condition)) {
       return NextResponse.json({ error: "Invalid condition" }, { status: 400 });
     }
 
-    // Resolve details from ReturnItem
-    const rawReturn = await prisma.returnItem.findUnique({
-      where: { lpn }
+    // Store in KV with a 10-second expiration as per Rule 2 (Cross-Request Flow)
+    const espCondition = mapToEspCondition(condition);
+    const hardwarePayload = { lpn, condition, espCondition };
+    await kv.set("hardware:latest_status", hardwarePayload, { ex: 10 });
+
+    const rawReturn = await prisma.returnItem.findUnique({ where: { lpn } });
+
+    await prisma.returnItem.upsert({
+      where: { lpn },
+      update: {},
+      create: {
+        lpn,
+        sku: rawReturn?.sku || "UNKNOWN_SKU",
+        asin: rawReturn?.asin || null,
+        fnsku: rawReturn?.fnsku || null,
+        productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
+        reason: rawReturn?.reason || "Removal Order Shipment",
+        customerComments: rawReturn?.customerComments || null,
+      },
+      select: { lpn: true }
     });
-
-
-
-
-
-// Dynamically upsert ReturnItem without deprecated fields
-await prisma.returnItem.upsert({
-  where: { lpn },
-  update: {},
-  create: {
-    lpn,
-    sku: rawReturn?.sku || "UNKNOWN_SKU",
-    asin: rawReturn?.asin || null,
-    fnsku: rawReturn?.fnsku || null,
-    productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
-    reason: rawReturn?.reason || "Removal Order Shipment",
-    customerComments: rawReturn?.customerComments || null,
-    // marketplace defaults to "amazon"
-  },
-  select: { lpn: true }
-});
 
     if (condition === "GOOD_SELLABLE") {
       await prisma.itemStatus.upsert({
@@ -238,31 +222,21 @@ await prisma.returnItem.upsert({
         update: { status: "GOOD", recoveryType: null },
         create: { lpn, status: "GOOD", recoveryType: null }
       });
-      await prisma.evidence.deleteMany({
-        where: { lpn }
-      });
+      await prisma.evidence.deleteMany({ where: { lpn } });
     } else if (condition === "PACKAGING_DAMAGED") {
       await prisma.itemStatus.upsert({
         where: { lpn },
         update: { status: "RECOVERY", recoveryType: recoveryType || null },
         create: { lpn, status: "RECOVERY", recoveryType: recoveryType || null }
       });
-      await prisma.evidence.deleteMany({
-        where: { lpn }
-      });
+      await prisma.evidence.deleteMany({ where: { lpn } });
     } else {
-      await prisma.itemStatus.deleteMany({
-        where: { lpn }
-      });
+      await prisma.itemStatus.deleteMany({ where: { lpn } });
     }
 
     return NextResponse.json({
       success: true,
-      status: {
-        lpn,
-        condition,
-        espCondition: mapToEspCondition(condition)
-      },
+      status: hardwarePayload,
     });
   } catch (error: any) {
     console.error("POST Product Status Error:", error);

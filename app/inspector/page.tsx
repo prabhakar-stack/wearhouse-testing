@@ -710,8 +710,8 @@ function InspectorDashboard({ role }: { role: string }) {
           </div>
         </div>
         <div className="flex items-center space-x-6">
-          <button 
-            onClick={() => setShowNotifications(!showNotifications)} 
+          <button
+            onClick={() => setShowNotifications(!showNotifications)}
             className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-[#FF6700]'}`}
             title="Notifications & Alerts"
           >
@@ -746,7 +746,7 @@ function InspectorDashboard({ role }: { role: string }) {
               <X size={16} />
             </button>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar max-h-[440px] bg-slate-50/30">
             {alerts.length === 0 ? (
               <div className="text-center py-12 flex flex-col items-center">
@@ -963,7 +963,7 @@ function InspectorDashboard({ role }: { role: string }) {
                 localStorage.removeItem("userRole");
                 try {
                   await fetch("/api/auth/logout", { method: "POST" });
-                } catch (e) {}
+                } catch (e) { }
                 router.push("/login");
               }}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
@@ -1409,10 +1409,10 @@ function InspectTab({ userId }: { userId?: string }) {
                       chunksRef.current.length > 0
                         ? chunksRef.current
                         : [
-                            new Blob(["empty-video-fallback"], {
-                              type: "video/webm",
-                            }),
-                          ];
+                          new Blob(["empty-video-fallback"], {
+                            type: "video/webm",
+                          }),
+                        ];
 
                     const blob = new Blob(videoChunks, { type: "video/webm" });
 
@@ -1701,8 +1701,8 @@ function InspectTab({ userId }: { userId?: string }) {
                     // 4. Finalize Database Write
                     const cleanUserId =
                       activeUserId &&
-                      activeUserId !== "undefined" &&
-                      activeUserId !== "null"
+                        activeUserId !== "undefined" &&
+                        activeUserId !== "null"
                         ? activeUserId
                         : undefined;
                     await fetch("/api/upload/finalize", {
@@ -2231,31 +2231,31 @@ function InspectTab({ userId }: { userId?: string }) {
     {
       id: 2,
       title: "Bottom Side",
-      desc: "Select one side of box to start. Flip the box over carefully to capture the bottom face.",
+      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 3,
       title: "Front Side",
-      desc: "Stand the box upright. Capture the FRONT face — note any dents, tears, or re-taped areas.",
+      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 4,
       title: "Back Side",
-      desc: "Rotate the box. Capture the BACK face — check for any impact damage or label irregularities.",
+      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
       sampleImg: "/samples/234.png",
     },
     {
       id: 5,
       title: "Left Side",
-      desc: "Capture the LEFT SIDE of the box — look for crush marks or moisture stains on the edges.",
+      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
       sampleImg: "/samples/566.png",
     },
     {
       id: 6,
       title: "Right Side",
-      desc: "Capture the RIGHT SIDE — check the seam tape runs continuously without gaps or cuts (showing 2 rotations).",
+      desc: "Rotate the box according to the sample image shown. Move the tail's face to the arrow's head face.",
       sampleImg: "/samples/566.png",
     },
     {
@@ -2277,7 +2277,7 @@ function InspectTab({ userId }: { userId?: string }) {
       id: 1,
       title: "Scan Item LPN",
       instruction:
-        "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the manifest before proceeding.",
+        "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the order before proceeding.",
     },
     {
       id: 2,
@@ -2463,13 +2463,12 @@ function InspectTab({ userId }: { userId?: string }) {
                     )}
 
                     <div
-                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${
-                        isCompleted
+                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${isCompleted
                           ? "bg-[#313079] border-[#313079]"
                           : isActive
                             ? "bg-white border-[#FF6700] shadow-[0_0_8px_rgba(255,103,0,0.4)]"
                             : "bg-white border-[#313079]/15"
-                      }`}
+                        }`}
                     >
                       {isCompleted && (
                         <Check
@@ -2616,13 +2615,12 @@ function InspectTab({ userId }: { userId?: string }) {
                     )}
 
                     <div
-                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${
-                        isCompleted
+                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${isCompleted
                           ? "bg-[#313079] border-[#313079]"
                           : isActive
                             ? "bg-white border-[#FF6700] shadow-[0_0_8px_rgba(255,103,0,0.4)]"
                             : "bg-white border-[#313079]/15"
-                      }`}
+                        }`}
                     >
                       {isCompleted && (
                         <Check
@@ -2668,284 +2666,283 @@ function InspectTab({ userId }: { userId?: string }) {
                             )}
 
                             {step.id === 1 && (
-                          <div className="space-y-3">
-                            <input
-                              type="text"
-                              placeholder="SCAN OR TYPE LPN..."
-                              value={currentLpn}
-                              onChange={(e) => {
-                                setCurrentLpn(e.target.value);
-                                setLpnScanError("");
-                              }}
-                              autoFocus
-                              className={`w-full min-h-12 bg-white border text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded ${
-                                lpnScanError ? "border-red-400" : "border-[#313079]/20"
-                              }`}
-                            />
-                            {lpnScanError && (
-                              <p className="text-xs font-bold text-red-600 text-center">
-                                {lpnScanError}
-                              </p>
-                            )}
-                            {activeOrderPlatformId && (
-                              <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
-                                Order: {activeOrderPlatformId}
-                              </p>
-                            )}
-                            <button
-                              onClick={nextItemStep}
-                              disabled={!currentLpn.trim() || isValidatingLpn}
-                              className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-colors flex items-center justify-center space-x-2"
-                            >
-                              {isValidatingLpn ? (
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              ) : (
-                                <span>LPN Confirmed →</span>
-                              )}
-                            </button>
-                          </div>
-                        )}
-
-                        {step.id === 2 && (
-                          <button
-                            onClick={() => {
-                              captureImage("lpn", currentLpn);
-                              nextItemStep();
-                            }}
-                            className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                          >
-                            <Camera size={16} /> <span>Capture LPN Photo</span>
-                          </button>
-                        )}
-
-                        {step.id === 3 && (
-                          <div className="space-y-3">
-                            <ul className="text-[#313079]/80 font-medium space-y-2 text-sm list-none">
-                              <li className="flex items-start space-x-2">
-                                <span className="text-[#FF6700] font-black mt-0.5">
-                                  ①
-                                </span>
-                                <span>
-                                  Inspect all corners and surfaces for scratches
-                                  or cracks.
-                                </span>
-                              </li>
-                              <li className="flex items-start space-x-2">
-                                <span className="text-[#FF6700] font-black mt-0.5">
-                                  ②
-                                </span>
-                                <span>
-                                  Verify all mechanical parts and buttons
-                                  move/click correctly.
-                                </span>
-                              </li>
-                              <li className="flex items-start space-x-2">
-                                <span className="text-[#FF6700] font-black mt-0.5">
-                                  ③
-                                </span>
-                                <span>
-                                  Confirm all accessories listed on the slip are
-                                  present.
-                                </span>
-                              </li>
-                            </ul>
-                            <button
-                              onClick={nextItemStep}
-                              className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded"
-                            >
-                              Testing Done →
-                            </button>
-                          </div>
-                        )}
-
-                        {step.id === 4 && (
-                          <button
-                            onClick={() => {
-                              captureImage("product", currentLpn);
-                              nextItemStep();
-                            }}
-                            className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                          >
-                            <Camera size={16} />{" "}
-                            <span>Capture Product Image</span>
-                          </button>
-                        )}
-
-                        {step.id === 5 && !showDefectDropdown && !showRecoveryDropdown && (
-                          <div className="flex flex-col space-y-2">
-                            <button
-                              onClick={() => handleCategory("GOOD")}
-                              className="w-full min-h-12 bg-green-600 active:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                            >
-                              <CheckCircle2 size={18} />{" "}
-                              <span>Good — Resellable</span>
-                            </button>
-                            <button
-                              onClick={() => handleCategory("RECOVERY")}
-                              className="w-full min-h-12 bg-[#FF6700] active:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                            >
-                              <AlertTriangle size={18} />{" "}
-                              <span>Recovery — Minor Damage</span>
-                            </button>
-                            <button
-                              onClick={() => handleCategory("BAD")}
-                              className="w-full min-h-12 bg-red-600 active:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                            >
-                              <AlertOctagon size={18} />{" "}
-                              <span>Bad — Unsalvageable</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {step.id === 5 && showRecoveryDropdown && (
-                          <div className="flex flex-col space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                              <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">
-                                Select Recovery Type
-                              </p>
-                              <p className="text-[10px] text-orange-700 leading-relaxed font-bold">
-                                Select the required recovery/refurbishment process for LPN {currentLpn}
-                              </p>
-                            </div>
-                            <div className="space-y-1.5">
-                              <button
-                                onClick={() => handleRecoverySelected("Barcode Damaged")}
-                                className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                              >
-                                <span className="flex-1 pr-2">
-                                  Barcode Damaged
-                                </span>
-                                <ArrowRight
-                                  size={14}
-                                  className="text-orange-400 shrink-0"
+                              <div className="space-y-3">
+                                <input
+                                  type="text"
+                                  placeholder="SCAN OR TYPE LPN..."
+                                  value={currentLpn}
+                                  onChange={(e) => {
+                                    setCurrentLpn(e.target.value);
+                                    setLpnScanError("");
+                                  }}
+                                  autoFocus
+                                  className={`w-full min-h-12 bg-white border text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded ${lpnScanError ? "border-red-400" : "border-[#313079]/20"
+                                    }`}
                                 />
-                              </button>
-                              <button
-                                onClick={() => handleRecoverySelected("Packaging Damaged")}
-                                className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                              >
-                                <span className="flex-1 pr-2">
-                                  Packaging Damaged
-                                </span>
-                                <ArrowRight
-                                  size={14}
-                                  className="text-orange-400 shrink-0"
-                                />
-                              </button>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setShowRecoveryDropdown(false);
-                                setCurrentCategory(null);
-                              }}
-                              className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
-                            >
-                              ← Back to Grade Selection
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Amazon Claim Defect Type Dropdown — appears when BAD is selected */}
-                        {step.id === 5 && showDefectDropdown && (
-                          <div className="flex flex-col space-y-3">
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                              <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">
-                                {selectedClaimReason
-                                  ? "2) Select Claim Sub-Reason"
-                                  : "1) Select Claim Reason"}
-                              </p>
-                              <p className="text-[10px] text-red-600 leading-relaxed font-bold">
-                                {selectedClaimReason
-                                  ? `Selected Reason: ${selectedClaimReason}`
-                                  : "Select the primary claim category matching Amazon's IDR portal"}
-                              </p>
-                            </div>
-                            <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
-                              {!selectedClaimReason
-                                ? CLAIM_REASONS.map((cr) => (
-                                    <button
-                                      key={cr.id}
-                                      onClick={() =>
-                                        setSelectedClaimReason(cr.label)
-                                      }
-                                      className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                    >
-                                      <span className="flex-1 pr-2">
-                                        {cr.label}
-                                      </span>
-                                      <ArrowRight
-                                        size={14}
-                                        className="text-red-400 shrink-0"
-                                      />
-                                    </button>
-                                  ))
-                                : CLAIM_REASONS.find(
-                                    (r) => r.label === selectedClaimReason,
-                                  )?.subReasons.map((csr) => (
-                                    <button
-                                      key={csr.value}
-                                      onClick={() =>
-                                        handleDefectSelected(
-                                          selectedClaimReason,
-                                          csr.label,
-                                        )
-                                      }
-                                      className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                    >
-                                      <span className="flex-1 pr-2">
-                                        {csr.label}
-                                      </span>
-                                      <ArrowRight
-                                        size={14}
-                                        className="text-red-400 shrink-0"
-                                      />
-                                    </button>
-                                  ))}
-                            </div>
-                            <div className="flex space-x-2">
-                              {selectedClaimReason ? (
+                                {lpnScanError && (
+                                  <p className="text-xs font-bold text-red-600 text-center">
+                                    {lpnScanError}
+                                  </p>
+                                )}
+                                {activeOrderPlatformId && (
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
+                                    Order: {activeOrderPlatformId}
+                                  </p>
+                                )}
                                 <button
-                                  onClick={() => setSelectedClaimReason(null)}
-                                  className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                                  onClick={nextItemStep}
+                                  disabled={!currentLpn.trim() || isValidatingLpn}
+                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-colors flex items-center justify-center space-x-2"
                                 >
-                                  ← Back to Reasons
+                                  {isValidatingLpn ? (
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  ) : (
+                                    <span>LPN Confirmed →</span>
+                                  )}
                                 </button>
-                              ) : (
+                              </div>
+                            )}
+
+                            {step.id === 2 && (
+                              <button
+                                onClick={() => {
+                                  captureImage("lpn", currentLpn);
+                                  nextItemStep();
+                                }}
+                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
+                              >
+                                <Camera size={16} /> <span>Capture LPN Photo</span>
+                              </button>
+                            )}
+
+                            {step.id === 3 && (
+                              <div className="space-y-3">
+                                <ul className="text-[#313079]/80 font-medium space-y-2 text-sm list-none">
+                                  <li className="flex items-start space-x-2">
+                                    <span className="text-[#FF6700] font-black mt-0.5">
+                                      ①
+                                    </span>
+                                    <span>
+                                      Inspect all corners and surfaces for scratches
+                                      or cracks.
+                                    </span>
+                                  </li>
+                                  <li className="flex items-start space-x-2">
+                                    <span className="text-[#FF6700] font-black mt-0.5">
+                                      ②
+                                    </span>
+                                    <span>
+                                      Verify all mechanical parts and buttons
+                                      move/click correctly.
+                                    </span>
+                                  </li>
+                                  <li className="flex items-start space-x-2">
+                                    <span className="text-[#FF6700] font-black mt-0.5">
+                                      ③
+                                    </span>
+                                    <span>
+                                      Confirm all accessories listed on the slip are
+                                      present.
+                                    </span>
+                                  </li>
+                                </ul>
+                                <button
+                                  onClick={nextItemStep}
+                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded"
+                                >
+                                  Testing Done →
+                                </button>
+                              </div>
+                            )}
+
+                            {step.id === 4 && (
+                              <button
+                                onClick={() => {
+                                  captureImage("product", currentLpn);
+                                  nextItemStep();
+                                }}
+                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
+                              >
+                                <Camera size={16} />{" "}
+                                <span>Capture Product Image</span>
+                              </button>
+                            )}
+
+                            {step.id === 5 && !showDefectDropdown && !showRecoveryDropdown && (
+                              <div className="flex flex-col space-y-2">
+                                <button
+                                  onClick={() => handleCategory("GOOD")}
+                                  className="w-full min-h-12 bg-green-600 active:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
+                                >
+                                  <CheckCircle2 size={18} />{" "}
+                                  <span>Good — Resellable</span>
+                                </button>
+                                <button
+                                  onClick={() => handleCategory("RECOVERY")}
+                                  className="w-full min-h-12 bg-[#FF6700] active:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
+                                >
+                                  <AlertTriangle size={18} />{" "}
+                                  <span>Recovery — Minor Damage</span>
+                                </button>
+                                <button
+                                  onClick={() => handleCategory("BAD")}
+                                  className="w-full min-h-12 bg-red-600 active:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
+                                >
+                                  <AlertOctagon size={18} />{" "}
+                                  <span>Bad — Unsalvageable</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {step.id === 5 && showRecoveryDropdown && (
+                              <div className="flex flex-col space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                  <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">
+                                    Select Recovery Type
+                                  </p>
+                                  <p className="text-[10px] text-orange-700 leading-relaxed font-bold">
+                                    Select the required recovery/refurbishment process for LPN {currentLpn}
+                                  </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <button
+                                    onClick={() => handleRecoverySelected("Barcode Damaged")}
+                                    className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                                  >
+                                    <span className="flex-1 pr-2">
+                                      Barcode Damaged
+                                    </span>
+                                    <ArrowRight
+                                      size={14}
+                                      className="text-orange-400 shrink-0"
+                                    />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRecoverySelected("Packaging Damaged")}
+                                    className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                                  >
+                                    <span className="flex-1 pr-2">
+                                      Packaging Damaged
+                                    </span>
+                                    <ArrowRight
+                                      size={14}
+                                      className="text-orange-400 shrink-0"
+                                    />
+                                  </button>
+                                </div>
                                 <button
                                   onClick={() => {
-                                    setShowDefectDropdown(false);
+                                    setShowRecoveryDropdown(false);
                                     setCurrentCategory(null);
                                   }}
-                                  className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                                  className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
                                 >
                                   ← Back to Grade Selection
                                 </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                              </div>
+                            )}
 
-                        {step.id === 6 && (
-                          <div className="flex flex-col items-center justify-center space-y-4 py-2">
-                            <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
-                              <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">
-                                Place item in
-                              </p>
-                              <p
-                                className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}
-                              >
-                                {currentCategory} BIN
-                              </p>
-                            </div>
-                            <button
-                              onClick={handleBinning}
-                              className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                            >
-                              <span>Confirm Binning</span>
-                              <ArrowRight size={18} />
-                            </button>
-                          </div>
-                        )}
+                            {/* Amazon Claim Defect Type Dropdown — appears when BAD is selected */}
+                            {step.id === 5 && showDefectDropdown && (
+                              <div className="flex flex-col space-y-3">
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                  <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">
+                                    {selectedClaimReason
+                                      ? "2) Select Claim Sub-Reason"
+                                      : "1) Select Claim Reason"}
+                                  </p>
+                                  <p className="text-[10px] text-red-600 leading-relaxed font-bold">
+                                    {selectedClaimReason
+                                      ? `Selected Reason: ${selectedClaimReason}`
+                                      : "Select the primary claim category matching Amazon's IDR portal"}
+                                  </p>
+                                </div>
+                                <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+                                  {!selectedClaimReason
+                                    ? CLAIM_REASONS.map((cr) => (
+                                      <button
+                                        key={cr.id}
+                                        onClick={() =>
+                                          setSelectedClaimReason(cr.label)
+                                        }
+                                        className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                                      >
+                                        <span className="flex-1 pr-2">
+                                          {cr.label}
+                                        </span>
+                                        <ArrowRight
+                                          size={14}
+                                          className="text-red-400 shrink-0"
+                                        />
+                                      </button>
+                                    ))
+                                    : CLAIM_REASONS.find(
+                                      (r) => r.label === selectedClaimReason,
+                                    )?.subReasons.map((csr) => (
+                                      <button
+                                        key={csr.value}
+                                        onClick={() =>
+                                          handleDefectSelected(
+                                            selectedClaimReason,
+                                            csr.label,
+                                          )
+                                        }
+                                        className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
+                                      >
+                                        <span className="flex-1 pr-2">
+                                          {csr.label}
+                                        </span>
+                                        <ArrowRight
+                                          size={14}
+                                          className="text-red-400 shrink-0"
+                                        />
+                                      </button>
+                                    ))}
+                                </div>
+                                <div className="flex space-x-2">
+                                  {selectedClaimReason ? (
+                                    <button
+                                      onClick={() => setSelectedClaimReason(null)}
+                                      className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                                    >
+                                      ← Back to Reasons
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        setShowDefectDropdown(false);
+                                        setCurrentCategory(null);
+                                      }}
+                                      className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                                    >
+                                      ← Back to Grade Selection
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {step.id === 6 && (
+                              <div className="flex flex-col items-center justify-center space-y-4 py-2">
+                                <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
+                                  <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">
+                                    Place item in
+                                  </p>
+                                  <p
+                                    className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}
+                                  >
+                                    {currentCategory} BIN
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={handleBinning}
+                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
+                                >
+                                  <span>Confirm Binning</span>
+                                  <ArrowRight size={18} />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2991,11 +2988,10 @@ function InspectTab({ userId }: { userId?: string }) {
             <button
               onClick={resetProcess}
               disabled={isUploading}
-              className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${
-                isUploading
+              className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${isUploading
                   ? "bg-gray-400 cursor-not-allowed text-gray-200"
                   : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-transform active:scale-95"
-              }`}
+                }`}
             >
               {isUploading ? (
                 <>
@@ -3140,12 +3136,11 @@ function NotificationsTab() {
                   className="w-full flex justify-between items-start pl-3 text-left focus:outline-none"
                 >
                   <div className="min-w-0 flex-1">
-                    <span className={`inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded ${
-                      alert.level === 'L4' ? 'bg-red-100 text-red-700' :
-                      alert.level === 'L3' ? 'bg-red-50 text-red-600' :
-                      alert.level === 'L2' ? 'bg-orange-100 text-orange-700' :
-                      'bg-slate-100 text-slate-700'
-                    }`}>
+                    <span className={`inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded ${alert.level === 'L4' ? 'bg-red-100 text-red-700' :
+                        alert.level === 'L3' ? 'bg-red-50 text-red-600' :
+                          alert.level === 'L2' ? 'bg-orange-100 text-orange-700' :
+                            'bg-slate-100 text-slate-700'
+                      }`}>
                       {alert.level} - {alert.type}
                     </span>
                     <h4 className="font-bold text-[#313079] mt-1 text-sm">{alert.title}</h4>
@@ -3194,14 +3189,14 @@ function NotificationsTab() {
                     <div className="space-y-2 pt-2 border-t border-slate-50">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resolve Alert</p>
                       <div className="flex space-x-2">
-                        <input 
-                          type="text" 
-                          placeholder="ENTER RESOLUTION DETAILS (REQUIRED)" 
+                        <input
+                          type="text"
+                          placeholder="ENTER RESOLUTION DETAILS (REQUIRED)"
                           value={resolutionText}
                           onChange={e => setResolutionText(e.target.value)}
                           className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs uppercase tracking-widest font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
                         />
-                        <button 
+                        <button
                           onClick={() => handleResolve(alert.id)}
                           disabled={!resolutionText.trim() || !sopChecked || resolvingId === alert.id}
                           className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg flex items-center justify-center min-w-[80px]"
