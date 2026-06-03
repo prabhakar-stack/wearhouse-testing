@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import fs from "fs";
-import path from "path";
-
-// ─── Temporary File Path ──────────────────────────────────────────────
-const TEMP_FILE_PATH = path.join(process.cwd(), "temp_status.json");
 
 // ─── Shopify Variant Image Fetcher ─────────────────────────────────────────
 async function fetchShopifyVariantImage(sku: string): Promise<string | null> {
@@ -60,9 +55,17 @@ export async function GET(req: Request) {
 
     // 1. HARDWARE ESP32 POLLING
     if (!lpn) {
-      if (fs.existsSync(TEMP_FILE_PATH)) {
-        const fileData = fs.readFileSync(TEMP_FILE_PATH, "utf-8");
-        return NextResponse.json(JSON.parse(fileData));
+      const statusRecord = await prisma.hardwareStatus.findUnique({
+        where: { id: 1 }
+      });
+
+      if (statusRecord) {
+        return NextResponse.json({
+          lpn: statusRecord.lpn,
+          condition: statusRecord.status,
+          espCondition: mapToEspCondition(statusRecord.status),
+          timestamp: statusRecord.createdAt.getTime()
+        });
       }
       return NextResponse.json({ error: "No products found" }, { status: 404 });
     }
@@ -106,8 +109,15 @@ export async function POST(req: Request) {
     const espCondition = mapToEspCondition(condition);
     const jsonPayload = { lpn, condition, espCondition, timestamp: Date.now() };
 
-    // Write exactly to the temporary JSON file!
-    fs.writeFileSync(TEMP_FILE_PATH, JSON.stringify(jsonPayload));
+    // Write exactly to the single-row database table for hardware!
+    await prisma.hardwareStatus.deleteMany({ where: { id: 1 } });
+    await prisma.hardwareStatus.create({
+      data: {
+        id: 1,
+        lpn,
+        status: condition
+      }
+    });
 
     return NextResponse.json({
       success: true,

@@ -473,3 +473,10 @@ model SystemConfig {
   value     String   // Stores JSON config
   updatedAt DateTime @updatedAt
 }
+
+model HardwareStatus {
+  id        Int      @id @default(1)
+  lpn       String
+  status    String
+  createdAt DateTime @default(now())
+}
