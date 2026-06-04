@@ -1,15 +1,8 @@
 "use client";
-import type {Metadata} from 'next';
-import './globals.css'; // Global styles
-
 import { useEffect, useState } from 'react';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, setStoredLanguage, type PreferredLanguage } from '@/lib/i18n';
-
-export const metadata: Metadata = {
-  title: 'cubelelo returns management tool',
-  description: 'cubelelo returns management tool',
-};
+import './globals.css'; // Global styles
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
   const [language, setLanguage] = useState<PreferredLanguage>(() => getStoredLanguage());
