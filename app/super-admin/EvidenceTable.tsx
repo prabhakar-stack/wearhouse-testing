@@ -90,9 +90,8 @@ export default function EvidenceTable() {
             className="px-3 py-2 border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-[#FF6700] rounded-xl text-xs cursor-pointer font-semibold uppercase tracking-wider"
           >
             <option value="ALL">All Types</option>
-            <option value="INSPECTION_VIDEO">Inspection Videos</option>
+            <option value="INSPECTOR_REJECTION">Inspector Rejections</option>
             <option value="RECEIVER_REJECTION">Receiver Rejections</option>
-            <option value="CLAIM_EVIDENCE">Claim Evidence</option>
           </select>
 
           <span className="bg-[#FF6700]/10 border border-[#FF6700]/20 text-[#FF6700] text-[10px] px-3 py-2 rounded-xl font-black uppercase flex items-center justify-center">
@@ -124,16 +123,16 @@ export default function EvidenceTable() {
               </tr>
             ) : (
               filteredList.map((record) => {
-                const isRejection = record.type === 'RECEIVER_REJECTION';
-                const isVideo = record.type === 'INSPECTION_VIDEO';
-                const isMissing = record.reason === 'missing';
+                const isReceiverRejection = record.type === 'RECEIVER_REJECTION';
+                const isInspectorRejection = record.type === 'INSPECTOR_REJECTION';
+                const isMissing = record.claimReason === 'MISSING';
                 
                 // HSL styling configurations for high visual fidelity
-                const typeBadgeStyle = isRejection 
+                const typeBadgeStyle = isReceiverRejection 
                   ? 'bg-red-50 text-red-600 border-red-200' 
-                  : isVideo 
-                    ? 'bg-amber-50 text-amber-700 border-amber-200' 
-                    : 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                  : isInspectorRejection 
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                    : 'bg-amber-50 text-amber-700 border-amber-200';
 
                 return (
                   <tr key={record.id} className="hover:bg-[#FF6700]/5 transition-colors group">
@@ -149,10 +148,10 @@ export default function EvidenceTable() {
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border text-[10px] font-black uppercase rounded-lg shadow-sm ${typeBadgeStyle}`}>
-                          {isRejection && <AlertTriangle size={12} />}
-                          {isVideo && <Video size={12} />}
-                          {!isRejection && !isVideo && <ImageIcon size={12} />}
-                          {record.type.replace('_', ' ')}
+                          {isReceiverRejection && <AlertTriangle size={12} />}
+                          {isInspectorRejection && <ImageIcon size={12} />}
+                          {!isReceiverRejection && !isInspectorRejection && <Video size={12} />}
+                          {record.type.replace(/_/g, ' ')}
                         </span>
                       </div>
                     </td>
@@ -195,34 +194,42 @@ export default function EvidenceTable() {
                     </td>
 
                     {/* Claim Reasons and context details */}
-                    <td className="px-6 py-4 max-w-xs overflow-hidden text-ellipsis">
+                    <td className="px-6 py-4" style={{maxWidth: '280px'}}>
                       {isMissing ? (
-                        <span className="bg-rose-100/50 text-rose-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                          MISSING FROM BOX
-                        </span>
-                      ) : record.claimReason ? (
                         <div className="flex flex-col space-y-1">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase text-indigo-900 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 w-max">
-                            {record.claimReason.replace(/_/g, ' ')}
+                          <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 border border-rose-200 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider w-max">
+                            Missing Item
                           </span>
                           {record.claimSubReason && (
-                            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">
-                              &bull; {record.claimSubReason.replace(/_/g, ' ')}
+                            <span className="text-[10px] text-slate-500 font-semibold block leading-snug">
+                              • {record.claimSubReason}
+                            </span>
+                          )}
+                        </div>
+                      ) : record.claimReason ? (
+                        <div className="flex flex-col space-y-1">
+                          <span className="inline-flex items-center text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 leading-snug" style={{wordBreak: 'break-word', whiteSpace: 'normal'}}>
+                            {record.claimReason}
+                          </span>
+                          {record.claimSubReason && (
+                            <span className="text-[10px] text-slate-500 font-semibold block leading-snug" style={{wordBreak: 'break-word', whiteSpace: 'normal'}}>
+                              • {record.claimSubReason}
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-500 font-semibold italic">
-                          {record.reason || 'No inspection issues logged'}
+                        <span className="text-xs text-slate-400 font-semibold italic">
+                          No inspection issues logged
                         </span>
                       )}
                     </td>
 
+
                     {/* Uploader Email */}
                     <td className="px-6 py-4 text-xs font-semibold text-slate-600">
-                      {record.user?.email || 'SYSTEM AUTOMATION'}
+                      {record.uploadedByEmail || 'SYSTEM AUTOMATION'}
                       <span className="text-[9px] text-slate-400 uppercase tracking-widest block font-bold mt-0.5">
-                        {record.user?.role?.replace('_', ' ') || 'WEB SERVICE'}
+                        WEB SERVICE
                       </span>
                     </td>
 

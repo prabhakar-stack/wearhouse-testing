@@ -79,6 +79,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "LPN not found in system" }, { status: 404 });
     }
 
+    if (rawReturn.isInspected) {
+      return NextResponse.json({ error: `This LPN (${lpn}) has already been inspected.` }, { status: 400 });
+    }
+
     const resolvedFnsku = rawReturn.fnsku || rawReturn.sku;
     const imageUrl = rawReturn.sku ? await fetchShopifyVariantImage(rawReturn.sku) : null;
 

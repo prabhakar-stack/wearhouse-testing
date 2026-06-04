@@ -34,14 +34,10 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
 
-    // Ensure only forward state transitions are allowed. If already in inspection or claims, block re-receiving.
-    const stateHierarchy = ['EXPECTED', 'LOST_IN_TRANSIT', 'AT_DOCK', 'IN_INSPECTION', 'INSPECTED', 'CLAIMS_STAGING', 'CLAIM_RESOLVED', 'RECOVERED_TO_INVENTORY'];
-    const currentStatusIndex = stateHierarchy.indexOf(manifest.status);
-    const atDockIndex = stateHierarchy.indexOf('AT_DOCK');
-
-    if (currentStatusIndex > atDockIndex) {
+    // Ensure only EXPECTED or IN_TRANSIT packages can be received.
+    if (manifest.status !== 'EXPECTED' && manifest.status !== 'IN_TRANSIT') {
       return NextResponse.json({
-        error: `Cannot receive package. It is already in a later stage ("${manifest.status}"). Only forward state transitions are allowed.`
+        error: `Cannot receive package. It is currently in "${manifest.status}" state, but can only be received if it is EXPECTED or IN_TRANSIT.`
       }, { status: 400 });
     }
 

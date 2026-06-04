@@ -14,11 +14,40 @@ function normalizeLpn(value: string) {
   return value.trim().toUpperCase();
 }
 
-function resolveCondition(rawCondition: unknown) {
-  const condition = typeof rawCondition === 'string' ? rawCondition.trim().toLowerCase() : '';
-  if (condition === 'good' || condition === 'good_sellable') return 'GOOD_SELLABLE';
-  if (condition === 'recovery' || condition === 'packaging_damaged') return 'PACKAGING_DAMAGED';
-  return 'PRODUCT_DAMAGED'; // 'bad' maps to PRODUCT_DAMAGED
+/** Parse lpnCondition string. Returns resolved ItemCondition + extracted claim labels. */
+function parseCondition(rawCondition: unknown): {
+  resolvedCondition: string;
+  claimReason: string | null;
+  claimSubReason: string | null;
+} {
+  const conditionStr = typeof rawCondition === 'string' ? rawCondition.trim() : '';
+
+  // New encoding: bad:REASON::SUBREASON
+  if (conditionStr.startsWith('bad:')) {
+    const payload = conditionStr.substring(4);
+    if (payload.includes('::')) {
+      const parts = payload.split('::');
+      return {
+        resolvedCondition: 'PRODUCT_DAMAGED',
+        claimReason: parts[0] || null,
+        claimSubReason: parts[1] || null,
+      };
+    }
+    return { resolvedCondition: 'PRODUCT_DAMAGED', claimReason: payload || null, claimSubReason: null };
+  }
+
+  // Legacy plain condition strings
+  const lower = conditionStr.toLowerCase();
+  if (lower === 'good' || lower === 'good_sellable') {
+    return { resolvedCondition: 'GOOD_SELLABLE', claimReason: null, claimSubReason: null };
+  }
+  if (lower === 'recovery' || lower === 'packaging_damaged') {
+    return { resolvedCondition: 'PACKAGING_DAMAGED', claimReason: null, claimSubReason: null };
+  }
+  if (ALLOWED_CONDITIONS.has(conditionStr)) {
+    return { resolvedCondition: conditionStr, claimReason: null, claimSubReason: null };
+  }
+  return { resolvedCondition: 'PRODUCT_DAMAGED', claimReason: null, claimSubReason: null };
 }
 
 
@@ -140,8 +169,12 @@ export async function POST(req: Request) {
           where: { lpn: normalizedLpnVal }
         });
 
+        if (rawReturn?.isInspected) {
+          throw new Error(`LPN ${normalizedLpnVal} has already been inspected.`);
+        }
+
         const scannedFnsku = rawReturn?.fnsku || rawReturn?.sku || 'UNKNOWN_FNSKU';
-        const resolvedCondition = resolveCondition(rawCondition);
+        const { resolvedCondition, claimReason, claimSubReason } = parseCondition(rawCondition);
 
         // Consume FNSKU expected quantity
         const expectedQty = expectedFnskuQuantities.get(scannedFnsku) || 0;
@@ -152,16 +185,17 @@ export async function POST(req: Request) {
         // Dynamically upsert ReturnItem without deprecated fields
         await tx.returnItem.upsert({
           where: { lpn: normalizedLpnVal },
-          update: {},
+          update: {
+            isInspected: true
+          },
           create: {
             lpn: normalizedLpnVal,
             sku: rawReturn?.sku || "UNKNOWN_SKU",
             asin: rawReturn?.asin || null,
             fnsku: rawReturn?.fnsku || null,
             productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
-
             customerComments: rawReturn?.customerComments || null,
-
+            isInspected: true
           },
         });
 
@@ -233,8 +267,8 @@ export async function POST(req: Request) {
             update: {
               orderId: scopedOrderId,
               type: 'INSPECTOR_REJECTION',
-              claimReason: resolvedCondition,
-              claimSubReason: resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : 'Packaging damaged',
+              claimReason: claimReason || resolvedCondition,
+              claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
               orderDriveLink: evidenceUrl || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
@@ -243,8 +277,8 @@ export async function POST(req: Request) {
               lpn: normalizedLpnVal,
               orderId: scopedOrderId,
               type: 'INSPECTOR_REJECTION',
-              claimReason: resolvedCondition,
-              claimSubReason: resolvedCondition === 'PRODUCT_DAMAGED' ? 'Product damaged' : 'Packaging damaged',
+              claimReason: claimReason || resolvedCondition,
+              claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
               orderDriveLink: evidenceUrl || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
@@ -253,13 +287,13 @@ export async function POST(req: Request) {
         }
       }
 
-      // B. Process missing items (expected FNSKUs remaining unscanned)
+      // B. Process missing items — ONLY write to MissingItem table, NOT Evidence.
+      // The MissingItem table stores fnsku + quantity + orderDriveLink as the evidence reference.
       let missingCount = 0;
       for (const [fnsku, missingQty] of expectedFnskuQuantities.entries()) {
         if (missingQty > 0) {
           missingCount += missingQty;
 
-          // Store shortage details in MissingItem table
           await tx.missingItem.upsert({
             where: {
               orderId_fnsku: {
@@ -268,51 +302,22 @@ export async function POST(req: Request) {
               }
             },
             update: {
-              missingQuantity: missingQty
+              missingQuantity: missingQty,
+              orderDriveLink: evidenceUrl || null,
             },
             create: {
               orderId: scopedOrderId,
               fnsku: fnsku,
-              missingQuantity: missingQty
-            }
-          });
-
-          // Create Evidence for claims for this shortage under a virtual LPN key
-          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
-          await tx.evidence.upsert({
-            where: { lpn: missingLpn },
-            update: {
-              orderId: scopedOrderId,
-              type: 'INSPECTOR_REJECTION',
-              claimReason: 'MISSING',
-              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
+              missingQuantity: missingQty,
               orderDriveLink: evidenceUrl || null,
-              uploadedByEmail: userEmail,
-              manifestId: manifest.id,
-            },
-            create: {
-              lpn: missingLpn,
-              orderId: scopedOrderId,
-              type: 'INSPECTOR_REJECTION',
-              claimReason: 'MISSING',
-              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
-              orderDriveLink: evidenceUrl || null,
-              uploadedByEmail: userEmail,
-              manifestId: manifest.id,
             }
           });
         } else {
-          // If no longer missing, delete any shortage ledger entry
           await tx.missingItem.deleteMany({
             where: {
               orderId: scopedOrderId,
               fnsku: fnsku
             }
-          });
-
-          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
-          await tx.evidence.deleteMany({
-            where: { lpn: missingLpn }
           });
         }
       }
@@ -337,7 +342,7 @@ export async function POST(req: Request) {
 
       let hasClaimableItems = false;
       for (const [lpn, rawCondition] of scannedEntries) {
-        const resolvedCondition = resolveCondition(rawCondition);
+        const { resolvedCondition } = parseCondition(rawCondition);
         if (resolvedCondition !== 'GOOD_SELLABLE') {
           hasClaimableItems = true;
           break;

@@ -2163,24 +2163,39 @@ function InspectTab({ userId }: { userId?: string }) {
         },
       ],
     },
+    {
+      id: "missing_quantity",
+      label: "3. I received removal order with missing quantity/ accessories/parts",
+      subReasons: [
+        {
+          value: "missing_parts",
+          label: "Missing parts/accessories/components",
+        },
+        {
+          value: "missing_main_item",
+          label: "Missing main item",
+        },
+      ],
+    },
   ];
 
   const handleCategory = (cat: "GOOD" | "RECOVERY" | "BAD") => {
-    const condition = resolveProductCondition(cat);
-    lpnConditionsRef.current[currentLpn] = condition;
     triggerXp(100);
     setCurrentCategory(cat);
     if (cat === "BAD") {
+      // Do NOT write lpnConditionsRef yet — wait for claim reason + subreason selection
       setShowDefectDropdown(true);
       setShowRecoveryDropdown(false);
       setSelectedClaimReason(null);
       setSelectedClaimSubReason(null);
     } else if (cat === "RECOVERY") {
+      lpnConditionsRef.current[currentLpn] = "PACKAGING_DAMAGED";
       setShowDefectDropdown(false);
       setShowRecoveryDropdown(true);
       setSelectedClaimReason(null);
       setSelectedClaimSubReason(null);
     } else {
+      lpnConditionsRef.current[currentLpn] = "GOOD_SELLABLE";
       setShowDefectDropdown(false);
       setShowRecoveryDropdown(false);
       setSelectedClaimReason(null);
@@ -2199,8 +2214,9 @@ function InspectTab({ userId }: { userId?: string }) {
   const handleDefectSelected = (reason: string, subReason: string) => {
     setSelectedClaimReason(reason);
     setSelectedClaimSubReason(subReason);
-    const condition = resolveProductCondition("BAD", reason, subReason);
-    lpnConditionsRef.current[currentLpn] = condition;
+    // Encode claim details into lpnConditionsRef using bad:REASON::SUBREASON format.
+    // The finalize and evaluate routes parse this prefix to extract claimReason + claimSubReason.
+    lpnConditionsRef.current[currentLpn] = `bad:${reason}::${subReason}`;
     setShowDefectDropdown(false);
     nextItemStep();
   };

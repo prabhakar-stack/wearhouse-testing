@@ -9,58 +9,57 @@ datasource db {
 }
 
 model User {
-  id             String      @id @default(uuid())
-  email          String      @unique
-  name           String?
-  role           Role
-  itemsProcessed  Int         @default(0)
-  accuracyRate    Float       @default(100.0)
-  alertsReceived  Int         @default(0)
-  alertsResolved  Int         @default(0)
-  alertsEscalated Int         @default(0)
-  alertLevel      AlertLevel?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id               String      @id @default(uuid())
+  email            String      @unique
+  name             String?
+  role             Role
+  itemsProcessed   Int         @default(0)
+  accuracyRate     Float       @default(100.0)
+  alertsReceived   Int         @default(0)
+  alertsResolved   Int         @default(0)
+  alertsEscalated  Int         @default(0)
+  alertLevel       AlertLevel?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
   alertsResolvedByUser Alert[] @relation("AlertResolver")
-  alertsTargeted  Alert[]     @relation("AlertTarget")
+  alertsTargeted   Alert[]     @relation("AlertTarget")
 }
 
 model AlertLog {
-  id              String   @id @default(uuid())
-  trackingId      String
-  alertType       String
-  targetUserIds   String[]
-  status          String
-  sopFollowed     Boolean  @default(false)
-  resolvedById    String?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  trackingId    String
+  alertType     String
+  targetUserIds String[]
+  status        String
+  sopFollowed   Boolean  @default(false)
+  resolvedById  String?
+  createdAt     DateTime @default(now())
 }
 
 model Manifest {
-  id                String             @id @default(uuid())
-  trackingId        String             @unique
-  status            PackageState
-  marketplace       Marketplace        @default(AMAZON)
-  orderId           String?
-  removalOrderId    String?
-  expectedDate      DateTime?
-  receivedAt        DateTime?
-  receivedBy        String?
-  inspectedBy       String?
+  id                  String             @id @default(uuid())
+  trackingId          String             @unique
+  status              PackageState
+  marketplace         Marketplace        @default(AMAZON)
+  orderId             String?
+  removalOrderId      String?
+  expectedDate        DateTime?
+  receivedAt          DateTime?
+  receivedBy          String?
+  inspectedBy         String?
   inspectorHandoverAt DateTime?
-  claimId           String?
-  createdAt         DateTime           @default(now())
-  courierName       String?
-  alerts            Alert[]
-  evidences         Evidence[]
-  orders            Order[]
-  trackingSnapshots ShipmentTracking[]
-  qcCheckedAt       DateTime?
-  lastEmailMessageId String?
-  inspectedAt       DateTime?
-  itemStatuses      ItemStatus[]
+  claimId             String?
+  createdAt           DateTime           @default(now())
+  courierName         String?
+  alerts              Alert[]
+  evidences           Evidence[]
+  orders              Order[]
+  trackingSnapshots   ShipmentTracking[]
+  qcCheckedAt         DateTime?
+  lastEmailMessageId  String?
+  inspectedAt         DateTime?
+  itemStatuses        ItemStatus[]
 }
-
 
 model Order {
   marketplace        Marketplace
@@ -154,16 +153,16 @@ model CronJobState {
 }
 
 model ItemStatus {
-  lpn            String   @id @default(uuid())
-  status         String
-  recoveryType   String?
-  orderId        String?
-  lpnDriveLink   String?
-  orderDriveLink String?
+  lpn                String    @id
+  status             String
+  recoveryType       String?
+  orderId            String?
+  lpnDriveLink       String?
+  orderDriveLink     String?
   recoveryHandoverAt DateTime?
-  manifestId     String?
-  manifest       Manifest? @relation(fields: [manifestId], references: [id])
-  createdAt      DateTime @default(now())
+  manifestId         String?
+  manifest           Manifest? @relation(fields: [manifestId], references: [id])
+  createdAt          DateTime  @default(now())
 }
 
 model MissingItem {
@@ -171,6 +170,7 @@ model MissingItem {
   orderId         String
   fnsku           String
   missingQuantity Int
+  orderDriveLink  String?
   createdAt       DateTime @default(now())
 
   @@unique([orderId, fnsku])
@@ -185,7 +185,7 @@ model AMZRemovalOrder {
   serviceSpeed      String?   @map("service-speed")
   orderStatus       String?   @map("order-status")
   lastUpdatedDate   DateTime? @map("last-updated-date")
-  sku               String   @map("sku")
+  sku               String    @map("sku")
   fnsku             String?   @map("fnsku")
   disposition       String?   @map("disposition")
   requestedQuantity Int?      @map("requested-quantity")
@@ -197,7 +197,6 @@ model AMZRemovalOrder {
   currency          String?   @map("currency")
 
   @@map("AMZ_removal_orders")
-
   @@unique([orderId, sku], name: "orderId_sku")
 }
 
@@ -206,7 +205,7 @@ model AMZRemovalShipment {
   requestDate     DateTime? @map("request-date")
   orderId         String?   @map("order-id")
   shipmentDate    DateTime? @map("shipment-date")
-  sku             String   @map("sku")
+  sku             String    @map("sku")
   fnsku           String?   @map("fnsku")
   disposition     String?   @map("disposition")
   shippedQuantity Int?      @map("shipped-quantity")
@@ -260,22 +259,22 @@ model AMZCustomerReturn {
 }
 
 model ReturnPrimeReturn {
-  id               String   @id
-  request_number   String?
-  request_type     String?
-  status           String?
-  channel          String?
-  order_id         String?
-  order_name       String?
-  recevied_status  Boolean?
-  rejected_status  Boolean?
-  archived_status  Boolean?
-  refund_status    String?
-  sku              String?
-  traking_number   String?
-  quantity         Int?
-  actual_amount    Float?
-  image_src        String?
+  id              String   @id
+  request_number  String?
+  request_type    String?
+  status          String?
+  channel         String?
+  order_id        String?
+  order_name      String?
+  recevied_status Boolean?
+  rejected_status Boolean?
+  archived_status Boolean?
+  refund_status   String?
+  sku             String?
+  traking_number  String?
+  quantity        Int?
+  actual_amount   Float?
+  image_src       String?
 
   @@index([order_id])
   @@index([traking_number])
@@ -283,43 +282,43 @@ model ReturnPrimeReturn {
 }
 
 model ShiprocketReturn {
-  id             String      @id
-  channelId      String?
-  requestNumber  String?
-  channelOrderId String?
-  requestType    String?
-  status         String?
-  channel        String?
-  orderId        String?
-  orderName      String?
-  orderCreatedAt DateTime?
-  fulfillmentId  String?
-  deliveryStatus String?
-  deliveryDate   DateTime?
-  customerEmail  String?
-  postalCode     String?
-  awb            String?
-  courierName    String?
-  courierSlug    String?
-  productId      String?
-  price          Float?
-  shipmentId     String?
-  shipmentsId    String?
-  trackingNumber String?
-  rtoAwb         String?
-  returnAwb      String?
-  etd            DateTime?
+  id               String      @id
+  channelId        String?
+  requestNumber    String?
+  channelOrderId   String?
+  requestType      String?
+  status           String?
+  channel          String?
+  orderId          String?
+  orderName        String?
+  orderCreatedAt   DateTime?
+  fulfillmentId    String?
+  deliveryStatus   String?
+  deliveryDate     DateTime?
+  customerEmail    String?
+  postalCode       String?
+  awb              String?
+  courierName      String?
+  courierSlug      String?
+  productId        String?
+  price            Float?
+  shipmentId       String?
+  shipmentsId      String?
+  trackingNumber   String?
+  rtoAwb           String?
+  returnAwb        String?
+  etd              DateTime?
   rtoInitiatedDate DateTime?
-  orderItemsSku  String?
-  packageId      String?
-  sku            String?
-  productName    String?
-  quantity       Int?
-  amount         Float?
-  marketplace    Marketplace @default(SHOPIFY)
-  rawPayload     Json?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  orderItemsSku    String?
+  packageId        String?
+  sku              String?
+  productName      String?
+  quantity         Int?
+  amount           Float?
+  marketplace      Marketplace @default(SHOPIFY)
+  rawPayload       Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   @@index([orderId])
   @@index([channelId])
@@ -367,6 +366,7 @@ model ReturnItem {
   marketplace         String?   @default("amazon")
   orderId             String?
   itemPrice           Float?
+  isInspected         Boolean   @default(false) @map("is_inspected")
 
   @@map("ReturnItem")
 }

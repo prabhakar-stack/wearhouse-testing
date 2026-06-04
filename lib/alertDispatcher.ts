@@ -106,6 +106,7 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
   }
 
   const trackingId = alert.manifest?.trackingId || 'N/A';
+  const subject = formatAlertSubject(alert.title, trackingId);
   const dynamicDescription = alert.description.replace(/{trackingId}/g, trackingId);
 
   // Construct Google Chat Card v2 Payload
@@ -115,7 +116,7 @@ async function sendHangoutMessage(alert: any, sopSteps: string[]) {
         cardId: alert.id,
         card: {
           header: {
-            title: alert.title,
+            title: subject,
             subtitle: `Priority: ${alert.level} | ID: ${trackingId}`,
             imageUrl: 'https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/warning/default/48px.svg',
             imageType: 'CIRCLE',
@@ -164,7 +165,7 @@ async function sendEmailMessage(alert: any, toEmails: string[], previousMessageI
 
   const trackingId = alert.manifest?.trackingId || 'N/A';
   const dynamicDescription = alert.description.replace(/{trackingId}/g, trackingId);
-  const subject = alert.title || '⚠️ Process Break Alert';
+  const subject = formatAlertSubject(alert.title, trackingId);
 
   // Clean HTML Formatting
   const htmlContent = `
@@ -216,6 +217,11 @@ async function sendEmailMessage(alert: any, toEmails: string[], previousMessageI
     console.error(`[Alert Dispatcher] Failed to send email via Nodemailer:`, err);
     return null;
   }
+}
+
+function formatAlertSubject(title: string | null | undefined, trackingId: string) {
+  const baseTitle = title || 'Process Break Alert';
+  return trackingId && trackingId !== 'N/A' ? `[${trackingId}] ${baseTitle}` : baseTitle;
 }
 
 /**

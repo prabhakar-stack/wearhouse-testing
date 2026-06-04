@@ -29,9 +29,14 @@ export async function GET(req: NextRequest) {
     });
 
     if (manifest) {
-      if (manifest.status === 'AT_DOCK') {
+      if (manifest.status !== 'EXPECTED' && manifest.status !== 'IN_TRANSIT') {
+        if (manifest.status === 'AT_DOCK') {
+          return NextResponse.json({
+            error: 'This package has already been received at the dock and is visible in the Handover Ledger.'
+          }, { status: 400 });
+        }
         return NextResponse.json({
-          error: 'This package has already been received at the dock and is visible in the Handover Ledger.'
+          error: `This package cannot be received. It is already in stage "${manifest.status}".`
         }, { status: 400 });
       }
       const marketplace = manifest.orders?.[0]?.marketplace || 'AMAZON';

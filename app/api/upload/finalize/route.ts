@@ -262,11 +262,13 @@ export async function POST(req: NextRequest) {
     });
 
     if (isRejection) {
-      // 5. RECEIVER REJECTION - recorded at the order level.
+      // 5. RECEIVER REJECTION - recorded at the shipment/manifest level.
+      // lpn = trackingId (the physical barcode on the shipment — the only identifier we have at dock stage)
+      // orderId = the platform order ID if resolved, else null
       const ev = await prisma.evidence.upsert({
         where: { lpn: trackingId },
         update: {
-          orderId: trackingId,
+          orderId: scopedOrderId || null,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
@@ -277,7 +279,7 @@ export async function POST(req: NextRequest) {
         },
         create: {
           lpn: trackingId,
-          orderId: trackingId,
+          orderId: scopedOrderId || null,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
@@ -349,6 +351,12 @@ export async function POST(req: NextRequest) {
             where: { lpn: normalizedLpnVal }
           });
 
+          if (rawReturn?.isInspected) {
+            return NextResponse.json({
+              error: `LPN ${normalizedLpnVal} has already been inspected.`
+            }, { status: 400 });
+          }
+
           const scannedFnsku = rawReturn?.fnsku || rawReturn?.sku || 'UNKNOWN_FNSKU';
 
           // Consume FNSKU expected quantity
@@ -359,7 +367,9 @@ export async function POST(req: NextRequest) {
 
           await prisma.returnItem.upsert({
             where: { lpn: normalizedLpnVal },
-            update: {},
+            update: {
+              isInspected: true
+            },
             create: {
               lpn: normalizedLpnVal,
               sku: rawReturn?.sku || "UNKNOWN_SKU",
@@ -368,6 +378,7 @@ export async function POST(req: NextRequest) {
               productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
               reason: rawReturn?.reason || "Removal Order Shipment",
               customerComments: rawReturn?.customerComments || null,
+              isInspected: true
               // marketplace defaults to "amazon"
             },
             select: { lpn: true }
@@ -380,8 +391,8 @@ export async function POST(req: NextRequest) {
           if (resolvedCondition === 'GOOD_SELLABLE') {
             await prisma.itemStatus.upsert({
               where: { lpn: normalizedLpnVal },
-              update: { status: 'GOOD', recoveryType: null },
-              create: { lpn: normalizedLpnVal, status: 'GOOD', recoveryType: null }
+              update: { status: 'GOOD', recoveryType: null, orderDriveLink, lpnDriveLink, orderId: scopedOrderId, manifestId: manifest.id },
+              create: { lpn: normalizedLpnVal, status: 'GOOD', recoveryType: null, orderDriveLink, lpnDriveLink, orderId: scopedOrderId, manifestId: manifest.id }
             });
             await prisma.evidence.deleteMany({
               where: { lpn: normalizedLpnVal }
@@ -389,13 +400,14 @@ export async function POST(req: NextRequest) {
           } else if (resolvedCondition === 'PACKAGING_DAMAGED') {
             await prisma.itemStatus.upsert({
               where: { lpn: normalizedLpnVal },
-              update: { status: 'RECOVERY', recoveryType: recoveryType },
-              create: { lpn: normalizedLpnVal, status: 'RECOVERY', recoveryType: recoveryType }
+              update: { status: 'RECOVERY', recoveryType: recoveryType, orderDriveLink, lpnDriveLink, orderId: scopedOrderId, manifestId: manifest.id },
+              create: { lpn: normalizedLpnVal, status: 'RECOVERY', recoveryType: recoveryType, orderDriveLink, lpnDriveLink, orderId: scopedOrderId, manifestId: manifest.id }
             });
             await prisma.evidence.deleteMany({
               where: { lpn: normalizedLpnVal }
             });
           } else {
+            // BAD / PRODUCT_DAMAGED — only real LPN items go to Evidence
             await prisma.itemStatus.deleteMany({
               where: { lpn: normalizedLpnVal }
             });
@@ -403,23 +415,23 @@ export async function POST(req: NextRequest) {
             const ev = await prisma.evidence.upsert({
               where: { lpn: normalizedLpnVal },
               update: {
-                orderId: trackingId,
+                orderId: scopedOrderId,
                 orderDriveLink,
                 lpnDriveLink,
                 type: 'INSPECTOR_REJECTION',
                 claimReason: claimReason || 'PRODUCT_DAMAGE',
-                claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
+                claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
                 uploadedByEmail: resolvedUploadedByEmail,
                 manifestId: manifest.id,
               },
               create: {
                 lpn: normalizedLpnVal,
-                orderId: trackingId,
+                orderId: scopedOrderId,
                 orderDriveLink,
                 lpnDriveLink,
                 type: 'INSPECTOR_REJECTION',
                 claimReason: claimReason || 'PRODUCT_DAMAGE',
-                claimSubReason: claimSubReason || `Product defect folder/photos for LPN ${normalizedLpnVal}`,
+                claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
                 uploadedByEmail: resolvedUploadedByEmail,
                 manifestId: manifest.id,
               }
@@ -430,96 +442,38 @@ export async function POST(req: NextRequest) {
       }
 
       // B. Process missing items (expected FNSKUs remaining unscanned)
+      // Missing items ONLY go into MissingItem table — NOT Evidence table.
+      // The MissingItem table stores quantity + fnsku + orderDriveLink as evidence reference.
       for (const [fnsku, missingQty] of expectedFnskuQuantities.entries()) {
         if (missingQty > 0) {
-          // Store shortage details in MissingItem table
           await prisma.missingItem.upsert({
             where: {
               orderId_fnsku: {
-                orderId: scopedOrderId,
+                orderId: scopedOrderId!,
                 fnsku: fnsku
               }
             },
             update: {
-              missingQuantity: missingQty
+              missingQuantity: missingQty,
+              orderDriveLink: folderLink || null,
             },
             create: {
-              orderId: scopedOrderId,
+              orderId: scopedOrderId!,
               fnsku: fnsku,
-              missingQuantity: missingQty
+              missingQuantity: missingQty,
+              orderDriveLink: folderLink || null,
             }
           });
-
-          // Create Evidence for claims for this shortage under a virtual LPN key
-          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
-          const ev = await prisma.evidence.upsert({
-            where: { lpn: missingLpn },
-            update: {
-              orderId: trackingId,
-              orderDriveLink: folderLink || null,
-              lpnDriveLink: null,
-              type: 'INSPECTOR_REJECTION',
-              claimReason: 'MISSING',
-              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
-              uploadedByEmail: resolvedUploadedByEmail,
-              manifestId: manifest.id,
-            },
-            create: {
-              lpn: missingLpn,
-              orderId: trackingId,
-              orderDriveLink: folderLink || null,
-              lpnDriveLink: null,
-              type: 'INSPECTOR_REJECTION',
-              claimReason: 'MISSING',
-              claimSubReason: `FNSKU ${fnsku} is missing during inspection (Quantity: ${missingQty})`,
-              uploadedByEmail: resolvedUploadedByEmail,
-              manifestId: manifest.id,
-            }
-          });
-          evidenceRecordsCreated.push(ev);
         } else {
-          // Delete from MissingItem
           await prisma.missingItem.deleteMany({
             where: {
-              orderId: scopedOrderId,
+              orderId: scopedOrderId!,
               fnsku: fnsku
             }
           });
-
-          const missingLpn = `missing_${scopedOrderId}_${fnsku}`;
-          await prisma.evidence.deleteMany({
-            where: { lpn: missingLpn }
-          });
         }
       }
-
-      // C. Upsert standard order inspection video evidence (overall folder link)
-      const videoLpnKey = `video_${trackingId}`;
-      const ev = await prisma.evidence.upsert({
-        where: { lpn: videoLpnKey },
-        update: {
-          orderId: trackingId,
-          orderDriveLink: folderLink || null,
-          lpnDriveLink: null,
-          type: 'INSPECTOR_REJECTION',
-          claimReason: 'VIDEO_RECORDING',
-          claimSubReason: reason || 'Complete Order Inspection Folder',
-          uploadedByEmail: resolvedUploadedByEmail,
-          manifestId: manifest.id,
-        },
-        create: {
-          lpn: videoLpnKey,
-          orderId: trackingId,
-          orderDriveLink: folderLink || null,
-          lpnDriveLink: null,
-          type: 'INSPECTOR_REJECTION',
-          claimReason: 'VIDEO_RECORDING',
-          claimSubReason: reason || 'Complete Order Inspection Folder',
-          uploadedByEmail: resolvedUploadedByEmail,
-          manifestId: manifest.id,
-        }
-      });
-      evidenceRecordsCreated.push(ev);
+      // NOTE: No video evidence row — the order folder link is stored on each product's Evidence record.
     }
 
     return NextResponse.json({
