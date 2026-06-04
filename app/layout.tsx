@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Returns Management Tool',
   description: 'Returns Management Tool',
   icons: {
-    icon: '\public\favicon.ico',
+    icon: '/public/favicon.ico',
   },
 };
 
