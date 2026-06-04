@@ -4,18 +4,34 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, PackageSearch } from 'lucide-react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import LanguagePreference from "@/app/components/LanguagePreference";
+import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
 
 export default function LoginPage() {
   const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState('');
   const [showBypass, setShowBypass] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const router = useRouter();
   
   // Prevent hydration mismatch
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
   }, []);
+
+  useEffect(() => {
+    setPreferredLanguage(getStoredLanguage());
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
+
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const handleGoogleSuccess = async (credential: string) => {
     try {
@@ -126,9 +142,12 @@ export default function LoginPage() {
             <div className="w-9 h-9 bg-[#000000] border border-[#FF6700]/20 rounded shadow-md flex items-center justify-center hover:scale-105 transition-transform duration-300">
               <PackageSearch size={20} strokeWidth={2.5} className="text-[#FF6700]" />
             </div>
-            <span className="text-lg font-black tracking-[0.25em] uppercase text-[#313079]">Aegis System</span>
+            <span className="text-lg font-black tracking-[0.25em] uppercase text-[#313079]">{t("Aegis System")}</span>
           </div>
-          <div className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Internal Deployment v1.0.4</div>
+          <div className="flex items-center space-x-6">
+            <LanguagePreference compact />
+            <div className="text-[10px] uppercase tracking-widest text-slate-400 font-black">{t("Internal Deployment v1.0.4")}</div>
+          </div>
         </header>
 
         {/* Dynamic Blurred Background Decoration */}
@@ -138,9 +157,9 @@ export default function LoginPage() {
           <div className="w-full max-w-md text-center space-y-10">
             
             <div className="space-y-4">
-              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-wider text-[#313079] leading-tight drop-shadow-sm">Returns Management App</h1>
+              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-wider text-[#313079] leading-tight drop-shadow-sm">{t("Returns Management App")}</h1>
               <p className="text-slate-500 font-bold text-xs tracking-widest leading-relaxed uppercase">
-                Secure, access-controlled ecosystem for reverse logistics operations. Verification via organizational identity is required for entry.
+                {t("Secure, access-controlled ecosystem for reverse logistics operations. Verification via organizational identity is required for entry.")}
               </p>
             </div>
             
@@ -156,7 +175,7 @@ export default function LoginPage() {
                       }
                     }}
                     onError={() => {
-                      setError("Google Authentication failed. Please try again.");
+                      setError(t("Google Authentication failed. Please try again."));
                     }}
                     theme="filled_blue"
                     shape="rectangular"
@@ -166,14 +185,14 @@ export default function LoginPage() {
                   />
                 </div>
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-relaxed text-center">
-                  Secure single sign-on with organization Google Workspace
+                  {t("Secure single sign-on with organization Google Workspace")}
                 </p>
               </div>
  
               {/* Decorative Divider */}
               <div className="w-full flex items-center justify-between my-2 max-w-[320px]">
                 <div className="h-[1px] bg-slate-200 flex-1"></div>
-                <span className="text-[9px] font-black text-slate-300 uppercase px-3 tracking-widest">or</span>
+                <span className="text-[9px] font-black text-slate-300 uppercase px-3 tracking-widest">{t("or")}</span>
                 <div className="h-[1px] bg-slate-200 flex-1"></div>
               </div>
  
@@ -184,7 +203,7 @@ export default function LoginPage() {
                   onClick={() => setShowBypass(!showBypass)}
                   className="text-[9px] text-slate-400 hover:text-[#FF6700] transition-colors uppercase font-bold tracking-widest focus:outline-none"
                 >
-                  {showBypass ? 'Hide Sandbox Options [-]' : 'Developer Sandbox Bypass [+]'}
+                  {showBypass ? t("Hide Sandbox Options [-]") : t("Developer Sandbox Bypass [+]")}
                 </button>
  
                 {showBypass && (
@@ -192,7 +211,7 @@ export default function LoginPage() {
                     <form onSubmit={handleLogin} className="flex flex-col space-y-3">
                        <input
                           type="email"
-                          placeholder="ENTER EMAIL ADDRESS"
+                          placeholder={t("ENTER EMAIL ADDRESS")}
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full px-6 py-4 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] transition-all shadow-sm uppercase tracking-widest text-xs text-center"
@@ -202,17 +221,17 @@ export default function LoginPage() {
                           type="submit"
                           className="w-full flex justify-center items-center space-x-2 py-4 border border-slate-300 rounded-md bg-white hover:bg-[#FF6700]/5 hover:border-[#FF6700] hover:shadow-md transition-all duration-300 outline-none text-xs font-black tracking-widest uppercase text-slate-700 hover:text-[#FF6700]"
                         >
-                          <span>Design Mode Login</span>
+                          <span>{t("Design Mode Login")}</span>
                         </button>
                      </form>
  
                      <div className="flex flex-col items-start space-y-2 px-6 py-4 bg-[#FF6700]/5 border border-[#FF6700]/10 rounded-md text-left w-full shadow-sm hover:shadow-md transition-shadow">
                        <div className="flex items-center space-x-2">
                          <ShieldCheck className="h-4 w-4 text-[#FF6700] shrink-0" />
-                         <strong className="text-[11px] text-[#FF6700] font-black uppercase tracking-wider">Design Mode Active</strong>
+                         <strong className="text-[11px] text-[#FF6700] font-black uppercase tracking-wider">{t("Design Mode Active")}</strong>
                        </div>
                        <p className="text-[10px] text-[#313079]/80 uppercase tracking-widest leading-relaxed font-bold">
-                         Google Auth bypassed for testing. Just enter the email address of a user in your database.
+                         {t("Google Auth bypassed for testing. Just enter the email address of a user in your database.")}
                        </p>
                      </div>
                    </div>
@@ -224,7 +243,7 @@ export default function LoginPage() {
                    <svg className="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                    </svg>
-                   <span className="text-[11px] text-red-700 font-bold uppercase tracking-wider leading-relaxed">{error}</span>
+                   <span className="text-[11px] text-red-700 font-bold uppercase tracking-wider leading-relaxed">{t(error)}</span>
                  </div>
                )}
              </div>
@@ -233,12 +252,12 @@ export default function LoginPage() {
  
          <footer className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-3 gap-8 border-t border-slate-200 bg-white/50 backdrop-blur-sm z-10 relative">
            <div className="space-y-2">
-             <p className="text-[10px] uppercase text-slate-400 tracking-tighter font-black">Security Protocol</p>
-             <p className="text-xs font-bold text-slate-600">Encrypted Session (AES-256)</p>
+             <p className="text-[10px] uppercase text-slate-400 tracking-tighter font-black">{t("Security Protocol")}</p>
+             <p className="text-xs font-bold text-slate-600">{t("Encrypted Session (AES-256)")}</p>
            </div>
            <div className="space-y-2 max-md:text-left md:text-center">
-             <p className="text-[10px] uppercase text-slate-400 tracking-tighter font-black">Access Restrictions</p>
-             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">Internal warehouse systems. Unauthorized access strictly prohibited.</p>
+             <p className="text-[10px] uppercase text-slate-400 tracking-tighter font-black">{t("Access Restrictions")}</p>
+             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">{t("Internal warehouse systems. Unauthorized access strictly prohibited.")}</p>
            </div>
            <div className="space-y-2 md:text-right">
            </div>

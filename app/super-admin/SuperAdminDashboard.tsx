@@ -6,12 +6,13 @@ import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, Exte
 import Link from 'next/link';
 import SettingsTab from './SettingsTab';
 import LanguagePreference from '@/app/components/LanguagePreference';
-import { getStoredLanguage, translateInstruction } from '@/lib/i18n';
+import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
 
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 
-function ProfileModal({ user, onClose }: { user: { name: string; email: string; role: string }; onClose: () => void }) {
+function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: string; email: string; role: string }; onClose: () => void; preferredLanguage: PreferredLanguage }) {
   const [profile, setProfile] = useState<any>(null);
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
     fetch('/api/users/me').then(r => r.json()).then(d => {
@@ -44,7 +45,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
           <div className="mt-3 flex items-center space-x-2">
             <Shield size={12} className="text-[#FF6700]" />
             <span className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">
-              {user.role.replace(/_/g, ' ')}
+              {t(user.role.replace(/_/g, ' '))}
             </span>
           </div>
         </div>
@@ -57,14 +58,14 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
                 <div className="bg-white rounded-xl p-4 border border-[#FF6700]/10 shadow-sm">
                   <div className="flex items-center space-x-2 mb-2">
                     <Package size={14} className="text-[#FF6700]" />
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">Items Processed</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Items Processed")}</p>
                   </div>
                   <p className="text-2xl font-black text-[#313079] font-mono">{profile.itemsProcessed ?? 0}</p>
                 </div>
                 <div className="bg-green-50 rounded-xl p-4 border border-green-100">
                   <div className="flex items-center space-x-2 mb-2">
                     <TrendingUp size={14} className="text-green-500" />
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">Accuracy Rate</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Accuracy Rate")}</p>
                   </div>
                   <p className="text-2xl font-black text-green-600 font-mono">{profile.accuracyRate?.toFixed(1) ?? '100.0'}%</p>
                 </div>
@@ -72,7 +73,7 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                 <div className="flex items-center space-x-2 mb-2">
                   <Calendar size={14} className="text-slate-400" />
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">Member Since</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Member Since")}</p>
                 </div>
                 <p className="text-sm font-bold text-[#313079]">
                   {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
@@ -80,14 +81,14 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
               </div>
             </>
           ) : (
-            <div className="text-center py-6 text-slate-400 text-xs uppercase tracking-widest animate-pulse">Loading profile...</div>
+            <div className="text-center py-6 text-slate-400 text-xs uppercase tracking-widest animate-pulse">{t("Loading profile...")}</div>
           )}
 
           <LanguagePreference />
 
           <div className="h-px bg-[#313079]/10" />
           <p className="text-[10px] text-slate-400 text-center font-medium">
-            Full system access · All alert levels visible
+            {t("Full system access · All alert levels visible")}
           </p>
         </div>
       </div>
@@ -100,6 +101,18 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
 export default function SuperAdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc' | 'settings'>('alerts');
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
+
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
   
   const userRoleLower = role?.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
   const isAdminOrSuper = userRoleLower === 'admin' || userRoleLower === 'super access' || userRoleLower === 'super_access' || userRoleLower === 'super-access';
@@ -179,6 +192,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
         <ProfileModal
           user={{ name: displayName, email, role }}
           onClose={() => setShowProfile(false)}
+          preferredLanguage={preferredLanguage}
         />
       )}
 
@@ -421,18 +435,18 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
                 <>
                   {activeTab === 'triage' && canAccessTriage && (
                     <iframe 
-                      src={`${claimsUrl}/triage?embed=true`} 
+                      src={`${claimsUrl}/triage?embed=true&lang=${preferredLanguage}`} 
                       className="w-full h-screen border-none" 
                     />
                   )}
                   {activeTab === 'smart-filing' && canAccessSmartFiling && (
-                    <iframe src={`${claimsUrl}/smartfiling?embed=true`} className="w-full h-screen border-none" />
+                    <iframe src={`${claimsUrl}/smartfiling?embed=true&lang=${preferredLanguage}`} className="w-full h-screen border-none" />
                   )}
                   {activeTab === 'recovery' && canAccessRecovery && (
-                    <iframe src={`${claimsUrl}/recoveryhubtab?embed=true`} className="w-full h-screen border-none" />
+                    <iframe src={`${claimsUrl}/recoveryhubtab?embed=true&lang=${preferredLanguage}`} className="w-full h-screen border-none" />
                   )}
                   {activeTab === 'qc' && canAccessQC && (
-                    <iframe src={`${claimsUrl}/qcaudittab?embed=true`} className="w-full h-screen border-none" />
+                    <iframe src={`${claimsUrl}/qcaudittab?embed=true&lang=${preferredLanguage}`} className="w-full h-screen border-none" />
                   )}
                 </>
               );

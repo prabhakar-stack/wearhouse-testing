@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useEffect, useState } from 'react';
+import { t } from '../utils/i18n';
 
 const stats = [
   { name: 'Total Active Claims', value: '142', change: '+12%', icon: Package, trend: 'up' },
@@ -46,22 +47,22 @@ export default function Dashboard() {
               <AlertTriangle className="w-5 h-5 text-[#FF6700]" />
             </div>
             <div>
-              <p className="font-extrabold text-sm text-black uppercase">Manual OTP Required</p>
-              <p className="text-xs text-black/70 font-medium tracking-tight">The Amazon Bot encountered an OTP request. Please visit the Smart Filing Hub to assist.</p>
+              <p className="font-extrabold text-sm text-black uppercase">{t("Manual OTP Required")}</p>
+              <p className="text-xs text-black/70 font-medium tracking-tight">{t("The Amazon Bot encountered an OTP request. Please visit the Smart Filing Hub to assist.")}</p>
             </div>
           </div>
           <a 
             href="/filing" 
             className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-xl text-xs font-bold hover:scale-105 transition-transform"
           >
-            RESOLVE NOW <ExternalLink className="w-3.5 h-3.5" />
+            {t("RESOLVE NOW")} <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       )}
 
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">Executive Overview</h2>
-        <p className="text-slate-500 text-xs lg:text-sm">Real-time recovery metrics and pipeline status.</p>
+        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">{t("Executive Overview")}</h2>
+        <p className="text-slate-500 text-xs lg:text-sm">{t("Real-time recovery metrics and pipeline status.")}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -80,7 +81,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{stat.name}</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{t(stat.name)}</p>
               <p className="text-3xl font-extrabold mt-1 text-[#313079]">{stat.value}</p>
             </div>
           </div>
@@ -90,16 +91,16 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 p-6 bg-white border border-slate-100 rounded-2xl min-h-[400px] shadow-sm">
           <h3 className="text-sm font-extrabold text-[#313079] mb-6 flex items-center gap-2">
-            Claim Volume Trends
-            <span className="text-[10px] font-bold text-[#313079] bg-[#FFF700] px-2 py-0.5 rounded shadow-sm">30 DAYS</span>
+            {t("Claim Volume Trends")}
+            <span className="text-[10px] font-bold text-[#313079] bg-[#FFF700] px-2 py-0.5 rounded shadow-sm">{t("30 DAYS")}</span>
           </h3>
           <div className="flex items-center justify-center min-h-[300px] text-slate-400 italic text-sm">
-            [Chart Visualization Area]
+            {t("[Chart Visualization Area]")}
           </div>
         </div>
         
         <div className="p-6 bg-white border border-slate-100 rounded-2xl shadow-sm">
-          <h3 className="text-sm font-extrabold text-[#313079] mb-6">Pipeline Breakdown</h3>
+          <h3 className="text-sm font-extrabold text-[#313079] mb-6">{t("Pipeline Breakdown")}</h3>
           <div className="space-y-6">
             {[
               { label: 'Initial Handoff', value: 45, color: '#000000' },
@@ -109,7 +110,7 @@ export default function Dashboard() {
             ].map((i) => (
               <div key={i.label} className="space-y-2">
                 <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-                  <span>{i.label}</span>
+                  <span>{t(i.label)}</span>
                   <span className="text-[#313079]">{i.value}%</span>
                 </div>
                 <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">

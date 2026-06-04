@@ -1,6 +1,6 @@
 import { headers } from 'next/headers';
 import SuperAdminDashboard from './SuperAdminDashboard';
-import { AlertOctagon } from 'lucide-react';
+import AccessDenied from '@/app/components/AccessDenied';
 import { prisma } from '@/lib/prisma';
 
 export default async function SuperAdminPage() {
@@ -10,13 +10,7 @@ export default async function SuperAdminPage() {
   const userId = headersList.get('x-user-id') || '';
   
   if (role !== 'SUPER_ACCESS') {
-    return (
-      <div className="h-screen w-screen bg-red-50 text-red-800 flex flex-col justify-center items-center p-6 select-none overscroll-none border-8 border-red-200">
-        <AlertOctagon size={120} className="mb-8 text-red-400" />
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-widest text-center leading-tight text-red-700">Access Denied</h1>
-        <p className="text-xl mt-6 font-bold tracking-wider text-red-500">Requires Super Admin Privileges</p>
-      </div>
-    );
+    return <AccessDenied message="Requires Super Admin Privileges" />;
   }
 
   // Fetch the fresh database user name directly on the server
