@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LogOut,
@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Activity,
 } from "lucide-react";
+import LanguagePreference from "@/app/components/LanguagePreference";
+import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
 
 interface RecovererDashboardProps {
   userId: string;
@@ -29,6 +31,18 @@ export default function RecovererDashboard({
 }: RecovererDashboardProps) {
   const router = useRouter();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
+
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -50,10 +64,10 @@ export default function RecovererDashboard({
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900 uppercase tracking-wider">
-                Recoverer
+                {t("Recoverer")}
               </h1>
               <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
-                Dashboard
+                {t("Dashboard")}
               </p>
             </div>
           </div>
@@ -78,18 +92,19 @@ export default function RecovererDashboard({
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
                 <div className="px-4 py-3 border-b border-slate-100">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                    Logged in as
+                    {t("Logged in as")}
                   </p>
                   <p className="text-sm font-bold text-slate-900 truncate">
                     {email}
                   </p>
                 </div>
+                <LanguagePreference compact />
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center space-x-2 px-4 py-3 hover:bg-red-50 text-red-600 font-bold text-sm uppercase tracking-wider transition-colors"
                 >
                   <LogOut size={16} />
-                  <span>Logout</span>
+                  <span>{t("Logout")}</span>
                 </button>
               </div>
             )}
@@ -105,7 +120,7 @@ export default function RecovererDashboard({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Items in Recovery
+                  {t("Items in Recovery")}
                 </p>
                 <p className="text-3xl font-black text-slate-900 mt-2">0</p>
               </div>
@@ -117,7 +132,7 @@ export default function RecovererDashboard({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Recovered This Week
+                  {t("Recovered This Week")}
                 </p>
                 <p className="text-3xl font-black text-slate-900 mt-2">0</p>
               </div>
@@ -129,7 +144,7 @@ export default function RecovererDashboard({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Failed Recoveries
+                  {t("Failed Recoveries")}
                 </p>
                 <p className="text-3xl font-black text-slate-900 mt-2">0</p>
               </div>

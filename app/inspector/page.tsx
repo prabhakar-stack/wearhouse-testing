@@ -25,6 +25,8 @@ import {
   Activity,
 } from "lucide-react";
 import Link from "next/link";
+import LanguagePreference from "@/app/components/LanguagePreference";
+import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
 
 type ProductCondition =
   | "GOOD_SELLABLE"
@@ -614,8 +616,20 @@ function InspectorDashboard({ role }: { role: string }) {
   const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const [ledgerCount, setLedgerCount] = useState(0);
+
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/users/me")
@@ -694,12 +708,12 @@ function InspectorDashboard({ role }: { role: string }) {
           <div>
             <h1 className="text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-[#FF6700]">
               {activeTab === "profile"
-                ? "Profile"
+                ? t("Profile")
                 : activeTab === "ledger"
-                  ? "Custody Ledger"
+                  ? t("Custody Ledger")
                   : activeTab === "alerts"
-                    ? "Active Alerts"
-                    : "Quality Assurance"}
+                    ? t("Active Alerts")
+                    : t("Quality Assurance")}
             </h1>
             <p className="text-[#313079]/60 text-xs font-bold tracking-widest mt-1 uppercase">
               {userData
@@ -737,7 +751,7 @@ function InspectorDashboard({ role }: { role: string }) {
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
             <div className="flex items-center space-x-2">
               <Bell className="text-[#FF6700]" size={16} />
-              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">Active Alerts</span>
+              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">{t("Active Alerts")}</span>
               {alerts.length > 0 && (
                 <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">{alerts.length}</span>
               )}
@@ -791,10 +805,10 @@ function InspectorDashboard({ role }: { role: string }) {
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
-                    Custody Takeover
+                    {t("Custody Takeover")}
                   </h3>
                   <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                    Execute mechanical handshake
+                    {t("Execute mechanical handshake")}
                   </p>
                 </div>
                 <LinkIcon
@@ -810,13 +824,13 @@ function InspectorDashboard({ role }: { role: string }) {
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                    Custody Ledger
+                    {t("Custody Ledger")}
                     <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
                       {ledgerCount}
                     </span>
                   </h3>
                   <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                    Packages pending inspection
+                    {t("Packages pending inspection")}
                   </p>
                 </div>
                 <FileText
@@ -832,10 +846,10 @@ function InspectorDashboard({ role }: { role: string }) {
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
-                    Deep Inspect
+                    {t("Deep Inspect")}
                   </h3>
                   <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                    Gamified quality assurance
+                    {t("Gamified quality assurance")}
                   </p>
                 </div>
                 <ScanEye
@@ -851,7 +865,7 @@ function InspectorDashboard({ role }: { role: string }) {
                 <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                    Active Alerts
+                    {t("Active Alerts")}
                     {alertCount > 0 && (
                       <span className="ml-2.5 bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0 animate-pulse">
                         {alertCount}
@@ -944,8 +958,9 @@ function InspectorDashboard({ role }: { role: string }) {
                     Loading profile...
                   </div>
                 )}
+                <LanguagePreference />
                 <p className="text-[10px] text-slate-400 text-center font-medium pt-1">
-                  Profile is read-only · Contact Admin to update details.
+                  {t("Profile is read-only · Contact Admin to update details.")}
                 </p>
               </div>
             </div>
@@ -968,7 +983,7 @@ function InspectorDashboard({ role }: { role: string }) {
               }}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
             >
-              Sign Out
+              {t("Sign Out")}
             </button>
           </div>
         )}
@@ -1203,10 +1218,22 @@ function TakeoverTab() {
 }
 
 function InspectTab({ userId }: { userId?: string }) {
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
   const [phase, setPhase] = useState<
     "START" | "BOX_EVIDENCE" | "ITEM_INSPECTION" | "COMPLETED"
   >("START");
   const [orderId, setOrderId] = useState("");
+
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
 
 
 
@@ -2661,7 +2688,7 @@ function InspectTab({ userId }: { userId?: string }) {
                           <div className="flex-1 flex flex-col space-y-3 justify-between">
                             {"instruction" in step && step.instruction && (
                               <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                                {step.instruction}
+                                {translateInstruction(step.instruction, preferredLanguage)}
                               </p>
                             )}
 
@@ -2775,21 +2802,21 @@ function InspectTab({ userId }: { userId?: string }) {
                                   className="w-full min-h-12 bg-green-600 active:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
                                 >
                                   <CheckCircle2 size={18} />{" "}
-                                  <span>Good — Resellable</span>
+                                  <span>{t("Good — Resellable")}</span>
                                 </button>
                                 <button
                                   onClick={() => handleCategory("RECOVERY")}
                                   className="w-full min-h-12 bg-[#FF6700] active:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
                                 >
                                   <AlertTriangle size={18} />{" "}
-                                  <span>Recovery — Minor Damage</span>
+                                  <span>{t("Recovery — Minor Damage")}</span>
                                 </button>
                                 <button
                                   onClick={() => handleCategory("BAD")}
                                   className="w-full min-h-12 bg-red-600 active:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
                                 >
                                   <AlertOctagon size={18} />{" "}
-                                  <span>Bad — Unsalvageable</span>
+                                  <span>{t("Bad — Unsalvageable")}</span>
                                 </button>
                               </div>
                             )}
@@ -2798,7 +2825,7 @@ function InspectTab({ userId }: { userId?: string }) {
                               <div className="flex flex-col space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                                   <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">
-                                    Select Recovery Type
+                                    {t("Select Recovery Type")}
                                   </p>
                                   <p className="text-[10px] text-orange-700 leading-relaxed font-bold">
                                     Select the required recovery/refurbishment process for LPN {currentLpn}
@@ -2810,7 +2837,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                     className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
                                   >
                                     <span className="flex-1 pr-2">
-                                      Barcode Damaged
+                                      {t("Barcode Damaged")}
                                     </span>
                                     <ArrowRight
                                       size={14}
@@ -2822,7 +2849,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                     className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
                                   >
                                     <span className="flex-1 pr-2">
-                                      Packaging Damaged
+                                      {t("Packaging Damaged")}
                                     </span>
                                     <ArrowRight
                                       size={14}
@@ -2837,7 +2864,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                   }}
                                   className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
                                 >
-                                  ← Back to Grade Selection
+                                  {t("Back to Grade Selection")}
                                 </button>
                               </div>
                             )}
@@ -2905,7 +2932,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                       onClick={() => setSelectedClaimReason(null)}
                                       className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors"
                                     >
-                                      ← Back to Reasons
+                                      {t("Back to Reasons")}
                                     </button>
                                   ) : (
                                     <button
@@ -2915,7 +2942,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                       }}
                                       className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
                                     >
-                                      ← Back to Grade Selection
+                                      {t("Back to Grade Selection")}
                                     </button>
                                   )}
                                 </div>
@@ -2926,19 +2953,19 @@ function InspectTab({ userId }: { userId?: string }) {
                               <div className="flex flex-col items-center justify-center space-y-4 py-2">
                                 <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
                                   <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">
-                                    Place item in
+                                    {t("Place item in")}
                                   </p>
                                   <p
                                     className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}
                                   >
-                                    {currentCategory} BIN
+                                    {currentCategory ? `${t(currentCategory)} BIN` : ""}
                                   </p>
                                 </div>
                                 <button
                                   onClick={handleBinning}
                                   className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
                                 >
-                                  <span>Confirm Binning</span>
+                                  <span>{t("Confirm Binning")}</span>
                                   <ArrowRight size={18} />
                                 </button>
                               </div>
@@ -3017,6 +3044,7 @@ function NotificationsTab() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
@@ -3025,7 +3053,9 @@ function NotificationsTab() {
   const [resolveError, setResolveError] = useState('');
 
   const fetchAlerts = useCallback(() => {
-    fetch('/api/alerts?dashboard=true')
+    fetch('/api/alerts?dashboard=true', {
+      headers: { "x-user-language": preferredLanguage },
+    })
       .then(r => r.json())
       .then(d => {
         if (d.alerts) setAlerts(d.alerts);
@@ -3034,12 +3064,19 @@ function NotificationsTab() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     fetchAlerts();
     const iv = setInterval(fetchAlerts, 10000);
-    return () => clearInterval(iv);
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
   }, [fetchAlerts]);
 
   const handleResolve = async (alertId: string) => {
@@ -3176,13 +3213,13 @@ function NotificationsTab() {
                             className="w-4 h-4 accent-green-600 rounded cursor-pointer shrink-0"
                           />
                           <label htmlFor={`sop-check-${alert.id}`} className="text-[10px] font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
-                            I have read and followed this SOP
+                            {translateInstruction("I have read and followed this SOP", preferredLanguage)}
                           </label>
                         </div>
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">
-                        <p className="text-[10px] text-slate-400">No SOP configured for this alert type.</p>
+                        <p className="text-[10px] text-slate-400">{translateInstruction("No SOP configured for this alert type.", preferredLanguage)}</p>
                       </div>
                     )}
 
@@ -3210,7 +3247,7 @@ function NotificationsTab() {
                       </div>
                       {!sopChecked && (
                         <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wider">
-                          ⚠ You must check "I have read and followed this SOP" before resolving.
+                          {translateInstruction('You must check "I have read and followed this SOP" before resolving.', preferredLanguage)}
                         </p>
                       )}
                       {resolveError && <p className="text-[10px] text-red-600 font-medium">{resolveError}</p>}

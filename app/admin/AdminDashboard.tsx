@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import LanguagePreference from '@/app/components/LanguagePreference';
+import { getStoredLanguage, translateInstruction } from '@/lib/i18n';
 
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 
@@ -85,6 +87,8 @@ function ProfileModal({ user, onClose }: { user: { name: string; email: string; 
           ) : (
             <div className="text-center py-6 text-slate-400 text-xs uppercase tracking-widest animate-pulse">Loading profile...</div>
           )}
+
+          <LanguagePreference />
 
           <div className="h-px bg-[#313079]/10" />
           <p className="text-[10px] text-slate-400 text-center font-medium">
@@ -965,6 +969,7 @@ const LEVEL_CONFIG: Record<string, { color: string; bgColor: string; borderColor
 function AlertsTab({ userRole }: { userRole: string }) {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
   const [currentUserLevel, setCurrentUserLevel] = useState<string>('L1');
@@ -984,10 +989,12 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
   const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/alerts?resolved=${showResolved}&dashboard=true`);
+      const res = await fetch(`/api/alerts?resolved=${showResolved}&dashboard=true`, {
+        headers: { "x-user-language": preferredLanguage },
+      });
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);
@@ -999,9 +1006,18 @@ function AlertsTab({ userRole }: { userRole: string }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showResolved, preferredLanguage]);
 
-  useEffect(() => { queueMicrotask(() => { fetchAlerts(); }); }, [showResolved]);
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    queueMicrotask(() => { fetchAlerts(); });
+    window.addEventListener('preferred-language-changed', syncLanguage);
+    window.addEventListener('storage', syncLanguage);
+    return () => {
+      window.removeEventListener('preferred-language-changed', syncLanguage);
+      window.removeEventListener('storage', syncLanguage);
+    };
+  }, [fetchAlerts]);
 
   const handleResolve = async (alertId: string, alertLevel: string) => {
     setResolveError('');
@@ -1433,14 +1449,14 @@ function AlertsTab({ userRole }: { userRole: string }) {
                               className="w-5 h-5 accent-green-600 rounded cursor-pointer shrink-0"
                             />
                             <label htmlFor={`sop-check-${alert.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
-                              I have read and followed all standard operating procedure steps above
+                              {translateInstruction('I have read and followed all standard operating procedure steps above', preferredLanguage)}
                             </label>
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 text-center">
-                        <p className="text-xs text-slate-400 mb-2">No SOP configured for this alert type.</p>
+                        <p className="text-xs text-slate-400 mb-2">{translateInstruction('No SOP configured for this alert type.', preferredLanguage)}</p>
                         <button onClick={() => startEditSop(alert.type)} className="text-[10px] uppercase font-bold text-[#FF6700] hover:text-[#FF6700] tracking-widest">
                           + Create SOP Steps
                         </button>
@@ -1474,7 +1490,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
                             </div>
                             {!sopChecked && (
                               <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                                ⚠ You must check "I have read and followed all standard operating procedure steps above" before resolving.
+                                {translateInstruction('You must check "I have read and followed all standard operating procedure steps above" before resolving.', preferredLanguage)}
                               </p>
                             )}
                           </div>

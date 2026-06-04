@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SOP_MAP, ALERT_RULE_BY_TYPE } from '@/lib/alertRules';
 import { archiveAndScoreAlerts } from '@/lib/alertLogger';
+import { normalizeLanguage, translateInstruction } from '@/lib/i18n';
 
 // Alert level hierarchies
 const LEVEL_VALUES: Record<string, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
@@ -21,16 +22,15 @@ export async function GET(req: NextRequest) {
 
     // 1. Resolve user's hierarchical alert level (DB config is checked first; admin/super-access default to L4)
     let userLevel = 'L1';
-    let dbUser = null;
+    let preferredLanguage = normalizeLanguage(req.headers.get('x-user-language'));
     if (sessionUserId) {
-      dbUser = await prisma.user.findUnique({
+      const dbUser = await prisma.user.findUnique({
         where: { id: sessionUserId },
         select: { alertLevel: true }
       });
-    }
-
-    if (dbUser && dbUser.alertLevel) {
-      userLevel = dbUser.alertLevel;
+      if (dbUser?.alertLevel) {
+        userLevel = dbUser.alertLevel;
+      }
     } else if (role === 'SUPER_ACCESS' || role === 'ADMIN') {
       userLevel = 'L4';
     }
@@ -169,7 +169,7 @@ export async function GET(req: NextRequest) {
       sopMap[type] = steps.map((inst, idx) => ({
         id: `${type}_sop_${idx}`,
         stepOrder: idx + 1,
-        instruction: inst
+        instruction: translateInstruction(inst, preferredLanguage)
       }));
     }
 
