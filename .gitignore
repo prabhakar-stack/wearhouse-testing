@@ -14,6 +14,7 @@ claims-process/amazon-profile/
 claims-process/bot_state/
 *.png
 !app/icon.png
+!public/icon.png
 
 # Ignore data reports
 *.tsv
