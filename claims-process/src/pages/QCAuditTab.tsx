@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { t } from '../utils/i18n';
 
 interface SkuStatus {
   sku: string;
@@ -98,7 +99,7 @@ export default function QCAuditTab() {
       }
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to sync compliance audit datasets.', 'error');
+      triggerToast(t('Failed to sync compliance audit datasets.'), 'error');
     } finally {
       setLoadingSku(false);
       setLoadingRecovered(false);
@@ -135,15 +136,15 @@ export default function QCAuditTab() {
         const difference = result.expected_count - result.quantity_count;
         
         let msgType: 'success' | 'warning' = 'success';
-        let msgText = `Successfully scanned SKU ${cleanSku}. Counted: ${result.quantity_count}/${result.expected_count}`;
+        let msgText = `${t("Successfully scanned SKU")} ${cleanSku}. ${t("Counted:")} ${result.quantity_count}/${result.expected_count}`;
         
         if (result.qc_status === 'quantity missing') {
           msgType = 'warning';
-          msgText = `SKU scanned. Quantity missing: Need ${difference} more to match expectations!`;
+          msgText = `${t("SKU scanned. Quantity missing: Need")} ${difference} ${t("more to match expectations!")}`;
         }
 
         setScanMessage({ text: msgText, type: msgType });
-        triggerToast(`SKU ${cleanSku} incremented successfully!`, 'success');
+        triggerToast(`${t("SKU")} ${cleanSku} ${t("incremented successfully!")}`, 'success');
         setScanValue('');
         setLastScannedSku(cleanSku);
         
@@ -152,11 +153,11 @@ export default function QCAuditTab() {
         if (updatedRes.ok) setSkuList(await updatedRes.json());
       } else {
         const errData = await res.json();
-        setScanMessage({ text: errData.message || 'Verification scan failed.', type: 'error' });
+        setScanMessage({ text: errData.message || t('Verification scan failed.'), type: 'error' });
       }
     } catch (err) {
       console.error(err);
-      setScanMessage({ text: 'Network exception occurred during scanning.', type: 'error' });
+      setScanMessage({ text: t('Network exception occurred during scanning.'), type: 'error' });
     } finally {
       setLoadingSku(false);
     }
@@ -171,7 +172,7 @@ export default function QCAuditTab() {
       });
 
       if (res.ok) {
-        triggerToast(`Batch and item status flagged for review. SKU: ${sku}`, 'success');
+        triggerToast(`${t("Batch and item status flagged for review. SKU:")} ${sku}`, 'success');
         setShowDamageConfirm(null);
         
         // Refresh datasets
@@ -182,11 +183,11 @@ export default function QCAuditTab() {
         setSkuList(updatedSku);
         setRecoveredItems(updatedRec);
       } else {
-        triggerToast('Failed to mark item as damaged.', 'error');
+        triggerToast(t('Failed to mark item as damaged.'), 'error');
       }
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to trigger database damage mutations', 'error');
+      triggerToast(t('Failed to trigger database damage mutations'), 'error');
     }
   };
 
@@ -216,17 +217,17 @@ export default function QCAuditTab() {
       });
 
       if (res.ok) {
-        triggerToast('Handover reconciled and completed successfully!', 'success');
+        triggerToast(t('Handover reconciled and completed successfully!'), 'success');
         setShowReconciliationConfirm(null);
         // Refresh SKU list to show update
         const updatedRes = await fetch('/api/qc/sku-status');
         if (updatedRes.ok) setSkuList(await updatedRes.json());
       } else {
-        triggerToast('Failed to reconcile handover.', 'error');
+        triggerToast(t('Failed to reconcile handover.'), 'error');
       }
     } catch (err) {
       console.error(err);
-      triggerToast('Error during batch handover complete.', 'error');
+      triggerToast(t('Error during batch handover complete.'), 'error');
     } finally {
       setIsReconciling(false);
     }
@@ -242,7 +243,7 @@ export default function QCAuditTab() {
       });
 
       if (res.ok) {
-        triggerToast(`Asynchronous compliance status saved for ${lpn}`, 'success');
+        triggerToast(`${t("Asynchronous compliance status saved for")} ${lpn}`, 'success');
         
         // Refresh SKU & Recovered lists
         const [updatedSku, updatedRec] = await Promise.all([
@@ -252,11 +253,11 @@ export default function QCAuditTab() {
         setSkuList(updatedSku);
         setRecoveredItems(updatedRec);
       } else {
-        triggerToast('Failed to trigger audit update.', 'error');
+        triggerToast(t('Failed to trigger audit update.'), 'error');
       }
     } catch (err) {
       console.error(err);
-      triggerToast('Database connection lookup yielded error.', 'error');
+      triggerToast(t('Database connection lookup yielded error.'), 'error');
     }
   };
 
@@ -271,18 +272,18 @@ export default function QCAuditTab() {
       });
 
       if (res.ok) {
-        triggerToast(`Audited successfully: '${choice}' saved.`, 'success');
+        triggerToast(`${t("Audited successfully:")} '${t(choice)}' ${t("saved.")}`, 'success');
         // Close expander
         setExpandedClaim(null);
         // Refresh rejected claims list
         const updatedRes = await fetch('/api/qc/rejected-claims');
         if (updatedRes.ok) setRejectedClaims(await updatedRes.json());
       } else {
-        triggerToast('Failed to save audit result.', 'error');
+        triggerToast(t('Failed to save audit result.'), 'error');
       }
     } catch (err) {
       console.error(err);
-      triggerToast('Failed to mutate claims database statuses.', 'error');
+      triggerToast(t('Failed to mutate claims database statuses.'), 'error');
     }
   };
 
@@ -296,10 +297,10 @@ export default function QCAuditTab() {
             <div className="w-10 h-10 bg-[#FF6700]/10 rounded-xl flex items-center justify-center border border-[#FF6700]/25 shadow-sm">
               <ShieldCheck className="w-6 h-6 text-[#FF6700]" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 uppercase">compliance and qc audit</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 uppercase">{t("compliance and qc audit")}</h1>
           </div>
           <p className="text-slate-505 font-medium mt-1.5 text-sm sm:text-base">
-            Defensive monitor designed to prevent incorrect inventory categorizations and packaging mix-ups on re-inventorisation.
+            {t("Defensive monitor designed to prevent incorrect inventory categorizations and packaging mix-ups on re-inventorisation.")}
           </p>
         </div>
         <div>
@@ -309,7 +310,7 @@ export default function QCAuditTab() {
             className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:border-gray-300 bg-white hover:bg-slate-50 text-slate-705 rounded-lg text-sm font-semibold shadow-sm transition-all"
           >
             <RefreshCw className="w-4 h-4 text-slate-500 animate-spin-hover" />
-            Synchronize Datasets
+            {t("Synchronize Datasets")}
           </button>
         </div>
       </div>
@@ -326,32 +327,32 @@ export default function QCAuditTab() {
         >
           {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-600" />}
-          <span className="font-semibold text-sm">{toast.text}</span>
+          <span className="font-semibold text-sm">{t(toast.text)}</span>
         </div>
       )}
 
       {/* SECTION 1: SKU HANDOVER PROCESS */}
       <section id="section-sku-handover" className="space-y-6">
         <div className="border-b border-gray-205 pb-4">
-          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">Process 01</span>
-          <h2 className="text-xl font-extrabold text-slate-950 mt-1">SKU Handover Process</h2>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Scan physical barcodes to track counted numbers under strict blind verification boundaries.
+          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">{t("Process 01")}</span>
+          <h2 className="text-xl font-extrabold text-slate-950 mt-1">{t("SKU Handover Process")}</h2>
+          <p className="text-slate-505 text-xs sm:text-sm mt-1">
+            {t("Scan physical barcodes to track counted numbers under strict blind verification boundaries.")}
           </p>
         </div>
 
-        {/* Two Column Workspace Grid (Left 40% batch, Right 60% Active monitor) */}
+        {/* Two Column Workspace Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
           
-          {/* LEFT COLUMN: 40% BATCH OVERVIEW */}
+          {/* LEFT COLUMN: BATCH OVERVIEW */}
           <div className="lg:col-span-4 bg-white border border-gray-200 rounded-lg shadow-sm p-5 flex flex-col min-h-[500px]">
             <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider block">Batch Overview</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Active SKU checklist under audit</p>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider block">{t("Batch Overview")}</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{t("Active SKU checklist under audit")}</p>
               </div>
               <span className="text-xs font-extrabold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full">
-                {skuList.length} SKUs
+                {skuList.length} {t("SKUs")}
               </span>
             </div>
 
@@ -390,7 +391,7 @@ export default function QCAuditTab() {
                           item.status === 'requires recovery review' ? 'bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20' :
                           'bg-slate-100 text-slate-605'
                         }`}>
-                          {item.status.toUpperCase()}
+                          {t(item.status.toUpperCase())}
                         </span>
                       </div>
 
@@ -400,23 +401,22 @@ export default function QCAuditTab() {
                             <span className="font-extrabold text-slate-950 text-sm">{item.quantity_count}</span>
                             <span className="text-slate-400 text-xs">/</span>
                             <span className="text-[#FF6700] text-[10px] font-semibold bg-[#FF6700]/10 border border-[#FF6700]/25 px-1.5 py-0.5 rounded">
-                              ? Blind Target
+                              ? {t("Blind Target")}
                             </span>
                           </div>
                           {item.has_hidden_damaged && (
                             <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1">
-                              Has Damaged Items
+                              {t("Has Damaged Items")}
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
                     
-                    {/* Active highlight state alert text using yellow accent state color */}
                     {isActiveHighlight && (
                       <div className="mt-2 text-[10px] font-extrabold text-[#7c7400] bg-[#FFF700] px-2.5 py-1 rounded border border-yellow-350 flex items-center gap-1 animate-pulse uppercase">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping"></span>
-                        Scanning Validation Highlight Flag
+                        {t("Scanning Validation Highlight Flag")}
                       </div>
                     )}
                   </div>
@@ -426,26 +426,26 @@ export default function QCAuditTab() {
               {skuList.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                   <Package className="w-12 h-12 text-slate-205 mb-2" />
-                  <span className="text-xs font-bold uppercase tracking-wider">No SKUs loaded in handover</span>
+                  <span className="text-xs font-bold uppercase tracking-wider">{t("No SKUs loaded in handover")}</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* RIGHT COLUMN: 60% ACTIVE MONITOR */}
+          {/* RIGHT COLUMN: ACTIVE MONITOR */}
           <div className="lg:col-span-6 bg-white border border-gray-200 rounded-lg shadow-sm p-4 sm:p-6 flex flex-col justify-between min-h-[500px]">
             <div className="space-y-6">
               {/* Header block */}
               <div className="flex justify-between items-center pb-4 border-b border-gray-100">
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider block">Active QC Monitor</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Active scan validation workstation desk</p>
+                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider block">{t("Active QC Monitor")}</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{t("Active scan validation workstation desk")}</p>
                 </div>
                 
                 {lastScannedSku && (
                   <div className="px-2.5 py-1 bg-[#FFF700] border border-amber-305 text-slate-950 font-extrabold text-[10px] rounded tracking-wider uppercase animate-fade-in flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-700 animate-ping inline-block"></span>
-                    WORKSTATION: {lastScannedSku}
+                    {t("WORKSTATION:")} {lastScannedSku}
                   </div>
                 )}
               </div>
@@ -453,7 +453,7 @@ export default function QCAuditTab() {
               {/* Barcode Form Workspace */}
               <div className="bg-slate-50 border border-gray-202 rounded-lg p-4">
                 <label htmlFor="sku-scan-input" className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 block">
-                  Scan / Register Hard Label
+                  {t("Scan / Register Hard Label")}
                 </label>
                 <form onSubmit={handleScanSubmit} className="flex gap-2 w-full">
                   <div className="relative flex-1">
@@ -461,7 +461,7 @@ export default function QCAuditTab() {
                     <input
                       id="sku-scan-input"
                       type="text"
-                      placeholder="Laser-scan or code-type SKU barcode..."
+                      placeholder={t("Laser-scan or code-type SKU barcode...")}
                       value={scanValue}
                       onChange={(e) => setScanValue(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 hover:border-gray-350 focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] rounded-lg text-sm text-slate-900 placeholder-slate-400 outline-none transition-all"
@@ -473,12 +473,12 @@ export default function QCAuditTab() {
                     disabled={loadingSku}
                     className="px-5 py-2 bg-[#FF6700] hover:bg-[#E05300] text-white text-sm font-bold rounded-lg shrink-0 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
-                    {loadingSku ? 'Scanning...' : 'Verify Scan'}
+                    {loadingSku ? t('Scanning...') : t('Verify Scan')}
                   </button>
                 </form>
               </div>
 
-              {/* Barcode scan response message log with yellow highlight background if warning */}
+              {/* Barcode scan response message log */}
               {scanMessage && (
                 <div 
                   id="scan-notification-banner"
@@ -497,9 +497,9 @@ export default function QCAuditTab() {
                     }`} />
                     <div>
                       <span className="font-extrabold text-[11px] uppercase block tracking-wider">
-                        {scanMessage.type === 'success' ? 'Validation Ok' : scanMessage.type === 'warning' ? 'Warning Check Required' : 'Scan Refused'}
+                        {scanMessage.type === 'success' ? t('Validation Ok') : scanMessage.type === 'warning' ? t('Warning Check Required') : t('Scan Refused')}
                       </span>
-                      <p className="text-xs font-bold mt-0.5">{scanMessage.text}</p>
+                      <p className="text-xs font-bold mt-0.5">{t(scanMessage.text)}</p>
                     </div>
                   </div>
                   <button onClick={() => setScanMessage(null)} className="p-0.5 hover:bg-black/5 rounded text-slate-400 hover:text-slate-600 transition-colors">
@@ -511,23 +511,23 @@ export default function QCAuditTab() {
               {/* Workstation Action Desk */}
               <div className="bg-slate-50 border border-gray-200 rounded-lg p-4 space-y-4">
                 <span className="text-xs font-bold text-slate-705 uppercase tracking-wider block border-b border-gray-200 pb-2">
-                  Active Workstation Action Deck
+                  {t("Active Workstation Action Deck")}
                 </span>
                 
                 {lastScannedSku ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-[10px] text-slate-400 font-extrabold uppercase block tracking-wider">Selected Active SKU</span>
+                        <span className="text-[10px] text-slate-400 font-extrabold uppercase block tracking-wider">{t("Selected Active SKU")}</span>
                         <span className="font-mono text-slate-905 font-extrabold text-base block">{lastScannedSku}</span>
                       </div>
                       <span className="px-2 py-0.5 bg-amber-50 rounded text-[10px] font-extrabold uppercase text-amber-700 border border-amber-200 animate-pulse">
-                        WIP Checked Focus
+                        {t("WIP Checked Focus")}
                       </span>
                     </div>
 
                     <p className="text-xs text-slate-500 leading-normal">
-                      Perform visual inspection inside the physical container. If product, container packaging, or barcode labels suffer retail damage flag here.
+                      {t("Perform visual inspection inside the physical container. If product, container packaging, or barcode labels suffer retail damage flag here.")}
                     </p>
 
                     <div className="pt-2 flex flex-wrap gap-2">
@@ -536,22 +536,22 @@ export default function QCAuditTab() {
                         className="px-4 py-2 bg-[#FF6700] hover:bg-[#E05300] text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-sm shadow-orange-100"
                       >
                         <AlertTriangle className="w-3.5 h-3.5 text-white" />
-                        Flag SKU as Damaged
+                        {t("Flag SKU as Damaged")}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="text-center py-6 text-slate-400 text-xs font-semibold">
-                    No active SKU focus loaded at workstation. Please scan a barcode to initialize triaging controls.
+                    {t("No active SKU focus loaded at workstation. Please scan a barcode to initialize triaging controls.")}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Reconciliation and Handover trigger button */}
+            {/* Reconciliation and Handover complete */}
             <div className="pt-5 mt-6 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
               <span className="text-[11px] text-slate-400 font-bold uppercase tracking-tight">
-                * Conclude standard handover once all counted SKU targets are reached.
+                {t("* Conclude standard handover once all counted SKU targets are reached.")}
               </span>
               <button
                 id="btn-handover-complete"
@@ -560,7 +560,7 @@ export default function QCAuditTab() {
                 className="flex items-center gap-2 px-6 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold text-sm rounded-lg shadow-sm transition-all cursor-pointer shrink-0"
               >
                 <CheckCircle2 className="w-4.5 h-4.5 text-white" />
-                {isReconciling ? 'Reconciling Batch...' : 'Handover Complete'}
+                {isReconciling ? t('Reconciling Batch...') : t('Handover Complete')}
               </button>
             </div>
           </div>
@@ -574,24 +574,24 @@ export default function QCAuditTab() {
           <div className="bg-white border border-gray-202 rounded-xl max-w-md w-full p-6 relative shadow-2xl animate-in scale-in">
             <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-[#FF6700]" />
-              Confirm Integrity Violation?
+              {t("Confirm Integrity Violation?")}
             </h3>
             <p className="text-slate-600 text-sm mt-3 leading-relaxed font-semibold">
-              You are about to declare a physical product damage violation for SKU <strong className="font-mono text-white bg-slate-900 rounded px-1.5 py-0.5">{showDamageConfirm}</strong>. 
-              This will update all associated items to 'requires review at qc' and highlight current batches in red.
+              {t("You are about to declare a physical product damage violation for SKU")} <strong className="font-mono text-white bg-slate-900 rounded px-1.5 py-0.5">{showDamageConfirm}</strong>. 
+              {t("This will update all associated items to 'requires review at qc' and highlight current batches in red.")}
             </p>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-150">
               <button
                 onClick={() => setShowDamageConfirm(null)}
-                className="px-4 py-2 bg-slate-105 hover:bg-slate-200 text-xs sm:text-sm text-slate-700 font-bold rounded-lg transition-colors"
+                className="px-4 py-2 bg-slate-105 hover:bg-slate-200 text-xs sm:text-sm text-slate-707 font-bold rounded-lg transition-colors"
                >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 onClick={() => handleMarkDamaged(showDamageConfirm)}
                 className="px-4 py-2 bg-[#FF6700] hover:bg-[#E05300] text-xs sm:text-sm text-white font-bold rounded-lg transition-colors shadow-xs"
               >
-                Yes, Flag Damage
+                {t("Yes, Flag Damage")}
               </button>
             </div>
           </div>
@@ -604,26 +604,26 @@ export default function QCAuditTab() {
           <div className="bg-white border border-gray-200 rounded-xl max-w-md w-full p-6 relative shadow-2xl animate-in scale-in">
             <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Confirm Discrepancy Bypass?
+              {t("Confirm Discrepancy Bypass?")}
             </h3>
-            <p className="text-slate-600 text-sm mt-3 leading-relaxed">
-              There are <strong className="text-amber-600 text-base">{showReconciliationConfirm.totalMissing}</strong> products left missing compared to the expected target. Are you sure you want to proceed?
+            <p className="text-slate-605 text-sm mt-3 leading-relaxed">
+              {t("There are")} <strong className="text-amber-600 text-base">{showReconciliationConfirm.totalMissing}</strong> {t("products left missing compared to the expected target. Are you sure you want to proceed?")}
             </p>
             <p className="text-slate-500 text-xs mt-2 font-semibold">
-              If you proceed, any shorted or unscanned batch elements will automatically be updated to 'missing at qc'.
+              {t("If you proceed, any shorted or unscanned batch elements will automatically be updated to 'missing at qc'.")}
             </p>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-150">
               <button
                 onClick={() => setShowReconciliationConfirm(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-202 text-xs sm:text-sm text-slate-705 font-bold rounded-lg transition-colors"
               >
-                Cancel & Count
+                {t("Cancel & Count")}
               </button>
               <button
                 onClick={() => handleHandoverComplete(true)}
                 className="px-4 py-2 bg-[#FF6700] hover:bg-[#E05300] text-xs sm:text-sm text-white font-bold rounded-lg transition-colors shadow-xs"
               >
-                Yes, Proceed
+                {t("Yes, Proceed")}
               </button>
             </div>
           </div>
@@ -633,10 +633,10 @@ export default function QCAuditTab() {
       {/* SECTION 2: RECOVERY INTEGRITY CHECK */}
       <section id="section-recovery-integrity" className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 sm:p-6 space-y-4">
         <div>
-          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">Process 02</span>
-          <h2 className="text-xl font-extrabold text-slate-950 mt-1">Recovery Integrity Check</h2>
+          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">{t("Process 02")}</span>
+          <h2 className="text-xl font-extrabold text-slate-950 mt-1">{t("Recovery Integrity Check")}</h2>
           <p className="text-slate-505 text-xs sm:text-sm mt-1">
-            Detect mismatched packaging types. Flag items that are wrapped in standard retail packaging, even though they should use custom refurbished materials.
+            {t("Detect mismatched packaging types. Flag items that are wrapped in standard retail packaging, even though they should use custom refurbished materials.")}
           </p>
         </div>
 
@@ -644,12 +644,12 @@ export default function QCAuditTab() {
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-slate-50 border-b border-gray-200 text-slate-700 text-xs font-bold uppercase tracking-wider">
-                <th className="py-3.5 px-4">LPN Identifier</th>
-                <th className="py-3.5 px-4">SKU Code</th>
-                <th className="py-3.5 px-4">Damage Profile</th>
-                <th className="py-3.5 px-4">Packaging Box Check</th>
-                <th className="py-3.5 px-4 text-center font-bold">Audit Status</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+                <th className="py-3.5 px-4">{t("LPN Identifier")}</th>
+                <th className="py-3.5 px-4">{t("SKU Code")}</th>
+                <th className="py-3.5 px-4">{t("Damage Profile")}</th>
+                <th className="py-3.5 px-4">{t("Packaging Box Check")}</th>
+                <th className="py-3.5 px-4 text-center font-bold">{t("Audit Status")}</th>
+                <th className="py-3.5 px-4 text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-150 text-sm">
@@ -661,18 +661,18 @@ export default function QCAuditTab() {
                   <tr key={item.lpn} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-3.5 px-4 font-mono text-[#FF6700] font-bold">{item.lpn}</td>
                     <td className="py-3.5 px-4 font-mono text-slate-905">{item.sku}</td>
-                    <td className="py-3.5 px-4 capitalize text-slate-630 font-medium">{item.damage_type.replace('_', ' ')}</td>
+                    <td className="py-3.5 px-4 capitalize text-slate-630 font-medium">{t(item.damage_type.replace('_', ' '))}</td>
                     <td className="py-3.5 px-4">
                       {requiresRefurbContainer ? (
                         <div className="flex flex-col">
                           <span className="text-amber-700 font-extrabold flex items-center gap-1 text-xs">
                             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            Original Box Detected
+                            {t("Original Box Detected")}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-semibold">Should use: Refurbished Box Container</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{t("Should use: Refurbished Box Container")}</span>
                         </div>
                       ) : (
-                        <span className="text-emerald-700 font-extrabold text-xs">Refurbished Packaging OK</span>
+                        <span className="text-emerald-700 font-extrabold text-xs">{t("Refurbished Packaging OK")}</span>
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -680,7 +680,7 @@ export default function QCAuditTab() {
                         statusTag === 'requires recovery review' ? 'bg-amber-50 text-amber-700 border-amber-250' :
                         'bg-emerald-50 text-emerald-700 border-emerald-250'
                       }`}>
-                        {statusTag.toUpperCase()}
+                        {t(statusTag.toUpperCase())}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
@@ -688,7 +688,7 @@ export default function QCAuditTab() {
                         onClick={() => handleRecoveryReview(item.lpn)}
                         className="px-3.5 py-1.5 bg-white text-[#FF6700] hover:bg-[#FF6700]/5 border border-[#FF6700]/25 text-xs font-bold rounded-lg transition-all"
                       >
-                        Requires Recovery Review
+                        {t("Requires Recovery Review")}
                       </button>
                     </td>
                   </tr>
@@ -697,7 +697,7 @@ export default function QCAuditTab() {
               {recoveredItems.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-slate-400 text-xs font-medium">
-                    No recovered elements found or matching 'recovered' state in database.
+                    {t("No recovered elements found or matching 'recovered' state in database.")}
                   </td>
                 </tr>
               )}
@@ -709,10 +709,10 @@ export default function QCAuditTab() {
       {/* SECTION 3: REJECTED CLAIMS VERIFICATION */}
       <section id="section-rejected-claims" className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 sm:p-6 space-y-4">
         <div>
-          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">Process 03</span>
-          <h2 className="text-xl font-extrabold text-slate-950 mt-1">Rejected Claims Verification</h2>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">
-            Audit case decisions directly. Expand items to inspect drive evidence photos inline and make corrective routing updates.
+          <span className="text-xs font-bold text-[#FF6700] tracking-widest uppercase">{t("Process 03")}</span>
+          <h2 className="text-xl font-extrabold text-slate-950 mt-1">{t("Rejected Claims Verification")}</h2>
+          <p className="text-slate-505 text-xs sm:text-sm mt-1">
+            {t("Audit case decisions directly. Expand items to inspect drive evidence photos inline and make corrective routing updates.")}
           </p>
         </div>
 
@@ -735,7 +735,7 @@ export default function QCAuditTab() {
                   <div className="space-y-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-bold text-slate-900">{claim.orderId}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-extrabold">REJECTED</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-extrabold">{t("REJECTED")}</span>
                       <span className="text-xs text-slate-400 font-semibold">{claim.channel}</span>
                     </div>
                     <div className="text-sm font-bold text-slate-800 truncate max-w-lg">
@@ -745,7 +745,7 @@ export default function QCAuditTab() {
                   
                   <div className="flex items-center justify-between md:justify-end gap-6 shrink-0">
                     <div className="text-right text-xs">
-                      <span className="text-slate-400 block font-extrabold text-[9px] uppercase tracking-wider">SKU Code</span>
+                      <span className="text-slate-400 block font-extrabold text-[9px] uppercase tracking-wider">{t("SKU Code")}</span>
                       <span className="font-mono text-slate-800 font-bold block">{claim.sku}</span>
                     </div>
                     <div>
@@ -766,7 +766,7 @@ export default function QCAuditTab() {
                       {/* Left Column: Embed Live view IFrame */}
                       <div className="space-y-2">
                         <label className="text-[10px] font-extrabold text-[#7c7400] bg-[#FFF700] px-2 py-0.5 rounded border border-yellow-350 tracking-widest block font-bold w-max uppercase mb-2">
-                          Embedded Evidence Explorer (Drive Document)
+                          {t("Embedded Evidence Explorer (Drive Document)")}
                         </label>
                         <div className="relative w-full h-[320px] bg-slate-100 border border-gray-200 rounded-lg overflow-hidden shadow-inner">
                           <iframe
@@ -777,14 +777,14 @@ export default function QCAuditTab() {
                           />
                         </div>
                         <div className="flex justify-between items-center text-xs text-slate-400 mt-1">
-                          <span className="truncate max-w-[200px]">Evidence URL: {claim.driveLink}</span>
+                          <span className="truncate max-w-[200px]">{t("Evidence URL:")} {claim.driveLink}</span>
                           <a 
                             href={claim.driveLink} 
                             target="_blank" 
                             rel="noreferrer" 
                             className="text-[#FF6700] hover:underline flex items-center gap-1 font-bold"
                           >
-                            Open in New Tab <ExternalLink className="w-3 h-3" />
+                            {t("Open in New Tab")} <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
@@ -793,15 +793,15 @@ export default function QCAuditTab() {
                       <div className="flex flex-col justify-between">
                         <div className="space-y-4">
                           <div>
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">Automation System Failure Reason</span>
+                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">{t("Automation System Failure Reason")}</span>
                             <p className="text-xs sm:text-sm text-slate-705 bg-slate-50 border border-gray-150 p-4 rounded-lg mt-1.5 leading-relaxed italic">
-                              "{claim.botLogReason || 'No descriptive failure log snippet detected.'}"
+                              "{t(claim.botLogReason) || t('No descriptive failure log snippet detected.')}"
                             </p>
                           </div>
                           <div>
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">Audit Instructions</span>
+                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block">{t("Audit Instructions")}</span>
                             <p className="text-xs text-slate-450 mt-1.5 leading-relaxed font-semibold">
-                              Compare the uploaded LPN parcel condition against retail box requirements. If packaging was accurate, mark this as an <strong>Inspection Mistake</strong> to trigger a system re-evaluation. Or, select <strong>No Issue</strong> if the dismissal was correct.
+                              {t("Compare the uploaded LPN parcel condition against retail box requirements. If packaging was accurate, mark this as an Inspection Mistake to trigger a system re-evaluation. Or, select No Issue if the dismissal was correct.")}
                             </p>
                           </div>
                         </div>
@@ -811,13 +811,13 @@ export default function QCAuditTab() {
                             onClick={() => handleClaimStatusUpdate(claim.orderId, 'No Issue')}
                             className="flex-1 py-2.5 bg-slate-105 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-bold border border-gray-200 rounded-lg transition-colors"
                           >
-                            No Issue (Correct Rejection)
+                            {t("No Issue (Correct Rejection)")}
                           </button>
                           <button
                             onClick={() => handleClaimStatusUpdate(claim.orderId, 'Inspection Mistake')}
                             className="flex-1 py-2.5 bg-[#FF6700] hover:bg-[#E05300] text-white text-xs sm:text-sm font-bold rounded-lg shadow-sm transition-colors"
                           >
-                            Inspection Mistake (Re-evaluation)
+                            {t("Inspection Mistake (Re-evaluation)")}
                           </button>
                         </div>
 
@@ -831,24 +831,24 @@ export default function QCAuditTab() {
           })}
           {rejectedClaims.length === 0 && (
             <div className="py-12 border border-dashed border-gray-205 rounded-lg text-center text-slate-400 text-xs sm:text-sm">
-              No rejected claims found or pending verification. Compliance rates are optimal.
+              {t("No rejected claims found or pending verification. Compliance rates are optimal.")}
             </div>
           )}
         </div>
       </section>
 
-      {/* SECTION 4: RE-INVENTORISATION (FUTURE PLACEHOLDER) */}
+      {/* SECTION 4: RE-INVENTORISATION */}
       <section id="section-re-inventorisation" className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 sm:p-6 space-y-3">
-        <h2 className="text-lg font-bold text-slate-900">Re-Inventorisation</h2>
-        <p className="text-xs text-slate-400 font-semibold uppercase tracking-tight">Automated synchronization back directly towards live stock management pipelines.</p>
+        <h2 className="text-lg font-bold text-slate-900">{t("Re-Inventorisation")}</h2>
+        <p className="text-xs text-slate-400 font-semibold uppercase tracking-tight">{t("Automated synchronization back directly towards live stock management pipelines.")}</p>
         
         <div className="mt-4 p-6 bg-slate-50 border border-gray-200 border-dashed rounded-lg flex flex-col items-center justify-center text-center">
           <div className="w-12 h-12 bg-white border border-gray-150 rounded-xl flex items-center justify-center mb-3 shadow-xs font-semibold">
             <Package className="w-6 h-6 text-[#FF6700]" />
           </div>
-          <span className="text-sm font-extrabold text-slate-800">Module coming soon: Inventory sync engine pending release.</span>
+          <span className="text-sm font-extrabold text-slate-800">{t("Module coming soon: Inventory sync engine pending release.")}</span>
           <p className="text-xs text-slate-400 max-w-sm mt-1 leading-normal font-semibold">
-            Future release will hook directly with centralized warehouse inventory databases for rapid stock cataloging.
+            {t("Future release will hook directly with centralized warehouse inventory databases for rapid stock cataloging.")}
           </p>
         </div>
       </section>

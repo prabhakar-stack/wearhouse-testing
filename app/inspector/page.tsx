@@ -25,6 +25,7 @@ import {
   Activity,
 } from "lucide-react";
 import Link from "next/link";
+import AccessDenied from "@/app/components/AccessDenied";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
 
@@ -79,17 +80,7 @@ export default function InspectorPage() {
   if (!mounted) return null;
 
   if (role !== "INSPECTOR" && role !== "ADMIN" && role !== "SUPER_ACCESS") {
-    return (
-      <div className="h-screen w-screen bg-red-50 text-red-800 flex flex-col justify-center items-center p-6 select-none overscroll-none border-8 border-red-200">
-        <AlertOctagon size={120} className="mb-8 text-red-400" />
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-widest text-center leading-tight text-red-700">
-          Access Denied
-        </h1>
-        <p className="text-xl mt-6 font-bold tracking-wider text-red-500">
-          Invalid Role Authorization
-        </p>
-      </div>
-    );
+    return <AccessDenied message="Invalid Role Authorization" />;
   }
 
   return <InspectorDashboard role={role} />;
@@ -100,6 +91,19 @@ function StepVisualGuide({
 }: {
   step: { id: number; title: string; desc: string; sampleImg: string | string[] | null };
 }) {
+  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
+
+  useEffect(() => {
+    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
+    window.addEventListener("preferred-language-changed", syncLanguage);
+    window.addEventListener("storage", syncLanguage);
+    return () => {
+      window.removeEventListener("preferred-language-changed", syncLanguage);
+      window.removeEventListener("storage", syncLanguage);
+    };
+  }, []);
+
   const renderBoxWireframe = (
     highlightedFace: "top" | "bottom" | "front" | "back" | "left" | "right",
   ) => {
@@ -573,7 +577,7 @@ function StepVisualGuide({
               className="h-full w-auto object-contain"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
-              Reference Sample {images.length > 1 ? `#${index + 1}` : ""}
+              {t("Reference Sample")} {images.length > 1 ? `#${index + 1}` : ""}
             </div>
           </div>
         ))}
@@ -597,7 +601,7 @@ function StepVisualGuide({
 
       <div className="absolute bottom-0 left-0 right-0 bg-[#313079]/90 border-t border-[#FF6700]/30 backdrop-blur-sm text-[#FF6700] text-[9px] font-black uppercase tracking-[0.15em] text-center py-1 flex items-center justify-center space-x-1.5 animate-pulse">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FF6700]"></span>
-        <span>HUD Visual Assist Active</span>
+        <span>{t("HUD Visual Assist Active")}</span>
       </div>
     </div>
   );
@@ -988,8 +992,8 @@ function InspectorDashboard({ role }: { role: string }) {
           </div>
         )}
 
-        {activeTab === "ledger" && <LedgerTab />}
-        {activeTab === "takeover" && <TakeoverTab />}
+        {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
+        {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
         {activeTab === "inspect" && <InspectTab userId={userData?.id} />}
         {activeTab === "alerts" && <NotificationsTab />}
       </main>
@@ -997,7 +1001,8 @@ function InspectorDashboard({ role }: { role: string }) {
   );
 }
 
-function LedgerTab() {
+function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: string }) {
+  const t = (text: string) => translateInstruction(text, preferredLanguage as any);
   const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1021,16 +1026,16 @@ function LedgerTab() {
     <div className="max-w-lg mx-auto pb-10 pt-6 px-4">
       <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
         <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-          My Custody Ledger
+          {t("My Custody Ledger")}
         </h2>
         <span className="bg-white border border-[#FF6700]/30 text-[#FF6700] px-3 py-1 font-mono text-xs rounded-sm shadow-sm font-bold">
-          {ledger.length} PENDING
+          {ledger.length} {t("PENDING")}
         </span>
       </div>
 
       {loading ? (
         <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">
-          Syncing Custody Ledger...
+          {t("Syncing Custody Ledger...")}
         </div>
       ) : ledger.length === 0 ? (
         <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-md">
@@ -1039,7 +1044,7 @@ function LedgerTab() {
             className="mx-auto text-green-500 mb-4 opacity-50"
           />
           <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-            No Pending Inspections
+            {t("No Pending Inspections")}
           </h3>
           <p className="text-[10px] uppercase text-[#313079]/70 mt-2 max-w-[200px] mx-auto font-medium">
             You have no active taken packages. Proceed to Takeover to pull from
@@ -1069,7 +1074,7 @@ function LedgerTab() {
                 <div className="text-right">
                   {item.status === "INSPECTING" ? (
                     <span className="bg-[#FF6700]/5 text-[#FF6700] px-2 py-1 text-[10px] font-bold uppercase border border-[#FF6700]/20 rounded-sm">
-                      IN PROGRESS
+                      {t("IN PROGRESS")}
                     </span>
                   ) : (
                     <span className="bg-[#313079]/5 text-[#313079]/70 px-2 py-1 text-[10px] font-bold uppercase border border-[#313079]/15 rounded-sm">
@@ -1082,7 +1087,7 @@ function LedgerTab() {
               <div className="flex justify-between items-center pl-2 pt-2 border-t border-[#313079]/10">
                 <div>
                   <p className="text-[10px] uppercase text-[#313079]/50 font-bold">
-                    Items Scanned
+                    {t("Items Scanned")}
                   </p>
                   <div className="font-mono text-xs mt-1 text-[#313079] font-bold">
                     <span className="text-green-600">
@@ -1092,7 +1097,7 @@ function LedgerTab() {
                   </div>
                 </div>
                 <div className="text-[9px] font-mono text-[#313079]/50 font-bold">
-                  Taken:{" "}
+                  {t("Taken:")}{" "}
                   {new Date(item.receivedAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -1107,7 +1112,8 @@ function LedgerTab() {
   );
 }
 
-function TakeoverTab() {
+function TakeoverTab({ preferredLanguage = "en" }: { preferredLanguage?: string }) {
+  const t = (text: string) => translateInstruction(text, preferredLanguage as any);
   const [trackingId, setTrackingId] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1127,7 +1133,7 @@ function TakeoverTab() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Takeover failed");
+        setError(t(data.error || "Takeover failed"));
         setLoading(false);
         return;
       }
@@ -1139,7 +1145,7 @@ function TakeoverTab() {
         setTakenManifest(null);
       }, 3000);
     } catch (err: any) {
-      setError(err.message || "Network error");
+      setError(t(err.message || "Network error"));
     } finally {
       setLoading(false);
     }
@@ -1150,15 +1156,15 @@ function TakeoverTab() {
       <div className="absolute inset-0 bg-green-500 z-50 flex flex-col items-center justify-center p-8 animate-in fade-in duration-200">
         <CheckCircle2 size={120} className="text-white mb-8 drop-shadow-2xl" />
         <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-widest text-center leading-tight drop-shadow-lg">
-          Custody Transferred
+          {t("Custody Transferred")}
         </h2>
         <p className="text-white text-xl font-bold tracking-widest mt-4 opacity-90 uppercase">
-          Successfully!
+          {t("Successfully!")}
         </p>
         {takenManifest && (
           <div className="mt-6 bg-white/20 backdrop-blur px-6 py-3 rounded-lg text-white text-sm font-mono">
-            <p>Tracking ID: {takenManifest.trackingId}</p>
-            <p>Items to Inspect: {takenManifest.itemCount}</p>
+            <p>{t("Tracking ID:")} {takenManifest.trackingId}</p>
+            <p>{t("Items to Inspect:")} {takenManifest.itemCount}</p>
           </div>
         )}
       </div>
@@ -1173,10 +1179,10 @@ function TakeoverTab() {
             <LinkIcon size={32} className="text-[#FF6700]" />
           </div>
           <h2 className="text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-[#313079]">
-            Mechanical Handshake
+            {t("Mechanical Handshake")}
           </h2>
           <p className="text-[#313079]/60 font-bold text-sm tracking-widest mt-2 uppercase">
-            Scan Box from Receiver
+            {t("Scan Box from Receiver")}
           </p>
         </div>
 
@@ -1184,7 +1190,7 @@ function TakeoverTab() {
           <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
             <input
               type="text"
-              placeholder="ENTER TRACKING ID..."
+              placeholder={t("ENTER TRACKING ID...")}
               value={trackingId}
               onChange={(e) => setTrackingId(e.target.value)}
               autoFocus
@@ -1205,7 +1211,7 @@ function TakeoverTab() {
                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Confirm Takeover</span>
+                  <span>{t("Confirm Takeover")}</span>
                   <ArrowRight size={24} />
                 </>
               )}
@@ -1489,7 +1495,7 @@ function InspectTab({ userId }: { userId?: string }) {
                         : undefined,
                     }));
 
-                    // 1. Initialize Direct Upload — creates the Drive folder structure and returns upload URLs
+                    // 1. {t("Initialize")} Direct Upload — creates the Drive folder structure and returns upload URLs
                     const initRes = await fetch("/api/upload/init", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -1877,7 +1883,7 @@ function InspectTab({ userId }: { userId?: string }) {
                 cCtx.fillStyle = "#ffffff";
                 cCtx.font = "bold 13px sans-serif";
                 cCtx.textAlign = "center";
-                cCtx.fillText("SHOPIFY REFERENCE", shopW / 2, COLLAGE_H + 23);
+                cCtx.fillText(t("SHOPIFY REFERENCE"), shopW / 2, COLLAGE_H + 23);
 
                 // Divider
                 cCtx.fillStyle = "#1e293b";
@@ -1888,7 +1894,7 @@ function InspectTab({ userId }: { userId?: string }) {
                 cCtx.fillStyle = "rgba(239,68,68,0.85)";
                 cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
                 cCtx.fillStyle = "#ffffff";
-                cCtx.fillText("RECEIVED ITEM", shopW + GAP + camW / 2, COLLAGE_H + 23);
+                cCtx.fillText(t("RECEIVED ITEM"), shopW + GAP + camW / 2, COLLAGE_H + 23);
 
                 collage.toBlob(
                   (collageBlob) => {
@@ -1951,7 +1957,7 @@ function InspectTab({ userId }: { userId?: string }) {
     setStartError("");
 
     if (!userId) {
-      setStartError("Authentication error. Please log in again.");
+      setStartError(t("Authentication error. Please log in again."));
       return;
     }
 
@@ -1964,21 +1970,19 @@ function InspectTab({ userId }: { userId?: string }) {
         const manifest = data.manifest;
 
         if (!manifest) {
-          setStartError("This Order ID / Tracking ID is not found in the system.");
+          setStartError(t("This Order ID / Tracking ID is not found in the system."));
           return;
         }
 
-
-
         if (manifest.status !== "IN_INSPECTION") {
           setStartError(
-            "This package is not active in your inspection stack. Take custody from the receiver before scanning."
+            t("This package is not active in your inspection stack. Take custody from the receiver before scanning.")
           );
           return;
         }
 
         if (manifest.inspection?.completedAt) {
-          setStartError("This package has already been inspected.");
+          setStartError(t("This package has already been inspected."));
           return;
         }
 
@@ -1997,7 +2001,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
         if (!resolvedOrderId && manifestOrderIds.length > 1) {
           setStartError(
-            "This tracking ID contains multiple orders. Please scan the exact Order ID before inspection."
+            t("This tracking ID contains multiple orders. Please scan the exact Order ID before inspection.")
           );
           return;
         }
@@ -2035,7 +2039,7 @@ function InspectTab({ userId }: { userId?: string }) {
         return;
       }
     } catch {
-      setStartError("Failed to verify custody. Please try again.");
+      setStartError(t("Failed to verify custody. Please try again."));
       return;
     }
 
@@ -2072,12 +2076,12 @@ function InspectTab({ userId }: { userId?: string }) {
   const confirmCurrentLpn = async () => {
     const scannedLpn = currentLpn.trim().toUpperCase();
     if (!scannedLpn) {
-      setLpnScanError("Scan or type the LPN before continuing.");
+      setLpnScanError(t("Scan or type the LPN before continuing."));
       return false;
     }
 
     if (scannedLpnsRef.current.has(scannedLpn)) {
-      setLpnScanError("This LPN has already been scanned for this order.");
+      setLpnScanError(t("This LPN has already been scanned for this order."));
       return false;
     }
 
@@ -2091,7 +2095,7 @@ function InspectTab({ userId }: { userId?: string }) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setLpnScanError(data.error || "LPN validation failed.");
+        setLpnScanError(data.error || t("LPN validation failed."));
         setIsValidatingLpn(false);
         return false;
       }
@@ -2102,13 +2106,13 @@ function InspectTab({ userId }: { userId?: string }) {
       const remainingQty = expectedFnskuQuantities[resolvedFnsku] ?? 0;
 
       if (!(resolvedFnsku in expectedFnskuQuantities)) {
-        setLpnScanError(`This item (FNSKU: ${resolvedFnsku}) is not expected in this removal order.`);
+        setLpnScanError(t(`This item (FNSKU: ${resolvedFnsku}) is not expected in this removal order.`));
         setIsValidatingLpn(false);
         return false;
       }
 
       if (remainingQty <= 0) {
-        setLpnScanError(`All expected units of this item (FNSKU: ${resolvedFnsku}) have already been scanned.`);
+        setLpnScanError(t(`All expected units of this item (FNSKU: ${resolvedFnsku}) have already been scanned.`));
         setIsValidatingLpn(false);
         return false;
       }
@@ -2129,7 +2133,7 @@ function InspectTab({ userId }: { userId?: string }) {
       setIsValidatingLpn(false);
       return true;
     } catch (err) {
-      setLpnScanError("Connection error while validating LPN.");
+      setLpnScanError(t("Connection error while validating LPN."));
       setIsValidatingLpn(false);
       return false;
     }
@@ -2138,28 +2142,28 @@ function InspectTab({ userId }: { userId?: string }) {
   const CLAIM_REASONS = [
     {
       id: "damaged_used",
-      label: "1. I received damaged/ used item(s)",
+      label: t("1. I received damaged/ used item(s)"),
       subReasons: [
-        { value: "heavily_damaged", label: "a. Item(s) heavily damaged" },
+        { value: "heavily_damaged", label: t("a. Item(s) heavily damaged") },
         {
           value: "minor_damages",
-          label: "b. Item(s) with minor damages/dents/scratches",
+          label: t("b. Item(s) with minor damages/dents/scratches"),
         },
         {
           value: "packaging_damaged",
-          label: "c. Only product packaging damaged",
+          label: t("c. Only product packaging damaged"),
         },
       ],
     },
     {
       id: "different_empty",
-      label: "2. I received different item or empty box",
+      label: t("2. I received different item or empty box"),
       subReasons: [
-        { value: "different_junk", label: "a. Different/junk item received" },
-        { value: "empty_box", label: "b. Empty box received" },
+        { value: "different_junk", label: t("a. Different/junk item received") },
+        { value: "empty_box", label: t("b. Empty box received") },
         {
           value: "fake_counterfeit",
-          label: "c. Fake/ replica/ counterfeit item received",
+          label: t("c. Fake/ replica/ counterfeit item received"),
         },
       ],
     },
@@ -2345,7 +2349,7 @@ function InspectTab({ userId }: { userId?: string }) {
       <div className="w-[60%] bg-black relative flex flex-col items-center justify-center border-r border-slate-800 shadow-2xl">
         <div className="absolute top-4 left-4 bg-red-600/90 backdrop-blur text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center space-x-2 rounded shadow-lg z-10">
           <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-          <span>REC &bull; Continuous Evidence</span>
+          <span>{t("REC • Continuous Evidence")}</span>
         </div>
 
         <div className="absolute top-4 right-4 bg-black/70 border border-white/20 text-white px-4 py-2 text-sm font-mono tracking-widest rounded flex items-center space-x-3 z-10 shadow-lg">
@@ -2380,12 +2384,12 @@ function InspectTab({ userId }: { userId?: string }) {
             <div className="absolute inset-0 z-10 pointer-events-none flex">
               <div className="w-[70%] h-full border-r-2 border-white/40 border-dashed flex items-center justify-center bg-black/20">
                 <span className="text-white/60 font-black text-2xl tracking-widest">
-                  BOX AREA
+                  {t("BOX AREA")}
                 </span>
               </div>
               <div className="w-[30%] h-full flex items-center justify-center">
                 <span className="text-white/60 font-black text-2xl tracking-widest">
-                  ITEM AREA
+                  {t("ITEM AREA")}
                 </span>
               </div>
             </div>
@@ -2441,7 +2445,7 @@ function InspectTab({ userId }: { userId?: string }) {
             >
               <input
                 type="text"
-                placeholder="ENTER ORDER ID..."
+                placeholder={t("ENTER ORDER ID...")}
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
                 autoFocus
@@ -2468,7 +2472,7 @@ function InspectTab({ userId }: { userId?: string }) {
           <div className="flex-1 flex flex-col p-6 animate-in fade-in duration-300 overflow-y-auto custom-scrollbar">
             <div className="mb-6">
               <h3 className="text-[10px] uppercase font-black tracking-widest text-[#FF6700] mb-1">
-                Phase 1
+                {t("Phase 1")}
               </h3>
               <h2 className="text-lg font-black uppercase tracking-widest text-[#313079]">
                 Box Evidence
@@ -2562,7 +2566,7 @@ function InspectTab({ userId }: { userId?: string }) {
                                 }}
                                 className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all mt-auto"
                               >
-                                <Camera size={16} /> <span>Capture Image</span>
+                                <Camera size={16} /> <span>{t("Capture Image")}</span>
                               </button>
                             )}
                           </div>
@@ -2581,7 +2585,7 @@ function InspectTab({ userId }: { userId?: string }) {
             <div className="mb-4 flex justify-between items-start border-b border-[#313079]/10 pb-4">
               <div>
                 <h3 className="text-[10px] uppercase font-black tracking-widest text-[#FF6700] mb-1">
-                  Phase 2
+                  {t("Phase 2")}
                 </h3>
                 <h2 className="text-lg font-black uppercase tracking-widest text-[#313079] leading-tight">
                   Product Verification

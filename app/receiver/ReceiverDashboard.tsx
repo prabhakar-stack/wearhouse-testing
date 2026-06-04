@@ -151,7 +151,9 @@ export default function ReceiverDashboard({
   const [resolutionText, setResolutionText] = useState("");
 
   const fetchAlerts = useCallback(() => {
-    fetch("/api/alerts")
+    fetch("/api/alerts", {
+      headers: { "x-user-language": preferredLanguage }
+    })
       .then((r) => r.json())
       .then((d) => {
         if (d.alerts) {
@@ -161,7 +163,7 @@ export default function ReceiverDashboard({
         if (d.sopMap) setSopMap(d.sopMap);
       })
       .catch(console.error);
-  }, []);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     fetchAlerts();
@@ -462,9 +464,10 @@ export default function ReceiverDashboard({
                     </p>
                   </div>
                 )}
-                <p className="text-[10px] text-slate-400 text-center font-medium pt-1">
-                  {t("Profile is read-only · Contact Admin to update details.")}
-                </p>
+                  <LanguagePreference />
+                  <p className="text-[10px] text-slate-400 text-center font-medium pt-1">
+                    {t("Profile is read-only · Contact Admin to update details.")}
+                  </p>
               </div>
             </div>
 
@@ -1151,7 +1154,7 @@ function ReceiveTab({
             {searchError && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-xs font-bold rounded flex items-center space-x-2 w-full">
                 <AlertOctagon size={16} className="shrink-0" />
-                <span>{searchError}</span>
+                <span>{t(searchError)}</span>
               </div>
             )}
             <button
@@ -1562,7 +1565,9 @@ function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
   const fetchAlerts = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/alerts?dashboard=true");
+      const res = await fetch("/api/alerts?dashboard=true", {
+        headers: { "x-user-language": preferredLanguage }
+      });
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);

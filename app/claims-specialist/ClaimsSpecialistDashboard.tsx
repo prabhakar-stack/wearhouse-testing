@@ -171,7 +171,7 @@ export default function ClaimsSpecialistDashboard({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      Pending Claims
+                      {t("Pending Claims")}
                     </p>
                     <p className="text-3xl font-black text-slate-900 mt-2">0</p>
                   </div>
@@ -183,7 +183,7 @@ export default function ClaimsSpecialistDashboard({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      Processed Today
+                      {t("Processed Today")}
                     </p>
                     <p className="text-3xl font-black text-slate-900 mt-2">0</p>
                   </div>
@@ -195,7 +195,7 @@ export default function ClaimsSpecialistDashboard({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      Disputes
+                      {t("Disputes")}
                     </p>
                     <p className="text-3xl font-black text-slate-900 mt-2">0</p>
                   </div>
@@ -209,17 +209,17 @@ export default function ClaimsSpecialistDashboard({
               <div className="flex items-center space-x-3 mb-6">
                 <Activity size={24} className="text-blue-600" />
                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-wider">
-                  Claims Processing Queue
+                  {t("Claims Processing Queue")}
                 </h2>
               </div>
 
               <div className="bg-slate-50 rounded-lg p-12 text-center border-2 border-dashed border-slate-200">
                 <FileText size={48} className="mx-auto text-slate-300 mb-4" />
                 <p className="text-lg font-bold text-slate-600 uppercase tracking-wider">
-                  No Claims Pending
+                  {t("No Claims Pending")}
                 </p>
                 <p className="text-sm text-slate-500 mt-2">
-                  New claims will appear here when they are ready for processing
+                  {t("New claims will appear here when they are ready for processing")}
                 </p>
               </div>
             </div>
@@ -228,7 +228,7 @@ export default function ClaimsSpecialistDashboard({
 
         {activeTab === "triage" && (
           <iframe
-            src={`${claimsUrl}/triage`}
+            src={`${claimsUrl}/triage?lang=${preferredLanguage}`}
             className="w-full h-full border-none"
             title="Claims Triage"
             style={{
@@ -239,7 +239,7 @@ export default function ClaimsSpecialistDashboard({
 
         {activeTab === "smartfiling" && (
           <iframe
-            src={`${claimsUrl}/smartfiling`}
+            src={`${claimsUrl}/smartfiling?lang=${preferredLanguage}`}
             className="w-full h-full border-none"
             title="Smart Filing Monitor"
             style={{

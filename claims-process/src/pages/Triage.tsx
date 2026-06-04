@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Claim } from '../types';
+import { t } from '../utils/i18n';
 
 interface GroupedClaim extends Claim {
   uniqueKey: string;
@@ -71,36 +72,21 @@ Evidence: ${claim.driveLink || 'N/A'}
 
   // Grouped Claims Logic
   const groupedClaimsRaw = claims.reduce((acc, c) => {
-    // Group by Tracking ID + SKU as requested
     const key = `${c.trackingId || 'N/A'}-${c.sku}`;
-    
-    // In our backend, we now return a 'qty' field which is the count of rows
-    // If it's already grouped on server, acc[key] might already exist
-    // But let's assume we might still get multiple records or want to be safe
-    
-    // Note: the backend grouping already summed up into 'qty'
-    // If the frontend receives grouped results, we just use them.
-    // If it receives individual rows, we group them here.
     
     if (!acc[key]) {
       acc[key] = { 
         ...c, 
         uniqueKey: key,
         issues: [{ 
-          qty: (c as any).qty || 1, // Use backend qty if available, else 1
+          qty: (c as any).qty || 1, 
           type: c.type, 
           condition: c.condition, 
           reason: c.reason 
         }] 
       } as GroupedClaim;
     } else {
-      // If we are double-grouping, we might want to avoid adding the same issue again
-      // if it's already represented in the backend qty.
-      // But for simplicity, we'll just treat it as a stream.
       const existing = (acc[key] as GroupedClaim);
-      
-      // If the item came in with its own qty > 1, we add it. 
-      // If we are grouping raw rows here, we add them to the first issue or keep unique issues.
       const issueIdx = existing.issues.findIndex(i => i.type === c.type && i.condition === c.condition);
       if (issueIdx > -1) {
         existing.issues[issueIdx].qty = (existing.issues[issueIdx].qty || 0) + ((c as any).qty || 1);
@@ -119,12 +105,10 @@ Evidence: ${claim.driveLink || 'N/A'}
   const groupedClaimsList: GroupedClaim[] = Object.values(groupedClaimsRaw);
 
   const filteredClaims = groupedClaimsList.filter(c => {
-    // CRITICAL TRIAGE FILTER: Items classified as 'Shopify RTO' never require claims processing
     if (c.channel === 'Shopify RTO') {
       return false;
     }
 
-    // Check if any issue matches the filters
     const validIssues = c.issues.filter((issue: any) => {
       const condition = issue.condition?.toLowerCase();
       const typeLower = (issue.type || "").toLowerCase();
@@ -139,7 +123,6 @@ Evidence: ${claim.driveLink || 'N/A'}
     if (filter === 'All') return true;
     if (filter === 'Filed') return !!c.reimbursementId && c.status !== 'Resolved';
     
-    // Check if any valid issue matches the tab filter
     return validIssues.some((issue: any) => {
       if (filter === 'Missing') return c.deliveryStatus?.toLowerCase() !== 'delivered' && c.slaDaysElapsed>=1;
       if (filter === 'Damaged') return (issue.type === 'Damaged');
@@ -151,24 +134,24 @@ Evidence: ${claim.driveLink || 'N/A'}
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">Triage Queue</h2>
-        <p className="text-slate-500 text-xs lg:text-sm">Manage and escalate pending inventory claims.</p>
+        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">{t("Triage Queue")}</h2>
+        <p className="text-slate-500 text-xs lg:text-sm">{t("Manage and escalate pending inventory claims.")}</p>
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto no-scrollbar w-full lg:max-w-3xl">
-          {(['All', 'Missing', 'Damaged', 'RejectedDelivery', 'Filed'] as const).map((t) => (
+          {(['All', 'Missing', 'Damaged', 'RejectedDelivery', 'Filed'] as const).map((tVal) => (
             <button
-              key={t}
-              onClick={() => setFilter(t)}
+              key={tVal}
+              onClick={() => setFilter(tVal)}
               className={cn(
                 "px-4 lg:px-6 py-2 text-[10px] lg:text-xs font-extrabold rounded-lg transition-all whitespace-nowrap",
-                filter === t 
+                filter === tVal 
                   ? "bg-black text-white shadow-md shadow-black/20" 
                   : "text-slate-400 hover:text-[#313079] hover:bg-white"
               )}
             >
-              {t === 'RejectedDelivery' ? 'Rejected Delivery' : t === 'Filed' ? 'Filed Claims' : t}
+              {tVal === 'RejectedDelivery' ? t('Rejected Delivery') : tVal === 'Filed' ? t('Filed Claims') : t(tVal)}
             </button>
           ))}
         </div>
@@ -178,7 +161,7 @@ Evidence: ${claim.driveLink || 'N/A'}
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#FF6700] transition-colors" />
             <input 
               type="text" 
-              placeholder="Search ID, SKU..." 
+              placeholder={t("Search ID, SKU...")}
               className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-[#313079] focus:outline-none focus:ring-2 focus:ring-black/5 w-full lg:w-72 transition-all placeholder:text-slate-300 shadow-sm"
             />
           </div>
@@ -193,12 +176,12 @@ Evidence: ${claim.driveLink || 'N/A'}
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 text-[10px] font-extrabold uppercase tracking-widest leading-none">
-                <th className="px-4 py-4">C1: Company & Order</th>
-                <th className="px-4 py-4">C2: Inventory Details</th>
-                <th className="px-4 py-4">C3: Reason Analysis</th>
-                <th className="px-4 py-4">C4: Drive Link</th>
-                <th className="px-4 py-4">C5: SLA / Status</th>
-                <th className="px-4 py-4 text-right">C6: Reimbursement</th>
+                <th className="px-4 py-4">{t("C1: Company & Order")}</th>
+                <th className="px-4 py-4">{t("C2: Inventory Details")}</th>
+                <th className="px-4 py-4">{t("C3: Reason Analysis")}</th>
+                <th className="px-4 py-4">{t("C4: Drive Link")}</th>
+                <th className="px-4 py-4">{t("C5: SLA / Status")}</th>
+                <th className="px-4 py-4 text-right">{t("C6: Reimbursement")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -223,8 +206,8 @@ Evidence: ${claim.driveLink || 'N/A'}
                       </div>
                       <span className="text-xs font-mono font-bold text-[#313079] tracking-tighter">{claim.orderId}</span>
                       <div className="flex flex-col gap-0.5 mt-1">
-                        <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 rounded-sm w-fit">TRK: {claim.trackingId}</span>
-                        <span className="text-[8px] font-bold text-indigo-600">GROUPED QTY: {claim.qty}</span>
+                        <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 rounded-sm w-fit">{t("TRK:")} {claim.trackingId}</span>
+                        <span className="text-[8px] font-bold text-indigo-600">{t("GROUPED QTY:")} {claim.qty}</span>
                       </div>
                     </div>
                   </td>
@@ -240,14 +223,14 @@ Evidence: ${claim.driveLink || 'N/A'}
                         {claim.issues?.map((issue: any, idx: number) => (
                           <div key={idx} className="flex flex-col gap-0.5 border-l-2 border-slate-100 pl-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-[9px] font-extrabold text-[#FF6700]">Qty: {issue.qty}</span>
-                              <span className="text-[9px] font-black text-slate-700 uppercase tracking-tighter">{issue.type}</span>
+                              <span className="text-[9px] font-extrabold text-[#FF6700]">{t("Qty:")} {issue.qty}</span>
+                              <span className="text-[9px] font-black text-slate-700 uppercase tracking-tighter">{t(issue.type)}</span>
                             </div>
                             <span className={cn(
                               "text-[8px] font-bold uppercase px-1 rounded-sm w-fit",
                               issue.condition === 'damaged' ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
                             )}>
-                              {issue.condition}
+                              {t(issue.condition)}
                             </span>
                           </div>
                         ))}
@@ -260,7 +243,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                     <div className="flex flex-col gap-2 max-w-[220px]">
                       {claim.issues?.map((issue: any, idx: number) => (
                         <div key={idx} className="flex flex-col gap-0.5 border-l-2 border-slate-100 pl-2">
-                          <span className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">{issue.reason || 'N/A'}</span>
+                          <span className="text-[10px] font-bold text-slate-700 uppercase tracking-tight">{t(issue.reason) || 'N/A'}</span>
                         </div>
                       ))}
                     </div>
@@ -276,10 +259,10 @@ Evidence: ${claim.driveLink || 'N/A'}
                         className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-bold text-[9px] transition-colors"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        VIEW EVIDENCE
+                        {t("VIEW EVIDENCE")}
                       </a>
                     ) : (
-                      <span className="text-[9px] text-slate-300 italic">No evidence link</span>
+                      <span className="text-[9px] text-slate-300 italic">{t("No evidence link")}</span>
                     )}
                   </td>
 
@@ -292,9 +275,9 @@ Evidence: ${claim.driveLink || 'N/A'}
                           claim.status === 'Escalated' ? "bg-red-50 text-red-600 border-red-100" :
                           "bg-slate-50 text-slate-500 border-slate-100"
                        )}>
-                         {claim.status}
+                         {t(claim.status)}
                        </span>
-                       <div className="text-[8px] font-bold text-slate-400 text-center uppercase">Day {claim.slaDaysElapsed}</div>
+                       <div className="text-[8px] font-bold text-slate-400 text-center uppercase">{t("Day")} {claim.slaDaysElapsed}</div>
                     </div>
                   </td>
 
@@ -304,12 +287,12 @@ Evidence: ${claim.driveLink || 'N/A'}
                       <div className="flex flex-col items-end mr-1">
                         {claim.reimbursementId ? (
                           <>
-                            <span className="text-[8px] font-bold text-green-600">ID: {claim.reimbursementId}</span>
+                            <span className="text-[8px] font-bold text-green-600">{t("ID:")} {claim.reimbursementId}</span>
                             <span className="text-[10px] font-black text-[#FF6700]">{claim.currency} {claim.amount}</span>
                           </>
                         ) : (
                           <div className="flex flex-col items-end">
-                            <span className="text-[8px] font-bold text-slate-300 italic">Unfiled</span>
+                            <span className="text-[8px] font-bold text-slate-300 italic">{t("Unfiled")}</span>
                             {true && (
                               <button 
                                 onClick={async (e) => {
@@ -326,9 +309,9 @@ Evidence: ${claim.driveLink || 'N/A'}
                                     });
                                     const data = await res.json();
                                     if (res.ok) {
-                                      alert(`Bot triggered for Order ${claim.orderId}! Check Smart Filing Hub.`);
+                                      alert(`${t("Bot triggered for Order")} ${claim.orderId}! ${t("Check Smart Filing Hub.")}`);
                                     } else {
-                                      alert(data.message || "Bot unavailable");
+                                      alert(data.message || t("Bot unavailable"));
                                     }
                                   } catch (err) {
                                     console.error(err);
@@ -341,7 +324,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                                 )}
                               >
                                 <Bot className={cn("w-3 h-3", botAvailable && "group-hover:animate-bounce")} />
-                                {botAvailable ? 'FILE WITH BOT' : 'BOT COOLING...'}
+                                {botAvailable ? t('FILE WITH BOT') : t('BOT COOLING...')}
                               </button>
                             )}
                           </div>
