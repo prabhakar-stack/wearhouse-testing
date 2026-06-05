@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       orderDriveLink, // optional order‑level Google Drive folder URL
       lpnConditions, // Record of scanned items: { [lpn]: 'good' | 'bad' | 'recovery' }
       lpnRecoveryTypes, // Record of recovery types: { [lpn]: string }
+      lpnFolderLinks, // Record of LPN folder links: { [lpn]: string }
     } = body;
 
     if (!manifestId) {
@@ -210,8 +211,8 @@ export async function POST(req: Request) {
                 status: 'GOOD',
                 recoveryType: null,
                 orderId: orderPlatformId,
-                lpnDriveLink: evidenceUrl || null,
-                orderDriveLink: orderDriveLink || null,
+                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+                orderDriveLink: evidenceUrl || null,
                 manifestId: manifest.id,
               } as any,
               create: {
@@ -219,8 +220,8 @@ export async function POST(req: Request) {
                 status: 'GOOD',
                 recoveryType: null,
                 orderId: orderPlatformId,
-                lpnDriveLink: evidenceUrl || null,
-                orderDriveLink: orderDriveLink || null,
+                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+                orderDriveLink: evidenceUrl || null,
                 manifestId: manifest.id,
               } as any,
             });
@@ -237,8 +238,8 @@ export async function POST(req: Request) {
                 status: 'RECOVERY',
                 recoveryType: recoveryType,
                 orderId: orderPlatformId,
-                lpnDriveLink: evidenceUrl || null,
-                orderDriveLink: orderDriveLink || null,
+                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+                orderDriveLink: evidenceUrl || null,
                 manifestId: manifest.id,
               } as any,
               create: {
@@ -246,8 +247,8 @@ export async function POST(req: Request) {
                 status: 'RECOVERY',
                 recoveryType: recoveryType,
                 orderId: orderPlatformId,
-                lpnDriveLink: evidenceUrl || null,
-                orderDriveLink: orderDriveLink || null,
+                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+                orderDriveLink: evidenceUrl || null,
                 manifestId: manifest.id,
               } as any,
             });
@@ -270,6 +271,7 @@ export async function POST(req: Request) {
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
               orderDriveLink: evidenceUrl || null,
+              lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
             },
@@ -280,6 +282,7 @@ export async function POST(req: Request) {
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
               orderDriveLink: evidenceUrl || null,
+              lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
             }

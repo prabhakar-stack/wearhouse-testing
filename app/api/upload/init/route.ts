@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     const uploadUrls: Record<string, string> = {};
     let orderFolderId = '';
     let folderLink = '';
+    const lpnFolderLinks: Record<string, string> = {};
 
     if (type === 'RECEIVER_REJECTION') {
       const parentFolderId = process.env.GOOGLE_DRIVE_REJECTIONS_FOLDER_ID;
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Keep track of resolved LPN folders to avoid repeated Drive API lookups
-      const resolvedLpnFolders: Record<string, string> = {};
+      const resolvedLpnFolders: Record<string, { id: string; webViewLink: string }> = {};
 
       for (const file of filesMetaData) {
         let targetFolderId = orderFolderId;
@@ -94,12 +95,13 @@ export async function POST(req: NextRequest) {
         if (file.lpn) {
           const lpnFolderKey = file.lpn;
           if (resolvedLpnFolders[lpnFolderKey]) {
-            targetFolderId = resolvedLpnFolders[lpnFolderKey];
+            targetFolderId = resolvedLpnFolders[lpnFolderKey].id;
+            lpnFolderLinks[lpnFolderKey] = resolvedLpnFolders[lpnFolderKey].webViewLink;
           } else {
             // Find or create subfolder for this LPN inside the main order folder
             const subfolderList = await drive.files.list({
               q: `name = '${lpnFolderKey}' and mimeType = 'application/vnd.google-apps.folder' and '${orderFolderId}' in parents and trashed = false`,
-              fields: 'files(id, name)',
+              fields: 'files(id, name, webViewLink)',
               spaces: 'drive',
               supportsAllDrives: true,
               includeItemsFromAllDrives: true,
@@ -107,6 +109,9 @@ export async function POST(req: NextRequest) {
 
             if (subfolderList.data.files && subfolderList.data.files.length > 0) {
               targetFolderId = subfolderList.data.files[0].id!;
+              const link = subfolderList.data.files[0].webViewLink!;
+              lpnFolderLinks[lpnFolderKey] = link;
+              resolvedLpnFolders[lpnFolderKey] = { id: targetFolderId, webViewLink: link };
             } else {
               const subfolderCreate = await drive.files.create({
                 requestBody: {
@@ -114,11 +119,14 @@ export async function POST(req: NextRequest) {
                   mimeType: 'application/vnd.google-apps.folder',
                   parents: [orderFolderId],
                 },
-                fields: 'id',
+                fields: 'id, webViewLink',
                 supportsAllDrives: true,
                 supportsTeamDrives: true,
               });
               targetFolderId = subfolderCreate.data.id!;
+              const link = subfolderCreate.data.webViewLink!;
+              lpnFolderLinks[lpnFolderKey] = link;
+              resolvedLpnFolders[lpnFolderKey] = { id: targetFolderId, webViewLink: link };
 
               // Make the LPN subfolder publicly readable
               try {
@@ -135,7 +143,6 @@ export async function POST(req: NextRequest) {
                 console.error(`Failed to set permissions for subfolder ${lpnFolderKey}:`, e);
               }
             }
-            resolvedLpnFolders[lpnFolderKey] = targetFolderId;
           }
         }
 
@@ -148,6 +155,7 @@ export async function POST(req: NextRequest) {
       uploadUrls,
       folderLink,
       orderFolderId,
+      lpnFolderLinks,
     });
   } catch (error: any) {
     console.error('🔥 UPLOAD INIT FAILED:', error);

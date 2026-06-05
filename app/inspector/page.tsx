@@ -612,6 +612,7 @@ function InspectorDashboard({ role }: { role: string }) {
   const [activeTab, setActiveTab] = useState<
     "home" | "takeover" | "inspect" | "profile" | "ledger" | "alerts"
   >("home");
+  const [isQaActive, setIsQaActive] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [alertCount, setAlertCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -699,56 +700,58 @@ function InspectorDashboard({ role }: { role: string }) {
 
   return (
     <div className="flex flex-col h-screen bg-white text-[#313079] select-none overscroll-none font-sans overflow-hidden border-4 border-[#313079]/10 relative">
-      <header className="p-4 md:p-6 border-b border-[#313079]/10 shrink-0 bg-white shadow-sm z-20 flex items-center justify-between">
-        <div className="flex items-center">
-          {activeTab !== "home" && (
-            <button
-              onClick={() => setActiveTab("home")}
-              className="mr-4 text-[#313079]/70 hover:text-[#313079]"
-            >
-              <ArrowLeft size={24} />
-            </button>
-          )}
-          <div>
-            <h1 className="text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-[#FF6700]">
-              {activeTab === "profile"
-                ? t("Profile")
-                : activeTab === "ledger"
-                  ? t("Custody Ledger")
-                  : activeTab === "alerts"
-                    ? t("Active Alerts")
-                    : t("Quality Assurance")}
-            </h1>
-            <p className="text-[#313079]/60 text-xs font-bold tracking-widest mt-1 uppercase">
-              {userData
-                ? userData.name || userData.email || role
-                : role.replace("_", " ")}{" "}
-              &bull; {role.replace(/_/g, " ")}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-6">
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-[#FF6700]'}`}
-            title="Notifications & Alerts"
-          >
-            <Bell size={26} />
-            {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
-                {alertCount}
-              </span>
+      {!isQaActive && (
+        <header className="p-4 md:p-6 border-b border-[#313079]/10 shrink-0 bg-white shadow-sm z-20 flex items-center justify-between">
+          <div className="flex items-center">
+            {activeTab !== "home" && (
+              <button
+                onClick={() => setActiveTab("home")}
+                className="mr-4 text-[#313079]/70 hover:text-[#313079]"
+              >
+                <ArrowLeft size={24} />
+              </button>
             )}
-          </button>
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`hover:text-[#313079] transition-colors ${activeTab === "profile" ? "text-[#313079]" : "text-[#FF6700]"}`}
-            title="Profile"
-          >
-            <User size={26} />
-          </button>
-        </div>
-      </header>
+            <div>
+              <h1 className="text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-[#FF6700]">
+                {activeTab === "profile"
+                  ? t("Profile")
+                  : activeTab === "ledger"
+                    ? t("Custody Ledger")
+                    : activeTab === "alerts"
+                      ? t("Active Alerts")
+                      : t("Quality Assurance")}
+              </h1>
+              <p className="text-[#313079]/60 text-xs font-bold tracking-widest mt-1 uppercase">
+                {userData
+                  ? userData.name || userData.email || role
+                  : role.replace("_", " ")}{" "}
+                &bull; {role.replace(/_/g, " ")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-6">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-[#FF6700]'}`}
+              title="Notifications & Alerts"
+            >
+              <Bell size={26} />
+              {alertCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
+                  {alertCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`hover:text-[#313079] transition-colors ${activeTab === "profile" ? "text-[#313079]" : "text-[#FF6700]"}`}
+              title="Profile"
+            >
+              <User size={26} />
+            </button>
+          </div>
+        </header>
+      )}
 
       {showNotifications && (
         <div className="absolute right-4 top-16 md:top-20 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] flex flex-col max-h-[500px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
@@ -994,7 +997,7 @@ function InspectorDashboard({ role }: { role: string }) {
 
         {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
         {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
-        {activeTab === "inspect" && <InspectTab userId={userData?.id} />}
+        {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} />}
         {activeTab === "alerts" && <NotificationsTab />}
       </main>
     </div>
@@ -1223,13 +1226,24 @@ function TakeoverTab({ preferredLanguage = "en" }: { preferredLanguage?: string 
   );
 }
 
-function InspectTab({ userId }: { userId?: string }) {
+function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?: (active: boolean) => void }) {
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const t = (text: string) => translateInstruction(text, preferredLanguage);
   const [phase, setPhase] = useState<
     "START" | "BOX_EVIDENCE" | "ITEM_INSPECTION" | "COMPLETED"
   >("START");
   const [orderId, setOrderId] = useState("");
+
+  useEffect(() => {
+    if (setIsQaActive) {
+      setIsQaActive(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION");
+    }
+    return () => {
+      if (setIsQaActive) {
+        setIsQaActive(false);
+      }
+    };
+  }, [phase, setIsQaActive]);
 
   useEffect(() => {
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
@@ -1436,6 +1450,8 @@ function InspectTab({ userId }: { userId?: string }) {
                   }
 
                   setIsUploading(true);
+                  console.log(`[Background Upload] Starting background upload for order: ${activeOrderId}, manifest: ${activeManifestId}`);
+                  console.log(`[Background Upload] Number of captured images to process: ${capturedImages.length}`);
 
                   try {
                     const videoChunks =
@@ -1453,8 +1469,13 @@ function InspectTab({ userId }: { userId?: string }) {
                     filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
 
                     let boxCounter = 1;
-                    capturedImages.forEach((img) => {
-                      if (!img.blob || img.blob.size === 0) return;
+                    const lpnCounters: Record<string, number> = {};
+                    capturedImages.forEach((img, idx) => {
+                      console.log(`[Background Upload] Processing img #${idx}: type=${img.type}, id=${img.id || 'none'}, size=${img.blob?.size || 0} bytes`);
+                      if (!img.blob || img.blob.size === 0) {
+                        console.warn(`[Background Upload] Warning: img #${idx} has empty or missing blob!`);
+                        return;
+                      }
                       if (img.type === "box") {
                         const stepNum = img.step || boxCounter;
                         filesToUpload.push({
@@ -1465,8 +1486,13 @@ function InspectTab({ userId }: { userId?: string }) {
                         });
                         boxCounter++;
                       } else if ((img.type === "lpn" || img.type === "product") && img.id) {
+                        const lpn = img.id;
+                        if (!lpnCounters[lpn]) {
+                          lpnCounters[lpn] = 1;
+                        }
+                        const stepNum = lpnCounters[lpn]++;
                         const fileKey = `${img.type}_img_${img.id}`;
-                        const fileName = img.type === "lpn" ? `lpn_${img.id}.jpg` : `lpn_${img.id}_product.jpg`;
+                        const fileName = `step${stepNum}.jpg`;
                         filesToUpload.push({
                           key: fileKey,
                           name: fileName,
@@ -1475,9 +1501,14 @@ function InspectTab({ userId }: { userId?: string }) {
                           lpn: img.id,
                         });
                       } else if (img.type === "collage" && img.id) {
+                        const lpn = img.id;
+                        if (!lpnCounters[lpn]) {
+                          lpnCounters[lpn] = 1;
+                        }
+                        const stepNum = lpnCounters[lpn]++;
                         filesToUpload.push({
                           key: `collage_img_${img.id}`,
-                          name: `lpn_${img.id}_collage.jpg`,
+                          name: `step${stepNum}.jpg`,
                           mimeType: "image/jpeg",
                           blob: img.blob,
                           lpn: img.id,
@@ -1510,7 +1541,7 @@ function InspectTab({ userId }: { userId?: string }) {
                       throw new Error(
                         "Failed to initialize Google Drive upload",
                       );
-                    const { uploadUrls, folderLink, orderFolderId } =
+                    const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } =
                       await initRes.json();
 
                     // 2. CALL INSPECTOR EVALUATE EARLY TO REMOVE FROM CUSTODY STACK INSTANTLY
@@ -1530,7 +1561,8 @@ function InspectTab({ userId }: { userId?: string }) {
                           isMissingItemFlagged,
                           lpnConditions,
                           lpnRecoveryTypes,
-                          evidenceUrl: folderLink || null
+                          evidenceUrl: folderLink || null,
+                          lpnFolderLinks: lpnFolderLinks || null
                         })
                       });
                       if (!evalRes.ok) {
@@ -1805,118 +1837,42 @@ function InspectTab({ userId }: { userId?: string }) {
     type: "box" | "lpn" | "product",
     identifier?: string,
   ) => {
-    if (videoRef.current && hiddenCanvasRef.current) {
-      const video = videoRef.current;
-      const canvas = hiddenCanvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
+    // Capture from the visible canvas (always at full camera resolution),
+    // NOT from videoRef — the video element was changed to 1×1 CSS px in the
+    // last push, causing videoWidth/videoHeight to return 0 or 1, producing
+    // empty blobs that were filtered out and never uploaded.
+    const sourceCanvas = visibleCanvasRef.current;
+    const canvas = hiddenCanvasRef.current;
 
-      if (ctx) {
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate(Math.PI);
-        ctx.drawImage(
-          video,
-          -canvas.width / 2,
-          -canvas.height / 2,
-          canvas.width,
-          canvas.height,
-        );
-        ctx.restore();
+    if (!sourceCanvas || !canvas) return;
 
-        if (type === "lpn" || type === "product") {
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = canvas.width * 0.3;
-          tempCanvas.height = canvas.height;
-          const tCtx = tempCanvas.getContext("2d");
+    canvas.width = sourceCanvas.width;
+    canvas.height = sourceCanvas.height;
+    const ctx = canvas.getContext("2d");
 
-          if (tCtx) {
-            tCtx.drawImage(
-              canvas,
-              canvas.width * 0.7,
-              0,
-              canvas.width * 0.3,
-              canvas.height,
-              0,
-              0,
-              tempCanvas.width,
-              tempCanvas.height,
-            );
-            tempCanvas.toBlob(
-              (blob) => {
-                if (blob)
-                  capturedImagesRef.current!.push({
-                    type,
-                    id: identifier,
-                    step: boxStep,
-                    blob,
-                  });
-              },
-              "image/jpeg",
-              0.8,
-            );
+    if (ctx) {
+      ctx.drawImage(sourceCanvas, 0, 0);
 
-            // If this is a product capture and we have a Shopify reference image, build the side-by-side collage
-            if (type === "product" && currentImageUrl && identifier) {
-              const shopifyImg = new Image();
-              shopifyImg.crossOrigin = "anonymous";
-              shopifyImg.onload = () => {
-                const COLLAGE_H = 600;
-                const camW = Math.round((tempCanvas.width / tempCanvas.height) * COLLAGE_H);
-                const shopW = Math.round((shopifyImg.naturalWidth / shopifyImg.naturalHeight) * COLLAGE_H);
-                const GAP = 12;
-                const BADGE_H = 36;
-                const collage = document.createElement("canvas");
-                collage.height = COLLAGE_H + BADGE_H;
-                collage.width = shopW + GAP + camW;
-                const cCtx = collage.getContext("2d")!;
+      if (type === "lpn" || type === "product") {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvas.width * 0.3;
+        tempCanvas.height = canvas.height;
+        const tCtx = tempCanvas.getContext("2d");
 
-                // Background
-                cCtx.fillStyle = "#0f172a";
-                cCtx.fillRect(0, 0, collage.width, collage.height);
+        if (tCtx) {
+          tCtx.drawImage(
+            canvas,
+            canvas.width * 0.7,
+            0,
+            canvas.width * 0.3,
+            canvas.height,
+            0,
+            0,
+            tempCanvas.width,
+            tempCanvas.height,
+          );
 
-                // Left panel — Shopify reference
-                cCtx.drawImage(shopifyImg, 0, 0, shopW, COLLAGE_H);
-                cCtx.fillStyle = "rgba(99,102,241,0.85)";
-                cCtx.fillRect(0, COLLAGE_H, shopW, BADGE_H);
-                cCtx.fillStyle = "#ffffff";
-                cCtx.font = "bold 13px sans-serif";
-                cCtx.textAlign = "center";
-                cCtx.fillText(t("SHOPIFY REFERENCE"), shopW / 2, COLLAGE_H + 23);
-
-                // Divider
-                cCtx.fillStyle = "#1e293b";
-                cCtx.fillRect(shopW, 0, GAP, collage.height);
-
-                // Right panel — received item
-                cCtx.drawImage(tempCanvas, shopW + GAP, 0, camW, COLLAGE_H);
-                cCtx.fillStyle = "rgba(239,68,68,0.85)";
-                cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
-                cCtx.fillStyle = "#ffffff";
-                cCtx.fillText(t("RECEIVED ITEM"), shopW + GAP + camW / 2, COLLAGE_H + 23);
-
-                collage.toBlob(
-                  (collageBlob) => {
-                    if (collageBlob)
-                      capturedImagesRef.current!.push({
-                        type: "collage",
-                        id: identifier,
-                        blob: collageBlob,
-                      });
-                  },
-                  "image/jpeg",
-                  0.88,
-                );
-              };
-              shopifyImg.onerror = () => {
-                console.warn("[Collage] Failed to load Shopify reference image — skipping collage.");
-              };
-              shopifyImg.src = currentImageUrl;
-            }
-          }
-        } else {
-          canvas.toBlob(
+          tempCanvas.toBlob(
             (blob) => {
               if (blob)
                 capturedImagesRef.current!.push({
@@ -1929,7 +1885,79 @@ function InspectTab({ userId }: { userId?: string }) {
             "image/jpeg",
             0.8,
           );
+
+          // If this is a product capture and we have a Shopify reference image, build the side-by-side collage
+          if (type === "product" && currentImageUrl && identifier) {
+            const shopifyImg = new Image();
+            shopifyImg.crossOrigin = "anonymous";
+            shopifyImg.onload = () => {
+              const COLLAGE_H = 600;
+              const camW = Math.round((tempCanvas.width / tempCanvas.height) * COLLAGE_H);
+              const shopW = Math.round((shopifyImg.naturalWidth / shopifyImg.naturalHeight) * COLLAGE_H);
+              const GAP = 12;
+              const BADGE_H = 36;
+              const collage = document.createElement("canvas");
+              collage.height = COLLAGE_H + BADGE_H;
+              collage.width = shopW + GAP + camW;
+              const cCtx = collage.getContext("2d")!;
+
+              // Background
+              cCtx.fillStyle = "#0f172a";
+              cCtx.fillRect(0, 0, collage.width, collage.height);
+
+              // Left panel — Shopify reference
+              cCtx.drawImage(shopifyImg, 0, 0, shopW, COLLAGE_H);
+              cCtx.fillStyle = "rgba(99,102,241,0.85)";
+              cCtx.fillRect(0, COLLAGE_H, shopW, BADGE_H);
+              cCtx.fillStyle = "#ffffff";
+              cCtx.font = "bold 13px sans-serif";
+              cCtx.textAlign = "center";
+              cCtx.fillText(t("SHOPIFY REFERENCE"), shopW / 2, COLLAGE_H + 23);
+
+              // Divider
+              cCtx.fillStyle = "#1e293b";
+              cCtx.fillRect(shopW, 0, GAP, collage.height);
+
+              // Right panel — received item
+              cCtx.drawImage(tempCanvas, shopW + GAP, 0, camW, COLLAGE_H);
+              cCtx.fillStyle = "rgba(239,68,68,0.85)";
+              cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
+              cCtx.fillStyle = "#ffffff";
+              cCtx.fillText(t("RECEIVED ITEM"), shopW + GAP + camW / 2, COLLAGE_H + 23);
+
+              collage.toBlob(
+                (collageBlob) => {
+                  if (collageBlob)
+                    capturedImagesRef.current!.push({
+                      type: "collage",
+                      id: identifier,
+                      blob: collageBlob,
+                    });
+                },
+                "image/jpeg",
+                0.88,
+              );
+            };
+            shopifyImg.onerror = () => {
+              console.warn("[Collage] Failed to load Shopify reference image — skipping collage.");
+            };
+            shopifyImg.src = currentImageUrl;
+          }
         }
+      } else {
+        canvas.toBlob(
+          (blob) => {
+            if (blob)
+              capturedImagesRef.current!.push({
+                type,
+                id: identifier,
+                step: boxStep,
+                blob,
+              });
+          },
+          "image/jpeg",
+          0.8,
+        );
       }
     }
     setShutterFlash(true);
@@ -2142,34 +2170,34 @@ function InspectTab({ userId }: { userId?: string }) {
   const CLAIM_REASONS = [
     {
       id: "damaged_used",
-      label: t("1. I received damaged/ used item(s)"),
+      label: t("I received damaged/ used item(s)"),
       subReasons: [
-        { value: "heavily_damaged", label: t("a. Item(s) heavily damaged") },
+        { value: "heavily_damaged", label: t("Item(s) heavily damaged") },
         {
           value: "minor_damages",
-          label: t("b. Item(s) with minor damages/dents/scratches"),
+          label: t("Item(s) with minor damages/dents/scratches"),
         },
         {
           value: "packaging_damaged",
-          label: t("c. Only product packaging damaged"),
+          label: t("Only product packaging damaged"),
         },
       ],
     },
     {
       id: "different_empty",
-      label: t("2. I received different item or empty box"),
+      label: t("I received different item or empty box"),
       subReasons: [
-        { value: "different_junk", label: t("a. Different/junk item received") },
-        { value: "empty_box", label: t("b. Empty box received") },
+        { value: "different_junk", label: t("Different/junk item received") },
+        { value: "empty_box", label: t("Empty box received") },
         {
           value: "fake_counterfeit",
-          label: t("c. Fake/ replica/ counterfeit item received"),
+          label: t("Fake/ replica/ counterfeit item received"),
         },
       ],
     },
     {
       id: "missing_quantity",
-      label: "3. I received removal order with missing quantity/ accessories/parts",
+      label: "I received removal order with missing quantity/ accessories/parts",
       subReasons: [
         {
           value: "missing_parts",
@@ -2256,6 +2284,9 @@ function InspectTab({ userId }: { userId?: string }) {
     setSelectedClaimReason(null);
     setSelectedClaimSubReason(null);
     setShowDefectDropdown(false);
+    setCurrentImageUrl(null);
+    setCurrentSku(null);
+    setCurrentProductName(null);
     setItemStep(1);
 
     if (newProcessed >= expectedItems) {
@@ -2363,7 +2394,20 @@ function InspectTab({ userId }: { userId?: string }) {
   return (
     <div className="absolute inset-0 z-40 flex flex-row bg-slate-900 select-none overflow-hidden text-slate-800">
       <div className="w-[60%] bg-black relative flex flex-col items-center justify-center border-r border-slate-800 shadow-2xl">
-        <div className="absolute top-4 left-4 bg-red-600/90 backdrop-blur text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center space-x-2 rounded shadow-lg z-10">
+        {/* Back Button overlaid on video section when QA is active */}
+        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (
+          <button
+            onClick={() => {
+              resetProcess();
+            }}
+            className="absolute top-4 left-4 z-20 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-all hover:scale-105 active:scale-[0.95] shadow-md border border-white/10"
+            title={t("Cancel Inspection")}
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
+
+        <div className={`absolute top-4 bg-red-600/90 backdrop-blur text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center space-x-2 rounded shadow-lg z-10 ${(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") ? "left-16" : "left-4"}`}>
           <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
           <span>{t("REC • Continuous Evidence")}</span>
         </div>
@@ -2384,7 +2428,8 @@ function InspectTab({ userId }: { userId?: string }) {
             autoPlay
             playsInline
             muted
-            className="hidden"
+            className="opacity-0 absolute pointer-events-none"
+            style={{ width: "1px", height: "1px" }}
           ></video>
           <canvas
             ref={visibleCanvasRef}
@@ -2618,34 +2663,79 @@ function InspectTab({ userId }: { userId?: string }) {
               </div>
             </div>
 
-            {/* Shopify Reference Variant Card */}
-            {currentImageUrl && (
-              <div className="mb-4 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-slate-50 p-3 flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="shrink-0 relative">
-                  <img
-                    src={currentImageUrl}
-                    alt="Shopify Variant Reference"
-                    className="w-16 h-16 object-contain rounded-lg border border-indigo-100 bg-white shadow-sm"
-                  />
-                  <div className="absolute -top-1.5 -right-1.5 bg-indigo-600 rounded-full w-4 h-4 flex items-center justify-center">
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+            {/* Redesigned Product Details Card */}
+            <div className="mb-4 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-slate-50 p-4 shadow-sm animate-in fade-in duration-200">
+              {isValidatingLpn ? (
+                // Loading Skeleton State
+                <div className="flex h-40 animate-pulse gap-4">
+                  <div className="w-1/2 h-full bg-indigo-100 rounded-lg"></div>
+                  <div className="w-1/2 flex flex-col justify-between py-2">
+                    <div className="h-3 bg-indigo-200 rounded w-1/3"></div>
+                    <div className="h-4 bg-indigo-200 rounded w-3/4"></div>
+                    <div className="h-4 bg-indigo-200 rounded w-5/6"></div>
+                    <div className="h-3 bg-indigo-200 rounded w-1/2"></div>
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600 mb-0.5">Shopify Reference</p>
-                  <p className="text-xs font-bold text-[#313079] leading-snug truncate">{currentProductName || "Product"}</p>
-                  {currentSku && (
-                    <p className="text-[10px] font-mono text-[#313079]/50 mt-0.5">SKU: {currentSku}</p>
-                  )}
+              ) : !currentSku ? (
+                // "Scan LPN to get product details" State
+                <div className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-indigo-200 rounded-lg bg-indigo-50/20 text-center p-4">
+                  <ScanEye size={36} className="text-indigo-400 mb-2 animate-bounce" />
+                  <p className="text-xs font-black uppercase tracking-widest text-indigo-600">
+                    {t("Scan LPN to get product details")}
+                  </p>
+                  <p className="text-[10px] text-[#313079]/50 font-bold uppercase mt-1">
+                    {t("Awaiting LPN barcode input")}
+                  </p>
                 </div>
-                <div className="shrink-0 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full">
-                  Visual Check
+              ) : (
+                // Valid LPN entered State: Left 50% Image, Right 50% Info
+                <div className="flex h-44 gap-4">
+                  {/* Left 50%: Product Image */}
+                  <div className="w-1/2 h-full relative rounded-lg border border-indigo-100 bg-white shadow-sm flex items-center justify-center p-2">
+                    {currentImageUrl ? (
+                      <img
+                        src={currentImageUrl}
+                        alt="Product Reference"
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    ) : (
+                      <div className="text-center text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                        No Image Available
+                      </div>
+                    )}
+                    <div className="absolute top-2 left-2 bg-indigo-600 rounded-full p-1 shadow-sm">
+                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Right 50%: Product Details */}
+                  <div className="w-1/2 flex flex-col justify-between py-1 min-w-0">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600 mb-1">
+                        {t("Shopify Reference")}
+                      </p>
+                      <h4 className="text-xs font-black text-[#313079] leading-snug line-clamp-3">
+                        {currentProductName || "Product"}
+                      </h4>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      {currentSku && (
+                        <p className="text-[10px] font-mono text-[#313079]/70 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded w-fit truncate">
+                          SKU: {currentSku}
+                        </p>
+                      )}
+                      <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded w-fit">
+                        {t("Visual Check Active")}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="flex-1 relative">
               {ITEM_STEPS.map((step, idx) => {

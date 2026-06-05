@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
           if (item.mimeType === 'application/vnd.google-apps.folder') {
             // It's a subfolder, treat its name as the LPN!
             const lpnValue = item.name!;
-            lpnToDriveLinkMap[lpnValue] = item.webViewLink!;
+            lpnToDriveLinkMap[normalizeLpn(lpnValue)] = item.webViewLink!;
             const subList = await drive.files.list({
               q: `'${item.id}' in parents and trashed = false`,
               fields: 'files(id, name, mimeType, webViewLink)',
@@ -384,7 +384,7 @@ export async function POST(req: NextRequest) {
             select: { lpn: true }
           });
 
-          const lpnDriveLink = lpnToDriveLinkMap[lpn] || null;
+          const lpnDriveLink = lpnToDriveLinkMap[normalizedLpnVal] || lpnToDriveLinkMap[lpn] || null;
           const orderDriveLink = folderLink || null;
           const recoveryType = lpnRecoveryTypes && lpnRecoveryTypes[lpn] ? lpnRecoveryTypes[lpn] : null;
 
