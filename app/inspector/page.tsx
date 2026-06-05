@@ -23,6 +23,9 @@ import {
   ChevronDown,
   X,
   Activity,
+  SwitchCamera,
+  VideoIcon,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import AccessDenied from "@/app/components/AccessDenied";
@@ -997,7 +1000,7 @@ function InspectorDashboard({ role }: { role: string }) {
 
         {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
         {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
-        {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} />}
+        {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} setActiveTab={setActiveTab} />}
         {activeTab === "alerts" && <NotificationsTab />}
       </main>
     </div>
@@ -1226,12 +1229,31 @@ function TakeoverTab({ preferredLanguage = "en" }: { preferredLanguage?: string 
   );
 }
 
-function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?: (active: boolean) => void }) {
+function InspectTab({
+  userId,
+  setIsQaActive,
+  setActiveTab,
+}: {
+  userId?: string;
+  setIsQaActive?: (active: boolean) => void;
+  setActiveTab?: (tab: "home" | "takeover" | "inspect" | "profile" | "ledger" | "alerts") => void;
+}) {
+  const router = useRouter();
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const t = (text: string) => translateInstruction(text, preferredLanguage);
   const [phase, setPhase] = useState<
     "START" | "BOX_EVIDENCE" | "ITEM_INSPECTION" | "COMPLETED"
   >("START");
+  const phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  const [cameraInitTrigger, setCameraInitTrigger] = useState(0);
+  const forceCameraReinit = useCallback(() => {
+    setCameraInitTrigger((prev) => prev + 1);
+  }, []);
+
   const [orderId, setOrderId] = useState("");
 
   useEffect(() => {
@@ -1292,14 +1314,49 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
   const [currentSku, setCurrentSku] = useState<string | null>(null);
   const [currentProductName, setCurrentProductName] = useState<string | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const visibleCanvasRef = useRef<HTMLCanvasElement>(null);
+  // ── Camera refs ────────────────────────────────────────────────────────────
+  /** Hidden video element — feeds the RECORDING canvas (Camera 1) */
+  const recVideoRef = useRef<HTMLVideoElement>(null);
+  /** Hidden video element — feeds the CAPTURE canvas (Camera 2) */
+  const capVideoRef = useRef<HTMLVideoElement>(null);
+  /** Canvas drawn by Camera 1 — displayed in the top strip + fed to MediaRecorder */
+  const recCanvasRef = useRef<HTMLCanvasElement>(null);
+  /** Canvas drawn by Camera 2 — shown as the main large view */
+  const capCanvasRef = useRef<HTMLCanvasElement>(null);
+  /** Off-screen canvas for collage generation */
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [shutterFlash, setShutterFlash] = useState(false);
+  /** Raw MediaStream for recording camera */
+  const recStreamRef = useRef<MediaStream | null>(null);
+  /** Raw MediaStream for image-capture camera */
+  const capStreamRef = useRef<MediaStream | null>(null);
+  /** ImageCapture API instance — gives full-sensor stills without stopping recording */
+  const imageCaptureRef = useRef<any>(null);
+  const reqAnimRecRef = useRef<number>(0);
+  const reqAnimCapRef = useRef<number>(0);
 
+  // ── Camera selection state ──────────────────────────────────────────────────
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [recCameraId, setRecCameraId] = useState<string>("");
+  const [imgCameraId, setImgCameraId] = useState<string>("");
+  const recCameraIdRef = useRef(recCameraId);
+  const imgCameraIdRef = useRef(imgCameraId);
+  useEffect(() => {
+    recCameraIdRef.current = recCameraId;
+  }, [recCameraId]);
+  useEffect(() => {
+    imgCameraIdRef.current = imgCameraId;
+  }, [imgCameraId]);
+  const [dualCameraMode, setDualCameraMode] = useState(false);
+  const [isSwitchingCameras, setIsSwitchingCameras] = useState(false);
+  const [showCameraSelector, setShowCameraSelector] = useState(false);
+
+  const [shutterFlash, setShutterFlash] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [cameraConnectionError, setCameraConnectionError] = useState<
+    "BOTH_DISCONNECTED" | "REC_DISCONNECTED" | "CAP_DISCONNECTED" | null
+  >(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -1309,7 +1366,6 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
   const lpnConditionsRef = useRef<Record<string, string>>({});
   const lpnRecoveryTypesRef = useRef<Record<string, string>>({});
   const scannedLpnsRef = useRef<Set<string>>(new Set());
-  const reqAnimRef = useRef<number>(0);
   const isOrderCompleteRef = useRef(false);
 
   const orderIdRef = useRef(orderId);
@@ -1326,6 +1382,7 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
   const resetProcess = () => {
     setPhase("START");
     setOrderId("");
+    setCameraConnectionError(null);
     setManifestId("");
     setActiveOrderPlatformId("");
     setDisplayTrackingId("");
@@ -1351,6 +1408,14 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
     setCurrentSku(null);
     setCurrentProductName(null);
     isOrderCompleteRef.current = false;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping MediaRecorder in resetProcess:", e);
+      }
+    }
+    setIsRecording(false);
     capturedImagesRef.current = [];
     lpnConditionsRef.current = {};
     lpnRecoveryTypesRef.current = {};
@@ -1370,598 +1435,649 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
   }, [isUploading]);
 
   const isCameraActive =
-    phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION";
+    phase === "START" || phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION";
 
+  // ── Enumerate cameras ───────────────────────────────────────────────────
+  const enumerateAvailableCameras = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === "videoinput");
+      setAvailableCameras(cams);
+      
+      // Only modify camera assignments and modes when in the START phase
+      if (phaseRef.current === "START") {
+        if (cams.length >= 2) {
+          const currentRec = recCameraIdRef.current;
+          const currentImg = imgCameraIdRef.current;
+
+          let nextRec = cams.some((c) => c.deviceId === currentRec) && currentRec !== "" ? currentRec : cams[0].deviceId;
+          let nextImg = cams.some((c) => c.deviceId === currentImg) && currentImg !== "" ? currentImg : cams[1].deviceId;
+
+          // Ensure they are not the same camera if we have multiple cameras
+          if (nextRec === nextImg) {
+            const alternate = cams.find((c) => c.deviceId !== nextRec);
+            if (alternate) {
+              nextImg = alternate.deviceId;
+            }
+          }
+
+          setRecCameraId(nextRec);
+          setImgCameraId(nextImg);
+          setDualCameraMode(true);
+        } else if (cams.length === 1) {
+          setRecCameraId(cams[0].deviceId);
+          setImgCameraId(cams[0].deviceId);
+          setDualCameraMode(false);
+        } else {
+          setDualCameraMode(false);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to enumerate cameras:", e);
+    }
+  }, []);
+
+  // ── Enumerate cameras once on mount ──────────────────────────────────────
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    const video = videoRef.current;
-    const canvas = visibleCanvasRef.current;
+    enumerateAvailableCameras();
+  }, [enumerateAvailableCameras]);
 
-    if (isCameraActive && video && canvas) {
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "environment" } })
-        .then((s) => {
-          stream = s;
-          video.srcObject = stream;
-
-          video.onloadedmetadata = () => {
-            video.play();
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            const ctx = canvas.getContext("2d");
-            if (!ctx) return;
-
+  // ── Helpers to start / stop a stream on a video element + canvas ──────────
+  const startStreamOnCanvas = (
+    deviceId: string,
+    videoEl: HTMLVideoElement,
+    canvasEl: HTMLCanvasElement,
+    rafRef: React.MutableRefObject<number>,
+    constraints?: MediaTrackConstraints,
+    shouldRotate: boolean = true,
+  ): Promise<MediaStream> =>
+    navigator.mediaDevices
+      .getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId }, ...constraints } : constraints ?? { facingMode: "environment" } })
+      .then((stream) => {
+        videoEl.srcObject = stream;
+        return new Promise<MediaStream>((resolve) => {
+          videoEl.onloadedmetadata = () => {
+            videoEl.play();
+            canvasEl.width = videoEl.videoWidth || 1280;
+            canvasEl.height = videoEl.videoHeight || 720;
+            const ctx = canvasEl.getContext("2d");
+            if (!ctx) { resolve(stream); return; }
             const drawFrame = () => {
-              if (video.paused || video.ended) return;
+              if (videoEl.paused || videoEl.ended) return;
               ctx.save();
-              ctx.translate(canvas.width / 2, canvas.height / 2);
-              ctx.rotate(Math.PI);
-              ctx.drawImage(
-                video,
-                -canvas.width / 2,
-                -canvas.height / 2,
-                canvas.width,
-                canvas.height,
-              );
+              ctx.translate(canvasEl.width / 2, canvasEl.height / 2);
+              if (shouldRotate) {
+                ctx.rotate(Math.PI);
+              }
+              ctx.drawImage(videoEl, -canvasEl.width / 2, -canvasEl.height / 2, canvasEl.width, canvasEl.height);
               ctx.restore();
-              reqAnimRef.current = requestAnimationFrame(drawFrame);
+              rafRef.current = requestAnimationFrame(drawFrame);
             };
             drawFrame();
+            resolve(stream);
+          };
+        });
+      });
 
-            try {
-              // @ts-ignore
-              const canvasStream = canvas.captureStream(30);
-              const mr = new MediaRecorder(canvasStream, {
-                mimeType: "video/webm",
-              });
-              mediaRecorderRef.current = mr;
-              chunksRef.current = [];
+  const checkCameraStreams = useCallback(() => {
+    if (!isCameraActive) {
+      setCameraConnectionError(null);
+      return;
+    }
 
-              mr.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
+    const isStreamActive = (stream: MediaStream | null, expectedDeviceId?: string) => {
+      if (!stream) return false;
+      const tracks = stream.getVideoTracks();
+      if (tracks.length === 0) return false;
+      return tracks.some((track) => {
+        const settings = track.getSettings();
+        const activeDeviceId = settings.deviceId;
+        const isLive = track.readyState === "live" && track.enabled;
+        
+        // If we expect a specific deviceId, check if it matches
+        if (expectedDeviceId && activeDeviceId && activeDeviceId !== expectedDeviceId) {
+          return false;
+        }
+        return isLive;
+      });
+    };
+
+    const isRecActive = isStreamActive(recStreamRef.current, recCameraId);
+    const isCapActive = dualCameraMode
+      ? isStreamActive(capStreamRef.current, imgCameraId)
+      : isRecActive;
+
+    if (dualCameraMode) {
+      if (!isRecActive && !isCapActive) {
+        setCameraConnectionError("BOTH_DISCONNECTED");
+      } else if (!isRecActive) {
+        setCameraConnectionError("REC_DISCONNECTED");
+      } else if (!isCapActive) {
+        setCameraConnectionError("CAP_DISCONNECTED");
+      } else {
+        setCameraConnectionError(null);
+      }
+    } else {
+      if (!isRecActive) {
+        setCameraConnectionError("BOTH_DISCONNECTED");
+      } else {
+        setCameraConnectionError(null);
+      }
+    }
+  }, [isCameraActive, dualCameraMode, recCameraId, imgCameraId]);
+
+  // ── Main camera init effect ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!isCameraActive) return;
+    // Wait until camera IDs have been enumerated (at least one frame)
+    if (availableCameras.length === 0 && recCameraId === "") return;
+
+    let cancelled = false;
+
+    const init = async () => {
+      const recVideo = recVideoRef.current;
+      const recCanvas = recCanvasRef.current;
+      const capVideo = capVideoRef.current;
+      const capCanvas = capCanvasRef.current;
+      if (!recVideo || !recCanvas) return;
+
+      // ── Stream 1: Recording camera ──────────────────────────────────────
+      try {
+        const hasEndedTrack = recStreamRef.current && recStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
+        const hasWrongDevice = recStreamRef.current && recCameraId !== "" && recStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== recCameraId);
+        if (!recStreamRef.current || hasEndedTrack || hasWrongDevice) {
+          const recStream = await startStreamOnCanvas(
+            recCameraId,
+            recVideo,
+            recCanvas,
+            reqAnimRecRef,
+            { width: { ideal: 1920 }, height: { ideal: 1080 } },
+            true,
+          );
+          if (cancelled) { recStream.getTracks().forEach((t) => t.stop()); return; }
+          recStreamRef.current = recStream;
+          recStream.getVideoTracks().forEach((track) => {
+            track.onended = () => {
+              checkCameraStreams();
+            };
+          });
+
+          // Re-enumerate cameras now that permission is granted to get real device IDs
+          await enumerateAvailableCameras();
+        }
+      } catch (err) {
+        console.error("Recording camera setup failed:", err);
+      }
+
+      // ── Stream 2: Image capture camera ──────────────────────────────────
+      try {
+        if (dualCameraMode && capVideo && capCanvas && imgCameraId) {
+          const hasEndedTrack = capStreamRef.current && capStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
+          const hasWrongDevice = capStreamRef.current && imgCameraId !== "" && capStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== imgCameraId);
+          if (!capStreamRef.current || hasEndedTrack || hasWrongDevice) {
+            const capStream = await startStreamOnCanvas(
+              imgCameraId,
+              capVideo,
+              capCanvas,
+              reqAnimCapRef,
+              { width: { ideal: 4096 }, height: { ideal: 2160 } },
+              false,
+            );
+            if (cancelled) { capStream.getTracks().forEach((t) => t.stop()); return; }
+            capStreamRef.current = capStream;
+            capStream.getVideoTracks().forEach((track) => {
+              track.onended = () => {
+                checkCameraStreams();
               };
+            });
+            // Wire up ImageCapture API for max-res stills
+            const track = capStream.getVideoTracks()[0];
+            if (track && typeof (window as any).ImageCapture !== "undefined") {
+              imageCaptureRef.current = new (window as any).ImageCapture(track);
+            }
+          }
+        } else if (!dualCameraMode && capVideo && capCanvas) {
+          // Single camera — mirror recording stream to the capture canvas
+          if (recStreamRef.current) {
+            recVideo.onloadedmetadata = null; // already resolved
+            capVideo.srcObject = recStreamRef.current;
+            capCanvas.width = recCanvas.width;
+            capCanvas.height = recCanvas.height;
+            await capVideo.play().catch(() => {});
+            const ctx = capCanvas.getContext("2d");
+            if (ctx) {
+              const drawCap = () => {
+                if (capVideo.paused || capVideo.ended) return;
+                ctx.save();
+                ctx.translate(capCanvas.width / 2, capCanvas.height / 2);
+                // Do not rotate capturing camera view
+                ctx.drawImage(capVideo, -capCanvas.width / 2, -capCanvas.height / 2, capCanvas.width, capCanvas.height);
+                ctx.restore();
+                reqAnimCapRef.current = requestAnimationFrame(drawCap);
+              };
+              drawCap();
+            }
+            const track = recStreamRef.current.getVideoTracks()[0];
+            if (track && typeof (window as any).ImageCapture !== "undefined") {
+              imageCaptureRef.current = new (window as any).ImageCapture(track);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Capture camera setup failed:", err);
+      }
 
-              mr.onstop = () => {
-                if (!isOrderCompleteRef.current) return;
+      // ── MediaRecorder on recording canvas stream ─────────────────────────
+      try {
+        if (!mediaRecorderRef.current && recStreamRef.current) {
+          // @ts-ignore
+          const canvasStream = recCanvas.captureStream(30);
+          const mr = new MediaRecorder(canvasStream, {
+            mimeType: "video/webm",
+          });
+          mediaRecorderRef.current = mr;
+          chunksRef.current = [];
 
-                // Capture current values in local scope immediately before resetting states
-                const activeOrderId = orderId;
-                const activeUserId = userId;
-                const activeManifestId = manifestId;
-                const activePlatformOrderId = activeOrderPlatformId;
-                const capturedImages = [...capturedImagesRef.current];
-                const lpnConditions = { ...lpnConditionsRef.current };
-                const lpnRecoveryTypes = { ...lpnRecoveryTypesRef.current };
-                const itemsScanned = itemsProcessed;
-                const itemsExpected = expectedItems;
-                const isMissingItemFlagged = itemsProcessed < expectedItems;
+          mr.ondataavailable = (e) => {
+            if (e.data.size > 0) chunksRef.current.push(e.data);
+          };
 
-                // Reset the UI instantly to the START phase
-                resetProcess();
+          mr.onstop = () => {
+            if (!isOrderCompleteRef.current) return;
 
-                // Non-blocking fire-and-forget background upload
-                const backgroundUpload = async () => {
-                  if (!activeOrderId) {
-                    console.error(
-                      "[Background Upload] Aborted: activeOrderId is empty",
-                    );
-                    return;
+            // Capture current values in local scope immediately before resetting states
+            const activeOrderId = orderId;
+            const activeUserId = userId;
+            const activeManifestId = manifestId;
+            const activePlatformOrderId = activeOrderPlatformId;
+            const capturedImages = [...capturedImagesRef.current];
+            const lpnConditions = { ...lpnConditionsRef.current };
+            const lpnRecoveryTypes = { ...lpnRecoveryTypesRef.current };
+            const itemsScanned = itemsProcessed;
+            const itemsExpected = expectedItems;
+            const isMissingItemFlagged = itemsProcessed < expectedItems;
+
+            // Reset the UI instantly to the START phase
+            resetProcess();
+
+            // Non-blocking fire-and-forget background upload
+            const backgroundUpload = async () => {
+              if (!activeOrderId) {
+                console.error(
+                  "[Background Upload] Aborted: activeOrderId is empty",
+                );
+                return;
+              }
+
+              setIsUploading(true);
+              console.log(`[Background Upload] Starting background upload for order: ${activeOrderId}, manifest: ${activeManifestId}`);
+              console.log(`[Background Upload] Number of captured images to process: ${capturedImages.length}`);
+
+              try {
+                const videoChunks =
+                  chunksRef.current.length > 0
+                    ? chunksRef.current
+                    : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
+
+                const blob = new Blob(videoChunks, { type: "video/webm" });
+
+                const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
+                filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
+
+                let boxCounter = 1;
+                const lpnCounters: Record<string, number> = {};
+                capturedImages.forEach((img) => {
+                  if (!img.blob || img.blob.size === 0) return;
+                  if (img.type === "box") {
+                    const stepNum = img.step || boxCounter;
+                    filesToUpload.push({ key: `step_${stepNum}`, name: `step${stepNum}.jpg`, mimeType: "image/jpeg", blob: img.blob });
+                    boxCounter++;
+                  } else if ((img.type === "lpn" || img.type === "product") && img.id) {
+                    const lpn = img.id;
+                    if (!lpnCounters[lpn]) lpnCounters[lpn] = 1;
+                    const stepNum = lpnCounters[lpn]++;
+                    filesToUpload.push({ key: `${img.type}_img_${img.id}`, name: `step${stepNum}.jpg`, mimeType: "image/jpeg", blob: img.blob, lpn: img.id });
+                  } else if (img.type === "collage" && img.id) {
+                    const lpn = img.id;
+                    if (!lpnCounters[lpn]) lpnCounters[lpn] = 1;
+                    const stepNum = lpnCounters[lpn]++;
+                    filesToUpload.push({ key: `collage_img_${img.id}`, name: `step${stepNum}.jpg`, mimeType: "image/jpeg", blob: img.blob, lpn: img.id });
                   }
+                });
 
-                  setIsUploading(true);
-                  console.log(`[Background Upload] Starting background upload for order: ${activeOrderId}, manifest: ${activeManifestId}`);
-                  console.log(`[Background Upload] Number of captured images to process: ${capturedImages.length}`);
+                const filesMetaData = filesToUpload.map((f) => ({
+                  key: f.key,
+                  name: f.name,
+                  mimeType: f.mimeType,
+                  lpn: f.lpn,
+                  condition: f.lpn ? lpnConditions[f.lpn] : undefined,
+                }));
 
-                  try {
-                    const videoChunks =
-                      chunksRef.current.length > 0
-                        ? chunksRef.current
-                        : [
-                          new Blob(["empty-video-fallback"], {
-                            type: "video/webm",
-                          }),
-                        ];
+                // 1. Init — creates Drive folder structure and returns upload URLs
+                const initRes = await fetch("/api/upload/init", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId: activeOrderId, type: "INSPECTION_VIDEO", filesMetaData }),
+                });
+                if (!initRes.ok) throw new Error("Failed to initialize Google Drive upload");
+                const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } = await initRes.json();
 
-                    const blob = new Blob(videoChunks, { type: "video/webm" });
+                // 2. Early evaluate — removes from custody stack
+                try {
+                  const evalRes = await fetch("/api/inspector/evaluate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "x-user-role": "INSPECTOR", "x-user-id": activeUserId || "" },
+                    body: JSON.stringify({ manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, itemsScanned, itemsExpected, isMissingItemFlagged, lpnConditions, lpnRecoveryTypes, evidenceUrl: folderLink || null, lpnFolderLinks: lpnFolderLinks || null }),
+                  });
+                  if (!evalRes.ok) console.error("[BG Upload] Early evaluate failed:", await evalRes.json().catch(() => ({})));
+                } catch (evalErr) {
+                  console.error("[BG Upload] Early evaluate error:", evalErr);
+                }
 
-                    const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
-                    filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
-
-                    let boxCounter = 1;
-                    const lpnCounters: Record<string, number> = {};
-                    capturedImages.forEach((img, idx) => {
-                      console.log(`[Background Upload] Processing img #${idx}: type=${img.type}, id=${img.id || 'none'}, size=${img.blob?.size || 0} bytes`);
-                      if (!img.blob || img.blob.size === 0) {
-                        console.warn(`[Background Upload] Warning: img #${idx} has empty or missing blob!`);
-                        return;
-                      }
-                      if (img.type === "box") {
-                        const stepNum = img.step || boxCounter;
-                        filesToUpload.push({
-                          key: `step_${stepNum}`,
-                          name: `step${stepNum}.jpg`,
-                          mimeType: "image/jpeg",
-                          blob: img.blob,
-                        });
-                        boxCounter++;
-                      } else if ((img.type === "lpn" || img.type === "product") && img.id) {
-                        const lpn = img.id;
-                        if (!lpnCounters[lpn]) {
-                          lpnCounters[lpn] = 1;
-                        }
-                        const stepNum = lpnCounters[lpn]++;
-                        const fileKey = `${img.type}_img_${img.id}`;
-                        const fileName = `step${stepNum}.jpg`;
-                        filesToUpload.push({
-                          key: fileKey,
-                          name: fileName,
-                          mimeType: "image/jpeg",
-                          blob: img.blob,
-                          lpn: img.id,
-                        });
-                      } else if (img.type === "collage" && img.id) {
-                        const lpn = img.id;
-                        if (!lpnCounters[lpn]) {
-                          lpnCounters[lpn] = 1;
-                        }
-                        const stepNum = lpnCounters[lpn]++;
-                        filesToUpload.push({
-                          key: `collage_img_${img.id}`,
-                          name: `step${stepNum}.jpg`,
-                          mimeType: "image/jpeg",
-                          blob: img.blob,
-                          lpn: img.id,
-                        });
-                      }
-                    });
-
-                    const filesMetaData = filesToUpload.map((f) => ({
-                      key: f.key,
-                      name: f.name,
-                      mimeType: f.mimeType,
-                      lpn: f.lpn,
-                      condition: f.lpn
-                        ? lpnConditions[f.lpn]
-                        : undefined,
-                    }));
-
-                    // 1. {t("Initialize")} Direct Upload — creates the Drive folder structure and returns upload URLs
-                    const initRes = await fetch("/api/upload/init", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        orderId: activeOrderId,
-                        type: "INSPECTION_VIDEO",
-                        filesMetaData,
-                      }),
-                    });
-
-                    if (!initRes.ok)
-                      throw new Error(
-                        "Failed to initialize Google Drive upload",
-                      );
-                    const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } =
-                      await initRes.json();
-
-                    // 2. CALL INSPECTOR EVALUATE EARLY TO REMOVE FROM CUSTODY STACK INSTANTLY
+                // 3. Upload files
+                const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
+                  const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((f.blob.size / 100000) * 1000)));
+                  for (let attempt = 1; attempt <= 3; attempt++) {
+                    const controller = new AbortController();
+                    const tid = setTimeout(() => controller.abort(), timeoutMs);
                     try {
-                      const evalRes = await fetch("/api/inspector/evaluate", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          "x-user-role": "INSPECTOR",
-                          "x-user-id": activeUserId || ""
-                        },
-                        body: JSON.stringify({
-                          manifestId: activeManifestId,
-                          orderPlatformId: activePlatformOrderId,
-                          itemsScanned,
-                          itemsExpected,
-                          isMissingItemFlagged,
-                          lpnConditions,
-                          lpnRecoveryTypes,
-                          evidenceUrl: folderLink || null,
-                          lpnFolderLinks: lpnFolderLinks || null
-                        })
-                      });
-                      if (!evalRes.ok) {
-                        const err = await evalRes.json().catch(() => ({}));
-                        console.error("[Background Upload] Early evaluate failed:", err);
-                      } else {
-                        console.log("[Background Upload] Early evaluate completed successfully!");
-                      }
-                    } catch (evalErr) {
-                      console.error("[Background Upload] Early evaluate error:", evalErr);
+                      const res = await fetch(url, { method: "PUT", body: f.blob, signal: controller.signal });
+                      clearTimeout(tid);
+                      if (res.ok) return;
+                      console.warn(`[Queue Upload] Attempt ${attempt} failed for ${f.name}: HTTP ${res.status}`);
+                    } catch (err: any) {
+                      clearTimeout(tid);
+                      console.error(`[Queue Upload] Attempt ${attempt} error for ${f.name}:`, err.name === "AbortError" ? "Timeout" : err.message);
                     }
+                    if (attempt < 3) await new Promise((r) => setTimeout(r, 1000 * attempt));
+                  }
+                  console.error(`[Queue Upload] Gave up on ${f.name} after 3 attempts.`);
+                };
 
-                    // 3. Upload files silently — video uses silent chunked pipeline, images use existing raw pipeline
-
-                    // Helper: upload a small file (image) via /api/upload/raw with 3 retries
-                    const uploadSmallFile = async (
-                      f: { key: string; name: string; blob: Blob },
-                      url: string,
-                    ) => {
-                      const timeoutMs = Math.max(
-                        30000,
-                        Math.min(
-                          120000,
-                          Math.ceil((f.blob.size / 100000) * 1000),
-                        ),
-                      );
-                      for (let attempt = 1; attempt <= 3; attempt++) {
-                        const controller = new AbortController();
-                        const tid = setTimeout(
-                          () => controller.abort(),
-                          timeoutMs,
-                        );
-                        try {
-                          const res = await fetch(url, {
-                            method: "PUT",
-                            body: f.blob,
-                            signal: controller.signal,
-                          });
-                          clearTimeout(tid);
-                          if (res.ok) {
-                            console.log(
-                              `[Queue Upload] Uploaded image ${f.name} on attempt ${attempt}`,
-                            );
-                            return;
-                          }
-                          console.warn(
-                            `[Queue Upload] Attempt ${attempt} failed for ${f.name}: HTTP ${res.status}`,
-                          );
-                        } catch (err: any) {
-                          clearTimeout(tid);
-                          console.error(
-                            `[Queue Upload] Attempt ${attempt} error for ${f.name}:`,
-                            err.name === "AbortError" ? "Timeout" : err.message,
-                          );
-                        }
-                        if (attempt < 3)
-                          await new Promise((r) =>
-                            setTimeout(r, 1000 * attempt),
-                          );
-                      }
-                      console.error(
-                        `[Queue Upload] Gave up on image ${f.name} after 3 attempts.`,
-                      );
-                    };
-
-                    // Helper: chunked upload for the video — splits blob into 5 MB slices
-                    const uploadVideoChunked = async (
-                      f: {
-                        key: string;
-                        name: string;
-                        mimeType: string;
-                        blob: Blob;
-                      },
-                      targetFolderId: string,
-                    ) => {
-                      const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB per chunk
-                      const totalChunks = Math.max(
-                        1,
-                        Math.ceil(f.blob.size / CHUNK_SIZE),
-                      );
-                      const uploadId = crypto.randomUUID();
-
-                      console.log(
-                        `[Chunked Upload] Video ${f.name} — ${(f.blob.size / (1024 * 1024)).toFixed(2)} MB split into ${totalChunks} chunks (uploadId=${uploadId})`,
-                      );
-
-                      for (let i = 0; i < totalChunks; i++) {
-                        const start = i * CHUNK_SIZE;
-                        const end = Math.min(start + CHUNK_SIZE, f.blob.size);
-                        const chunk = f.blob.slice(start, end);
-
-                        let chunkOk = false;
-                        for (let attempt = 1; attempt <= 3; attempt++) {
-                          const controller = new AbortController();
-                          const tid = setTimeout(
-                            () => controller.abort(),
-                            90000,
-                          ); // 90s per 5 MB chunk
-                          try {
-                            const res = await fetch(
-                              `/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&name=${encodeURIComponent(f.name)}`,
-                              {
-                                method: "PUT",
-                                body: chunk,
-                                signal: controller.signal,
-                              },
-                            );
-                            clearTimeout(tid);
-                            if (res.ok) {
-                              console.log(
-                                `[Chunked Upload] Chunk ${i + 1}/${totalChunks} OK on attempt ${attempt}`,
-                              );
-                              chunkOk = true;
-                              break;
-                            }
-                            console.warn(
-                              `[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt} failed: HTTP ${res.status}`,
-                            );
-                          } catch (err: any) {
-                            clearTimeout(tid);
-                            console.error(
-                              `[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt}:`,
-                              err.name === "AbortError"
-                                ? "Timeout"
-                                : err.message,
-                            );
-                          }
-                          if (attempt < 3)
-                            await new Promise((r) =>
-                              setTimeout(r, 1500 * attempt),
-                            );
-                        }
-
-                        if (!chunkOk) {
-                          console.error(
-                            `[Chunked Upload] Chunk ${i + 1}/${totalChunks} failed after 3 attempts — aborting video upload for ${f.name}.`,
-                          );
-                          return;
-                        }
-                      }
-
-                      // All chunks received — assemble into one file on server and push to Drive
-                      console.log(
-                        `[Chunked Upload] All ${totalChunks} chunks uploaded. Assembling ${f.name}...`,
-                      );
+                const uploadVideoChunked = async (f: { key: string; name: string; mimeType: string; blob: Blob }, targetFolderId: string) => {
+                  const CHUNK_SIZE = 5 * 1024 * 1024;
+                  const totalChunks = Math.max(1, Math.ceil(f.blob.size / CHUNK_SIZE));
+                  const uploadId = crypto.randomUUID();
+                  for (let i = 0; i < totalChunks; i++) {
+                    const chunk = f.blob.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, f.blob.size));
+                    let chunkOk = false;
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                      const controller = new AbortController();
+                      const tid = setTimeout(() => controller.abort(), 90000);
                       try {
-                        const assembleRes = await fetch(
-                          "/api/upload/assemble",
-                          {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              uploadId,
-                              totalChunks,
-                              name: f.name,
-                              mimeType: f.mimeType,
-                              folderId: targetFolderId,
-                            }),
-                          },
-                        );
-                        if (assembleRes.ok) {
-                          const data = await assembleRes.json();
-                          console.log(
-                            `[Chunked Upload] Assembly complete. Drive fileId=${data.fileId}`,
-                          );
-                        } else {
-                          const errBody = await assembleRes
-                            .json()
-                            .catch(() => ({}));
-                          console.error(
-                            `[Chunked Upload] Assembly failed: HTTP ${assembleRes.status}`,
-                            errBody,
-                          );
-                        }
+                        const res = await fetch(`/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&name=${encodeURIComponent(f.name)}`, { method: "PUT", body: chunk, signal: controller.signal });
+                        clearTimeout(tid);
+                        if (res.ok) { chunkOk = true; break; }
+                        console.warn(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt} failed: HTTP ${res.status}`);
                       } catch (err: any) {
-                        console.error(
-                          "[Chunked Upload] Assembly request error:",
-                          err.message,
-                        );
+                        clearTimeout(tid);
+                        console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt}:`, err.name === "AbortError" ? "Timeout" : err.message);
                       }
-                    };
-
-                    // Process all files sequentially
-                    for (const f of filesToUpload) {
-                      if (f.key === "file") {
-                        // Video → chunked pipeline (no body size limit issue)
-                        await uploadVideoChunked(f, orderFolderId);
-                      } else {
-                        // Images → existing raw pipeline
-                        const url = uploadUrls[f.key];
-                        if (!url) {
-                          console.warn(
-                            `[Queue Upload] No URL for key: ${f.key}`,
-                          );
-                          continue;
-                        }
-                        await uploadSmallFile(f, url);
-                      }
+                      if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
                     }
-
-                    // 4. Finalize Database Write
-                    const cleanUserId =
-                      activeUserId &&
-                        activeUserId !== "undefined" &&
-                        activeUserId !== "null"
-                        ? activeUserId
-                        : undefined;
-                    await fetch("/api/upload/finalize", {
+                    if (!chunkOk) { console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} failed — aborting.`); return; }
+                  }
+                  try {
+                    const assembleRes = await fetch("/api/upload/assemble", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        orderId: activeOrderId,
-                        manifestId: activeManifestId,
-                        orderPlatformId: activePlatformOrderId,
-                        folderLink,
-                        orderFolderId,
-                        type: "INSPECTION_VIDEO",
-                        uploadedById: cleanUserId,
-                        reason: "Complete Order Inspection Folder",
-                        lpnConditions,
-                        lpnRecoveryTypes,
-                      }),
+                      body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
                     });
-                  } catch (e) {
-                    console.error("Silent background pipeline failed:", e);
-                  } finally {
-                    setIsUploading(false);
+                    if (assembleRes.ok) {
+                      const data = await assembleRes.json();
+                      console.log(`[Chunked Upload] Assembly complete. Drive fileId=${data.fileId}`);
+                    } else {
+                      console.error(`[Chunked Upload] Assembly failed: HTTP ${assembleRes.status}`, await assembleRes.json().catch(() => ({})));
+                    }
+                  } catch (err: any) {
+                    console.error("[Chunked Upload] Assembly request error:", err.message);
                   }
                 };
 
-                backgroundUpload(); // Trigger silently without blocking UI
-              };
+                for (const f of filesToUpload) {
+                  if (f.key === "file") {
+                    await uploadVideoChunked(f, orderFolderId);
+                  } else {
+                    const url = uploadUrls[f.key];
+                    if (!url) { console.warn(`[Queue Upload] No URL for key: ${f.key}`); continue; }
+                    await uploadSmallFile(f, url);
+                  }
+                }
 
-              mr.start(1000);
-              setIsRecording(true);
-            } catch (e) {
-              console.error("MediaRecorder init failed", e);
-            }
+                // 4. Finalize DB write
+                const cleanUserId =
+                  activeUserId && activeUserId !== "undefined" && activeUserId !== "null"
+                    ? activeUserId
+                    : undefined;
+                await fetch("/api/upload/finalize", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId: activeOrderId, manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, folderLink, orderFolderId, type: "INSPECTION_VIDEO", uploadedById: cleanUserId, reason: "Complete Order Inspection Folder", lpnConditions, lpnRecoveryTypes }),
+                });
+              } catch (e) {
+                console.error("Silent background pipeline failed:", e);
+              } finally {
+                setIsUploading(false);
+              }
+            };
+
+            backgroundUpload(); // Trigger silently without blocking UI
           };
-        })
-        .catch((err) =>
-          console.error("Camera access denied or unavailable:", err),
-        );
-    }
+
+          if (phaseRef.current !== "START") {
+            mr.start(1000);
+            setIsRecording(true);
+          }
+        }
+      } catch (e) {
+        console.error("MediaRecorder init failed", e);
+      }
+
+      checkCameraStreams();
+    };
+
+    init();
 
     return () => {
-      if (reqAnimRef.current) cancelAnimationFrame(reqAnimRef.current);
-      if (
-        mediaRecorderRef.current &&
-        mediaRecorderRef.current.state !== "inactive"
-      ) {
-        mediaRecorderRef.current.stop();
+      cancelled = true;
+      if (reqAnimRecRef.current) cancelAnimationFrame(reqAnimRecRef.current);
+      if (reqAnimCapRef.current) cancelAnimationFrame(reqAnimCapRef.current);
+      
+      // Keep MediaRecorder alive if phase is active (not START) and inspection not completed
+      if (phaseRef.current === "START" || isOrderCompleteRef.current) {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+          mediaRecorderRef.current.stop();
+        }
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
       }
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      setIsRecording(false);
+      
+      recStreamRef.current?.getTracks().forEach((t) => t.stop());
+      capStreamRef.current?.getTracks().forEach((t) => t.stop());
+      recStreamRef.current = null;
+      capStreamRef.current = null;
+      imageCaptureRef.current = null;
     };
-  }, [isCameraActive]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraActive, recCameraId, imgCameraId, dualCameraMode, cameraInitTrigger]);
+
+  // Start recording on transition to active inspection phases
+  useEffect(() => {
+    if ((phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
+      try {
+        chunksRef.current = [];
+        mediaRecorderRef.current.start(1000);
+        setIsRecording(true);
+      } catch (e) {
+        console.error("Failed to start MediaRecorder on phase transition", e);
+      }
+    }
+  }, [phase]);
+
+  // ── Swap cameras ─────────────────────────────────────────────────────────
+  const swapCameras = async () => {
+    if (!dualCameraMode || isSwitchingCameras) return;
+    setIsSwitchingCameras(true);
+    // Swap IDs — the camera init effect will re-run and reinitialize both streams
+    setRecCameraId(imgCameraId);
+    setImgCameraId(recCameraId);
+    setTimeout(() => setIsSwitchingCameras(false), 1200);
+  };
+
+  // Periodic camera connection monitoring
+  useEffect(() => {
+    if (!isCameraActive) {
+      setCameraConnectionError(null);
+      return;
+    }
+
+    checkCameraStreams();
+
+    const interval = setInterval(() => {
+      checkCameraStreams();
+    }, 1000);
+
+    const handleDeviceChange = async () => {
+      await enumerateAvailableCameras();
+      forceCameraReinit();
+      checkCameraStreams();
+    };
+
+    navigator.mediaDevices?.addEventListener("devicechange", handleDeviceChange);
+
+    return () => {
+      clearInterval(interval);
+      navigator.mediaDevices?.removeEventListener("devicechange", handleDeviceChange);
+    };
+  }, [isCameraActive, checkCameraStreams, enumerateAvailableCameras, forceCameraReinit]);
+
+  // Pause / Resume MediaRecorder based on recording camera status
+  useEffect(() => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return;
+
+    const isRecDisconnected = cameraConnectionError === "BOTH_DISCONNECTED" || cameraConnectionError === "REC_DISCONNECTED";
+
+    if (isRecDisconnected) {
+      if (mediaRecorderRef.current.state === "recording") {
+        try {
+          mediaRecorderRef.current.pause();
+          console.log("MediaRecorder paused because recording camera disconnected.");
+        } catch (e) {
+          console.error("Error pausing MediaRecorder:", e);
+        }
+      }
+    } else {
+      if (mediaRecorderRef.current.state === "paused") {
+        try {
+          mediaRecorderRef.current.resume();
+          console.log("MediaRecorder resumed because recording camera reconnected.");
+        } catch (e) {
+          console.error("Error resuming MediaRecorder:", e);
+        }
+      }
+    }
+  }, [cameraConnectionError]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isRecording) {
+    const isRecDisconnected = cameraConnectionError === "BOTH_DISCONNECTED" || cameraConnectionError === "REC_DISCONNECTED";
+    if (isRecording && !isRecDisconnected) {
       interval = setInterval(() => setRecordingTime((t) => t + 1), 1000);
-    } else {
+    } else if (!isRecording) {
       setTimeout(() => setRecordingTime(0), 0);
     }
     return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [isRecording, cameraConnectionError]);
+
+  /** Push a blob into capturedImagesRef and optionally build a Shopify collage */
+  const pushCapturedBlob = (
+    blob: Blob,
+    type: "box" | "lpn" | "product",
+    identifier?: string,
+  ) => {
+    capturedImagesRef.current!.push({ type, id: identifier, step: boxStep, blob });
+
+    if (type === "product" && currentImageUrl && identifier) {
+      // Build side-by-side collage asynchronously
+      const camImg = new Image();
+      camImg.onload = () => {
+        const shopifyImg = new Image();
+        shopifyImg.crossOrigin = "anonymous";
+        shopifyImg.onload = () => {
+          const COLLAGE_H = 600;
+          const camW = Math.round((camImg.width / camImg.height) * COLLAGE_H);
+          const shopW = Math.round((shopifyImg.naturalWidth / shopifyImg.naturalHeight) * COLLAGE_H);
+          const GAP = 12;
+          const BADGE_H = 36;
+          const collage = document.createElement("canvas");
+          collage.height = COLLAGE_H + BADGE_H;
+          collage.width = shopW + GAP + camW;
+          const cCtx = collage.getContext("2d")!;
+          cCtx.fillStyle = "#0f172a";
+          cCtx.fillRect(0, 0, collage.width, collage.height);
+          cCtx.drawImage(shopifyImg, 0, 0, shopW, COLLAGE_H);
+          cCtx.fillStyle = "rgba(99,102,241,0.85)";
+          cCtx.fillRect(0, COLLAGE_H, shopW, BADGE_H);
+          cCtx.fillStyle = "#fff"; cCtx.font = "bold 13px sans-serif"; cCtx.textAlign = "center";
+          cCtx.fillText(t("SHOPIFY REFERENCE"), shopW / 2, COLLAGE_H + 23);
+          cCtx.fillStyle = "#1e293b";
+          cCtx.fillRect(shopW, 0, GAP, collage.height);
+          cCtx.drawImage(camImg, shopW + GAP, 0, camW, COLLAGE_H);
+          cCtx.fillStyle = "rgba(239,68,68,0.85)";
+          cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
+          cCtx.fillStyle = "#fff";
+          cCtx.fillText(t("RECEIVED ITEM"), shopW + GAP + camW / 2, COLLAGE_H + 23);
+          collage.toBlob((b) => {
+            if (b) capturedImagesRef.current!.push({ type: "collage", id: identifier, blob: b });
+          }, "image/jpeg", 0.88);
+        };
+        shopifyImg.onerror = () => {};
+        shopifyImg.src = currentImageUrl!;
+      };
+      camImg.src = URL.createObjectURL(blob);
+    }
+  };
 
   const captureImage = (
     type: "box" | "lpn" | "product",
     identifier?: string,
   ) => {
-    // Capture from the visible canvas (always at full camera resolution),
-    // NOT from videoRef — the video element was changed to 1×1 CSS px in the
-    // last push, causing videoWidth/videoHeight to return 0 or 1, producing
-    // empty blobs that were filtered out and never uploaded.
-    const sourceCanvas = visibleCanvasRef.current;
-    const canvas = hiddenCanvasRef.current;
-
-    if (!sourceCanvas || !canvas) return;
-
-    canvas.width = sourceCanvas.width;
-    canvas.height = sourceCanvas.height;
-    const ctx = canvas.getContext("2d");
-
-    if (ctx) {
-      ctx.drawImage(sourceCanvas, 0, 0);
-
-      if (type === "lpn" || type === "product") {
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = canvas.width * 0.3;
-        tempCanvas.height = canvas.height;
-        const tCtx = tempCanvas.getContext("2d");
-
-        if (tCtx) {
-          tCtx.drawImage(
-            canvas,
-            canvas.width * 0.7,
-            0,
-            canvas.width * 0.3,
-            canvas.height,
-            0,
-            0,
-            tempCanvas.width,
-            tempCanvas.height,
-          );
-
-          tempCanvas.toBlob(
-            (blob) => {
-              if (blob)
-                capturedImagesRef.current!.push({
-                  type,
-                  id: identifier,
-                  step: boxStep,
-                  blob,
-                });
-            },
-            "image/jpeg",
-            0.8,
-          );
-
-          // If this is a product capture and we have a Shopify reference image, build the side-by-side collage
-          if (type === "product" && currentImageUrl && identifier) {
-            const shopifyImg = new Image();
-            shopifyImg.crossOrigin = "anonymous";
-            shopifyImg.onload = () => {
-              const COLLAGE_H = 600;
-              const camW = Math.round((tempCanvas.width / tempCanvas.height) * COLLAGE_H);
-              const shopW = Math.round((shopifyImg.naturalWidth / shopifyImg.naturalHeight) * COLLAGE_H);
-              const GAP = 12;
-              const BADGE_H = 36;
-              const collage = document.createElement("canvas");
-              collage.height = COLLAGE_H + BADGE_H;
-              collage.width = shopW + GAP + camW;
-              const cCtx = collage.getContext("2d")!;
-
-              // Background
-              cCtx.fillStyle = "#0f172a";
-              cCtx.fillRect(0, 0, collage.width, collage.height);
-
-              // Left panel — Shopify reference
-              cCtx.drawImage(shopifyImg, 0, 0, shopW, COLLAGE_H);
-              cCtx.fillStyle = "rgba(99,102,241,0.85)";
-              cCtx.fillRect(0, COLLAGE_H, shopW, BADGE_H);
-              cCtx.fillStyle = "#ffffff";
-              cCtx.font = "bold 13px sans-serif";
-              cCtx.textAlign = "center";
-              cCtx.fillText(t("SHOPIFY REFERENCE"), shopW / 2, COLLAGE_H + 23);
-
-              // Divider
-              cCtx.fillStyle = "#1e293b";
-              cCtx.fillRect(shopW, 0, GAP, collage.height);
-
-              // Right panel — received item
-              cCtx.drawImage(tempCanvas, shopW + GAP, 0, camW, COLLAGE_H);
-              cCtx.fillStyle = "rgba(239,68,68,0.85)";
-              cCtx.fillRect(shopW + GAP, COLLAGE_H, camW, BADGE_H);
-              cCtx.fillStyle = "#ffffff";
-              cCtx.fillText(t("RECEIVED ITEM"), shopW + GAP + camW / 2, COLLAGE_H + 23);
-
-              collage.toBlob(
-                (collageBlob) => {
-                  if (collageBlob)
-                    capturedImagesRef.current!.push({
-                      type: "collage",
-                      id: identifier,
-                      blob: collageBlob,
-                    });
-                },
-                "image/jpeg",
-                0.88,
-              );
-            };
-            shopifyImg.onerror = () => {
-              console.warn("[Collage] Failed to load Shopify reference image — skipping collage.");
-            };
-            shopifyImg.src = currentImageUrl;
-          }
-        }
-      } else {
-        canvas.toBlob(
-          (blob) => {
-            if (blob)
-              capturedImagesRef.current!.push({
-                type,
-                id: identifier,
-                step: boxStep,
-                blob,
-              });
-          },
-          "image/jpeg",
-          0.8,
-        );
-      }
-    }
     setShutterFlash(true);
     setTimeout(() => setShutterFlash(false), 150);
+
+    const doCapture = async () => {
+      let rawBlob: Blob | null = null;
+
+      // ── Strategy 1: ImageCapture API (full sensor resolution) ──────────────
+      if (imageCaptureRef.current) {
+        try {
+          const ic = imageCaptureRef.current;
+          const caps = await ic.getPhotoCapabilities?.();
+          rawBlob = await ic.takePhoto(
+            caps?.imageWidth?.max
+              ? { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max }
+              : {},
+          );
+        } catch {
+          rawBlob = null;
+        }
+      }
+
+      // ── Strategy 2: Snapshot from capture canvas ────────────────────────────
+      if (!rawBlob) {
+        const srcCanvas = capCanvasRef.current;
+        if (!srcCanvas) return;
+        rawBlob = await new Promise<Blob | null>((res) =>
+          srcCanvas.toBlob(res, "image/jpeg", 0.92),
+        );
+      }
+
+      if (!rawBlob) return;
+
+      pushCapturedBlob(rawBlob, type, identifier);
+    };
+
+    doCapture();
   };
 
   const stopAndFinalizeRecording = () => {
@@ -1987,6 +2103,39 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
     if (!userId) {
       setStartError(t("Authentication error. Please log in again."));
       return;
+    }
+
+    // ── Camera activity check ────────────────────────────────────────────────
+    const isStreamActive = (stream: MediaStream | null) => {
+      if (!stream) return false;
+      const tracks = stream.getVideoTracks();
+      if (tracks.length === 0) return false;
+      return tracks.some((track) => track.readyState === "live" && track.enabled);
+    };
+
+    const isRecActive = isStreamActive(recStreamRef.current);
+    const isCapActive = dualCameraMode
+      ? isStreamActive(capStreamRef.current)
+      : isRecActive;
+
+    if (dualCameraMode) {
+      if (!isRecActive && !isCapActive) {
+        setStartError(t("Warning: Both cameras are inactive. Please connect cameras or allow access."));
+        return;
+      }
+      if (!isRecActive) {
+        setStartError(t("Warning: Recording camera is inactive. Please connect camera or allow access."));
+        return;
+      }
+      if (!isCapActive) {
+        setStartError(t("Warning: Capture camera is inactive. Please connect camera or allow access."));
+        return;
+      }
+    } else {
+      if (!isRecActive) {
+        setStartError(t("Warning: Camera is inactive. Please connect camera or allow access."));
+        return;
+      }
     }
 
     try {
@@ -2393,69 +2542,167 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
 
   return (
     <div className="absolute inset-0 z-40 flex flex-row bg-slate-900 select-none overflow-hidden text-slate-800">
-      <div className="w-[60%] bg-black relative flex flex-col items-center justify-center border-r border-slate-800 shadow-2xl">
-        {/* Back Button overlaid on video section when QA is active */}
-        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (
-          <button
-            onClick={() => {
-              resetProcess();
-            }}
-            className="absolute top-4 left-4 z-20 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-all hover:scale-105 active:scale-[0.95] shadow-md border border-white/10"
-            title={t("Cancel Inspection")}
-          >
-            <ArrowLeft size={20} />
-          </button>
-        )}
+      {/* ═══════════════════════════════════════════════════════════════════
+           LEFT PANEL — Cameras
+           Top strip (30%): Recording camera + Product details
+           Main area (70%): Image capture camera (large, high-res)
+      ════════════════════════════════════════════════════════════════════ */}
+      <div className="w-[60%] bg-black flex flex-col border-r border-slate-800 shadow-2xl">
 
-        <div className={`absolute top-4 bg-red-600/90 backdrop-blur text-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center space-x-2 rounded shadow-lg z-10 ${(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") ? "left-16" : "left-4"}`}>
-          <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-          <span>{t("REC • Continuous Evidence")}</span>
-        </div>
+        {/* ── TOP STRIP: Recording camera + Product details ──────────────── */}
+        <div className="h-[30%] flex shrink-0 border-b border-white/10 relative">
 
-        <div className="absolute top-4 right-4 bg-black/70 border border-white/20 text-white px-4 py-2 text-sm font-mono tracking-widest rounded flex items-center space-x-3 z-10 shadow-lg">
-          {isRecording && (
-            <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></div>
-          )}
-          <span>
-            {String(Math.floor(recordingTime / 60)).padStart(2, "0")}:
-            {String(recordingTime % 60).padStart(2, "0")}
-          </span>
-        </div>
+          {/* Recording camera feed */}
+          <div className="relative shrink-0 overflow-hidden bg-black" style={{ width: "50%" }}>
+            <video ref={recVideoRef} autoPlay playsInline muted
+              className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
+            <canvas ref={recCanvasRef}
+              className="absolute inset-0 w-full h-full object-cover bg-black" />
 
-        <div className="w-full h-full flex items-center justify-center relative overflow-hidden">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="opacity-0 absolute pointer-events-none"
-            style={{ width: "1px", height: "1px" }}
-          ></video>
-          <canvas
-            ref={visibleCanvasRef}
-            className="absolute inset-0 w-full h-full object-cover bg-black"
-          ></canvas>
-          <canvas ref={hiddenCanvasRef} className="hidden"></canvas>
-          {shutterFlash && (
-            <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150"></div>
-          )}
-
-          {/* Split Screen Overlay for Item Inspection */}
-          {phase === "ITEM_INSPECTION" && (
-            <div className="absolute inset-0 z-10 pointer-events-none flex">
-              <div className="w-[70%] h-full border-r-2 border-white/40 border-dashed flex items-center justify-center bg-black/20">
-                <span className="text-white/60 font-black text-2xl tracking-widest">
-                  {t("BOX AREA")}
-                </span>
-              </div>
-              <div className="w-[30%] h-full flex items-center justify-center">
-                <span className="text-white/60 font-black text-2xl tracking-widest">
-                  {t("ITEM AREA")}
-                </span>
-              </div>
+            {/* REC badge */}
+            <div className={`absolute top-2 left-2 backdrop-blur text-white px-2 py-1 text-[9px] font-black uppercase tracking-widest flex items-center space-x-1.5 rounded shadow-lg z-10 transition-colors duration-300 ${isRecording ? "bg-red-600/90" : "bg-slate-700/95"}`}>
+              <div className={`w-2 h-2 rounded-full ${isRecording ? "bg-white animate-pulse" : "bg-slate-400"}`} />
+              <span>{isRecording ? t("REC") : t("STANDBY")}</span>
             </div>
-          )}
+
+            {/* Timer */}
+            <div className="absolute top-2 right-2 bg-black/70 border border-white/20 text-white px-2 py-1 text-[10px] font-mono tracking-widest rounded flex items-center space-x-1.5 z-10">
+              {isRecording && <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
+              <span>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</span>
+            </div>
+
+
+
+            {/* Camera label */}
+            <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
+              <VideoIcon size={9} />
+              <span>REC CAM</span>
+            </div>
+          </div>
+
+          {/* ── Product Details — lives here in dual-cam layout ──────────── */}
+          <div className="shrink-0 bg-slate-950 border-l border-white/10 flex flex-col overflow-hidden" style={{ width: "50%" }}>
+            <div className="px-3 pt-2 pb-1 border-b border-white/5 flex items-center shrink-0">
+              <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400">Product Reference</span>
+            </div>
+
+            {/* Camera selector dropdown — shown when only 1 cam detected or in non-active phases */}
+            {showCameraSelector && availableCameras.length >= 2 && (
+              <div className="px-3 py-2 bg-slate-900 border-b border-white/5 space-y-1 shrink-0 animate-in fade-in duration-200">
+                <div className="flex items-center space-x-2">
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">REC</span>
+                  <select value={recCameraId} onChange={(e) => setRecCameraId(e.target.value)}
+                    className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-0.5 focus:outline-none focus:border-[#FF6700]">
+                    {availableCameras.map((c) => (
+                      <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === imgCameraId}>
+                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">IMG</span>
+                  <select value={imgCameraId} onChange={(e) => setImgCameraId(e.target.value)}
+                    className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-0.5 focus:outline-none focus:border-[#FF6700]">
+                    {availableCameras.map((c) => (
+                      <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === recCameraId}>
+                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Product details content */}
+            {phase === "ITEM_INSPECTION" ? (
+              <div className="flex-1 overflow-y-auto p-2">
+                {isValidatingLpn ? (
+                  <div className="flex animate-pulse gap-2 h-full items-center">
+                    <div className="w-1/2 h-24 bg-indigo-900/40 rounded-lg" />
+                    <div className="w-1/2 space-y-2">
+                      <div className="h-2 bg-indigo-900/40 rounded w-1/2" />
+                      <div className="h-2 bg-indigo-900/40 rounded w-3/4" />
+                      <div className="h-2 bg-indigo-900/40 rounded w-full" />
+                    </div>
+                  </div>
+                ) : !currentSku ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <ScanEye size={24} className="text-indigo-500 mb-1.5 animate-bounce" />
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{t("Scan LPN")}</p>
+                    <p className="text-[8px] text-white/30 font-bold uppercase mt-0.5">{t("Awaiting input")}</p>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 h-full">
+                    <div className="w-[45%] rounded-lg border border-indigo-800/50 bg-slate-900 flex items-center justify-center p-1 shrink-0">
+                      {currentImageUrl
+                        ? <img src={currentImageUrl} alt="ref" className="max-w-full max-h-full object-contain" />
+                        : <span className="text-white/20 text-[8px] uppercase font-bold">No Image</span>}
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1.5">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400">{t("Shopify Reference")}</p>
+                      <p className="text-[10px] font-black text-white leading-snug line-clamp-3">{currentProductName || "Product"}</p>
+                      {currentSku && (
+                        <p className="text-[8px] font-mono text-white/50 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded w-fit truncate">SKU: {currentSku}</p>
+                      )}
+                      <p className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 px-1.5 py-0.5 rounded w-fit">{t("Visual Check Active")}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-3">
+                <Camera size={20} className="text-white/20 mb-2" />
+                <p className="text-[8px] font-black uppercase tracking-widest text-white/20">
+                  {phase === "START" ? "Awaiting Order" : "Box Evidence Phase"}
+                </p>
+                {availableCameras.length > 0 && (
+                  <button
+                    onClick={() => setShowCameraSelector((v) => !v)}
+                    className="mt-3 text-[8px] font-bold uppercase tracking-widest text-white/30 hover:text-white/60 transition-colors border border-white/10 hover:border-white/20 px-2 py-1 rounded">
+                    {showCameraSelector ? "Hide" : "Configure"} Cameras
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* ── MAIN AREA: Image capture camera ────────────────────────────────── */}
+        <div className="flex-1 relative overflow-hidden bg-black">
+          <video ref={capVideoRef} autoPlay playsInline muted
+            className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
+          <canvas ref={capCanvasRef}
+            className="absolute inset-0 w-full h-full object-cover bg-black" />
+          <canvas ref={hiddenCanvasRef} className="hidden" />
+
+          {/* Floating Swap Camera Button */}
+          {dualCameraMode && (
+            <button
+              onClick={swapCameras}
+              disabled={isSwitchingCameras}
+              className="absolute top-4 right-4 z-30 bg-gradient-to-r from-[#FF6700] to-[#ff8c3b] hover:from-[#ff8c3b] hover:to-[#FF6700] active:scale-95 text-white disabled:opacity-40 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-full shadow-lg flex items-center space-x-2 transition-all border border-[#FF6700]/30"
+              title={t("Swap recording and image cameras")}
+            >
+              <SwitchCamera size={14} className={isSwitchingCameras ? "animate-spin" : ""} />
+              <span>{isSwitchingCameras ? t("Switching...") : t("Swap Cameras")}</span>
+            </button>
+          )}
+
+          {/* Shutter flash */}
+          {shutterFlash && (
+            <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150" />
+          )}
+
+          {/* Camera label badge */}
+          <div className="absolute bottom-3 left-3 z-10 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
+            <Camera size={10} />
+            <span>{dualCameraMode ? "Image Cam" : "Camera"}</span>
+          </div>
+
+
+        </div>
+
       </div>
 
       <div className="w-[40%] bg-white flex flex-col relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20">
@@ -2466,10 +2713,12 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
             </div>
             <div>
               <p className="text-[9px] uppercase font-bold text-[#313079]/50 tracking-widest">
-                Tracking ID
+                {phase === "ITEM_INSPECTION" ? "LPN" : "Tracking ID"}
               </p>
               <p className="text-sm font-black font-mono text-[#313079]">
-                {manifestId ? displayTrackingId : "—"}
+                {phase === "ITEM_INSPECTION"
+                  ? (itemStep > 1 && currentLpn ? currentLpn : "—")
+                  : (manifestId ? displayTrackingId : "—")}
               </p>
             </div>
           </div>
@@ -2661,80 +2910,6 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
                   <span className="text-[#313079]/40">/ {expectedItems}</span>
                 </p>
               </div>
-            </div>
-
-            {/* Redesigned Product Details Card */}
-            <div className="mb-4 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-slate-50 p-4 shadow-sm animate-in fade-in duration-200">
-              {isValidatingLpn ? (
-                // Loading Skeleton State
-                <div className="flex h-40 animate-pulse gap-4">
-                  <div className="w-1/2 h-full bg-indigo-100 rounded-lg"></div>
-                  <div className="w-1/2 flex flex-col justify-between py-2">
-                    <div className="h-3 bg-indigo-200 rounded w-1/3"></div>
-                    <div className="h-4 bg-indigo-200 rounded w-3/4"></div>
-                    <div className="h-4 bg-indigo-200 rounded w-5/6"></div>
-                    <div className="h-3 bg-indigo-200 rounded w-1/2"></div>
-                  </div>
-                </div>
-              ) : !currentSku ? (
-                // "Scan LPN to get product details" State
-                <div className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-indigo-200 rounded-lg bg-indigo-50/20 text-center p-4">
-                  <ScanEye size={36} className="text-indigo-400 mb-2 animate-bounce" />
-                  <p className="text-xs font-black uppercase tracking-widest text-indigo-600">
-                    {t("Scan LPN to get product details")}
-                  </p>
-                  <p className="text-[10px] text-[#313079]/50 font-bold uppercase mt-1">
-                    {t("Awaiting LPN barcode input")}
-                  </p>
-                </div>
-              ) : (
-                // Valid LPN entered State: Left 50% Image, Right 50% Info
-                <div className="flex h-44 gap-4">
-                  {/* Left 50%: Product Image */}
-                  <div className="w-1/2 h-full relative rounded-lg border border-indigo-100 bg-white shadow-sm flex items-center justify-center p-2">
-                    {currentImageUrl ? (
-                      <img
-                        src={currentImageUrl}
-                        alt="Product Reference"
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    ) : (
-                      <div className="text-center text-slate-300 font-bold uppercase tracking-wider text-[10px]">
-                        No Image Available
-                      </div>
-                    )}
-                    <div className="absolute top-2 left-2 bg-indigo-600 rounded-full p-1 shadow-sm">
-                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {/* Right 50%: Product Details */}
-                  <div className="w-1/2 flex flex-col justify-between py-1 min-w-0">
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600 mb-1">
-                        {t("Shopify Reference")}
-                      </p>
-                      <h4 className="text-xs font-black text-[#313079] leading-snug line-clamp-3">
-                        {currentProductName || "Product"}
-                      </h4>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      {currentSku && (
-                        <p className="text-[10px] font-mono text-[#313079]/70 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded w-fit truncate">
-                          SKU: {currentSku}
-                        </p>
-                      )}
-                      <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded w-fit">
-                        {t("Visual Check Active")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex-1 relative">
@@ -3144,7 +3319,55 @@ function InspectTab({ userId, setIsQaActive }: { userId?: string; setIsQaActive?
             </button>
           </div>
         )}
+
+        {/* Bottom Static Bar for Cancel Control */}
+        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (
+          <div className="bg-white border-t border-[#313079]/10 p-4 flex justify-between items-center shrink-0 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] z-30">
+            <button
+              onClick={resetProcess}
+              className="bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs px-4 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-all border border-red-700"
+            >
+              <ArrowLeft size={12} />
+              <span>Cancel Inspection</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Camera Offline Modal Overlay */}
+      {phase !== "START" && cameraConnectionError && (cameraConnectionError === "REC_DISCONNECTED" || cameraConnectionError === "BOTH_DISCONNECTED") && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-6 animate-in fade-in duration-200">
+          <div className="bg-white border-2 border-red-500 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center flex flex-col items-center space-y-6 transform scale-100 transition-all duration-300">
+            <div className="bg-red-50 p-4 rounded-full text-red-500 animate-bounce">
+              <AlertOctagon size={48} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-wider text-slate-900">
+                {t("Camera Offline")}
+              </h3>
+              <p className="text-[#313079]/80 font-bold text-xs mt-3 leading-relaxed uppercase tracking-wider">
+                {dualCameraMode
+                  ? (cameraConnectionError === "BOTH_DISCONNECTED"
+                    ? t("Warning: Both cameras are inactive. Please connect cameras or allow access. Please restart the inspection again.")
+                    : t("Warning: Recording camera is inactive. Please connect camera or allow access. Please restart the inspection again."))
+                  : t("Warning: Camera is inactive. Please connect camera or allow access. Please restart the inspection again.")
+                }
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                resetProcess();
+                setCameraConnectionError(null);
+              }}
+              className="w-full min-h-12 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex justify-center items-center space-x-2 border border-red-700"
+            >
+              <RefreshCw size={14} />
+              <span>{t("Restart Inspection")}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
