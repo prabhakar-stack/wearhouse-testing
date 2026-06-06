@@ -111,6 +111,7 @@ model Evidence {
   orderDriveLink  String?
   lpnDriveLink    String?
   type            EvidenceType
+  status          String?      @default("unclaimed") 
   rawReference    String?
   uploadedByEmail String?
   manifestId      String?

@@ -33,10 +33,6 @@ let mockReturnItems: any[] = [
 
 async function setupDatabaseSchema(db: pg.Pool) {
   try {
-    console.log("Dropping deprecated AMZ_filed_claims table...");
-    await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE; DROP TABLE IF EXISTS "claims_amz" CASCADE; DROP VIEW IF EXISTS "claims_all" CASCADE; DROP TABLE IF EXISTS "claims_all" CASCADE;`);
-    await db.query(`DROP TABLE IF EXISTS "AMZ_filed_claims" CASCADE;`);
-
         console.log("Checking and setting up sample_recovery table...");
     await db.query(`
       CREATE TABLE IF NOT EXISTS "sample_recovery" (
@@ -245,6 +241,12 @@ async function setupDatabaseSchema(db: pg.Pool) {
     const countRes = await db.query('SELECT COUNT(*) FROM "sample_recovery"');
 
 
+    await syncClaimsAllTable(db);
+  } catch (err: any) {
+    console.error('❌ setupDatabaseSchema error:', err.message);
+  }
+}export async function syncClaimsAllTable(db: pg.Pool): Promise<void> {
+  try {
     console.log("Checking and setting up claims_all physical table...");
 
     // First check existing tables in the database
@@ -262,10 +264,28 @@ async function setupDatabaseSchema(db: pg.Pool) {
       returnsTable = 'AMZ_customer_return';
     }
 
-    // Check if the base returns table exists
-    if (existingTables.has(returnsTable.toLowerCase())) {
-      console.log(`Table "${returnsTable}" found. Proceeding with database-backed "claims_all" table setup...`);
-      
+    // Ensure physical table exists matching the required schema exactly
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "claims_all" (
+        lpn text PRIMARY KEY,
+        "orderId" text,
+        "trackingId" text,
+        sku text,
+        fnsku text,
+        "productName" text,
+        channel text,
+        status text DEFAULT 'unclaimed',
+        type text,
+        "driveLink" text,
+        "orderDriveLink" text,
+        "createdAt" timestamp with time zone,
+        qty integer
+      );
+    `);
+
+    if (existingTables.has('evidence') || existingTables.has('Evidence')) {
+      console.log(`Table "Evidence" found. Building "claims_all" dataset with Evidence as absolute primary source of truth...`);
+
       // Ensure "shopify_return_tracking" has "orderId" column for correct Shopify integration
       try {
         await db.query(`ALTER TABLE "shopify_return_tracking" ADD COLUMN IF NOT EXISTS "orderId" text;`);
@@ -274,201 +294,79 @@ async function setupDatabaseSchema(db: pg.Pool) {
         console.warn(`[Schema Match] "shopify_return_tracking" Column check/alter warning:`, colErr.message);
       }
 
-      // Drop any existing table/view named "claims_AMZ" or "claims_amz" to avoid conflicts
-      await db.query(`DROP VIEW IF EXISTS "claims_AMZ" CASCADE;`);
-      await db.query(`DROP TABLE IF EXISTS "claims_AMZ" CASCADE;`);
-      await db.query(`DROP VIEW IF EXISTS claims_amz CASCADE;`);
-      await db.query(`DROP TABLE IF EXISTS claims_amz CASCADE;`);
-      await db.query(`DROP VIEW IF EXISTS "claims_all" CASCADE;`);
-
-      // Determine helper existence flags
-      const hasRemovalShipments = existingTables.has('amz_removal_shipments');
-      const hasRemovalOrders = existingTables.has('amz_removal_orders');
-      const hasEvidence = existingTables.has('evidence');
-      const hasManifest = existingTables.has('manifest');
-      const hasReimbursements = existingTables.has('amz_reimbursements');
-
-      // Create the physical table "claims_all" matching the schema exactly
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS "claims_all" (
-          lpn text PRIMARY KEY,
-          "orderId" text,
-          "trackingId" text,
-          sku text,
-          fnsku text,
-          "productName" text,
-          channel text,
-          status text DEFAULT 'unclaimed',
-          type text,
-          "driveLink" text,
-          "orderDriveLink" text,
-          "createdAt" timestamp with time zone,
-          qty integer
-        );
-      `);
-
       const syncSql = `
         TRUNCATE TABLE "claims_all";
         INSERT INTO "claims_all" (
           lpn, "orderId", "trackingId", sku, fnsku, "productName", channel, status, type, "driveLink", "orderDriveLink", "createdAt", qty
         )
-        WITH base_returns AS (
-          SELECT 
-            "license-plate-number" AS lpn,
-            sku,
-            fnsku,
-            "product-name" AS product_name,
-            "order-id" AS raw_order_id,
-            "detailed-disposition",
-            reason AS return_reason
-          FROM "${returnsTable}"
-        ),
-        evidences AS (
-          ${hasEvidence ? `
-          SELECT DISTINCT ON (lpn)
-            lpn,
-            "orderId",
-            "manifestId"
-          FROM "Evidence"
-          ` : `
-          SELECT 
-            NULL::text AS lpn,
-            NULL::text AS "orderId",
-            NULL::text AS "manifestId"
-          LIMIT 0
-          `}
-        ),
-        mapped_claims_raw AS (
-          -- Part 1: Amazon Returns Base Queue
-          SELECT 
-            br.lpn,
-            
-            -- orderId mapping
-            COALESCE(
-              ev."orderId",
-              ${hasRemovalShipments ? `(
-                SELECT rs."order-id" 
-                FROM "AMZ_removal_shipments" rs 
-                WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku 
-                LIMIT 1
-              )` : 'NULL::text'},
-              ${hasReimbursements ? `(
-                SELECT re."case-id" 
-                FROM "AMZ_reimbursements" re 
-                WHERE re.sku = br.sku OR re.fnsku = br.fnsku 
-                LIMIT 1
-              )` : 'NULL::text'}
-            ) AS "orderId",
-            
-            -- trackingId mapping
-            COALESCE(
-              ${hasManifest ? `(
-                SELECT m."trackingId" 
-                FROM "Manifest" m 
-                WHERE m.id = ev."manifestId" 
-                LIMIT 1
-              )` : 'NULL::text'},
-              ${hasRemovalShipments ? `(
-                SELECT rs."tracking-number" 
-                FROM "AMZ_removal_shipments" rs 
-                WHERE rs."order-id" = COALESCE(
-                  ev."orderId", 
-                  (SELECT rs2."order-id" FROM "AMZ_removal_shipments" rs2 WHERE rs2.sku = br.sku OR rs2.fnsku = br.fnsku LIMIT 1)
-                )
-                LIMIT 1
-              )` : 'NULL::text'}
-            ) AS "trackingId",
-            
-            br.sku,
-            br.fnsku,
-            br.product_name AS "productName",
-            
-            -- channel mapping
-            CASE
-              WHEN ${hasRemovalOrders ? `EXISTS (
-                SELECT 1 
-                FROM "AMZ_removal_orders" ro 
-                WHERE ro."order-id" = COALESCE(
-                  ev."orderId",
-                  (SELECT rs."order-id" FROM "AMZ_removal_shipments" rs WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku LIMIT 1)
-                )
-              )` : 'FALSE'} THEN 'Amazon B2B'
-              
-              WHEN br."detailed-disposition" != 'SELLABLE' AND NOT ${hasRemovalOrders ? `EXISTS (
-                SELECT 1 
-                FROM "AMZ_removal_orders" ro 
-                WHERE ro."order-id" = COALESCE(
-                  ev."orderId",
-                  (SELECT rs."order-id" FROM "AMZ_removal_shipments" rs WHERE rs.sku = br.sku OR rs.fnsku = br.fnsku LIMIT 1)
-                )
-              )` : 'FALSE'} THEN 'AMZ B2C'
-              
-              ELSE 'AMZ B2C'
-            END AS channel,
-            
-            -- type mapping
-            CASE
-              WHEN ev.lpn IS NOT NULL THEN 'Damaged'
-              ELSE 'Missing'
-            END AS type,
+        SELECT
+          ev.lpn AS lpn,
+          ev."orderId" AS "orderId",
+          
+          -- TERTIARY LOGISTICS ENRICHMENT VIA ORDERID JOIN (AMZ_removal_shipments)
+          -- Pull tracking ID tracking-number from AMZ_removal_shipments based on orderId
+          COALESCE(
+            ars."tracking-number",
+            (SELECT m."trackingId" FROM "Manifest" m WHERE m.id = ev."manifestId" LIMIT 1),
+            (SELECT srt."trackingNumber" FROM "shopify_return_tracking" srt WHERE srt."orderId" = ev."orderId" OR srt."trackingNumber" = (SELECT sr."trackingNumber" FROM "shiprocket_returns" sr WHERE sr.id = ev.lpn LIMIT 1) LIMIT 1),
+            ''
+          ) AS "trackingId",
+          
+          -- SECONDARY DATA ENRICHMENT VIA LPN JOIN (AMZ_customer_returns)
+          -- Extract and map sku, fnsku, productname, and quantity, defaulting to empty string or fallback tables gracefully
+          COALESCE(ar.sku, srr.sku, rpr.sku, '') AS sku,
+          COALESCE(ar.fnsku, '') AS fnsku,
+          COALESCE(ar."product-name", srr."productName", '') AS "productName",
+          
+          -- Channel Classification Rule: Retain the exact same legacy logic for checking the channel type to perform lookup actions against the AMZ_removal_order sheet.
+          CASE
+            WHEN srr.id IS NOT NULL THEN 'Shopify RTO'
+            WHEN rpr.id IS NOT NULL THEN 'Shopify RTV'
+            WHEN EXISTS (
+              SELECT 1 
+              FROM "AMZ_removal_orders" ro 
+              WHERE ro."order-id" = COALESCE(
+                ev."orderId",
+                (SELECT rs."order-id" FROM "AMZ_removal_shipments" rs WHERE rs.sku = ar.sku OR rs.fnsku = ar.fnsku LIMIT 1)
+              )
+            ) THEN 'Amazon B2B'
+            ELSE 'AMZ B2C'
+          END AS channel,
+          
+          -- PRIMARY LEVEL LOOKUP: Extract status from Evidence
+          COALESCE(ev.status, 'unclaimed') AS status,
+          
+          -- Evidence.EvidenceType -> Map to claims_all.type
+          CASE
+            WHEN ev.type::text IN ('PRODUCT_DAMAGE_TYPE', 'PRODUCT_DAMAGE_PHOTO', 'INSPECTOR_REJECTION') THEN 'Damaged'
+            WHEN ev.type::text IN ('REJECTED_INSPECTION', 'RECEIVER_REJECTION') THEN 'Rejected'
+            ELSE 'Damaged'
+          END AS type,
+          
+          ev."lpnDriveLink" AS "driveLink",
+          ev."orderDriveLink" AS "orderDriveLink",
+          ev."createdAt" AS "createdAt",
+          COALESCE(ar.quantity, srr.quantity, rpr.quantity, 1) AS qty
 
-            -- evidence drive links
-            COALESCE(ev."lpnDriveLink", ev."orderDriveLink") AS "driveLink",
-            ev."orderDriveLink" AS "orderDriveLink",
-            NULL::timestamp with time zone AS "createdAt",
-            1::integer AS qty
-            
-          FROM base_returns br
-          LEFT JOIN evidences ev ON br.lpn = ev.lpn
-        )
-        SELECT 
-          mcr.lpn,
-          mcr."orderId",
-          mcr."trackingId",
-          mcr.sku,
-          mcr.fnsku,
-          mcr."productName",
-          mcr.channel,
-          COALESCE(cs.status, 'unclaimed') AS status,
-          mcr.type,
-          mcr."driveLink",
-          mcr."orderDriveLink",
-          mcr."createdAt",
-          mcr.qty
-        FROM mapped_claims_raw mcr
-        LEFT JOIN "claims_status" cs ON mcr."orderId" = cs."orderId";
+        FROM "Evidence" ev
+        LEFT JOIN "${returnsTable}" ar ON LOWER(ev.lpn) = LOWER(ar."license-plate-number")
+        LEFT JOIN (
+          SELECT DISTINCT ON (LOWER("order-id")) LOWER("order-id") AS "clean_order_id", "tracking-number"
+          FROM "AMZ_removal_shipments"
+          WHERE "tracking-number" IS NOT NULL AND "tracking-number" != ''
+        ) ars ON LOWER(ev."orderId") = ars."clean_order_id"
+        LEFT JOIN "shiprocket_returns" srr ON LOWER(ev.lpn) = LOWER(srr.id)
+        LEFT JOIN "return_prime_returns" rpr ON LOWER(ev.lpn) = LOWER(rpr.id);
       `;
       
       await db.query(syncSql);
-      console.log('✅ Physical "claims_all" table successfully populated from base tables.');
+      console.log('✅ Physical "claims_all" table successfully populated from primary Evidence source of truth.');
     } else {
-      console.warn(`⚠️ Base table "${returnsTable}" was not found! Ensuring "claims_all" physical table exists...`);
-      await db.query(`DROP VIEW IF EXISTS "claims_amz" CASCADE;`);
-      await db.query(`DROP TABLE IF EXISTS "claims_amz" CASCADE;`);
-      await db.query(`DROP VIEW IF EXISTS "claims_all" CASCADE;`);
-      await db.query(`DROP TABLE IF EXISTS "claims_all" CASCADE;`);
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS "claims_all" (
-          lpn text PRIMARY KEY,
-          "orderId" text,
-          "trackingId" text,
-          sku text,
-          fnsku text,
-          "productName" text,
-          channel text,
-          status text DEFAULT 'unclaimed',
-          type text,
-          "driveLink" text,
-          "orderDriveLink" text,
-          "createdAt" timestamp with time zone,
-          qty integer
-        );
-      `);
-      console.log('✅ Fallback physical table "claims_all" created.');
+      console.log('⚠️ Evidence table not found during syncClaimsAllTable. Retaining fallback claims_all structural table.');
     }
 
   } catch (err: any) {
-    console.error('❌ setupDatabaseSchema error:', err.message);
+    console.error('❌ syncClaimsAllTable error:', err.message);
   }
 }
 
@@ -693,6 +591,9 @@ async function startServer() {
   let isOtpRequired = false;
   let lastBotRunFinishedAt: number | null = null;
   const COOLING_PERIOD_MS = 1 * 60 * 1000; // 1 minute for testability
+  
+  // Active/locked Image Generation workspace sessions to prevent concurrent edits
+  const lockedSessions = new Set<string>();
 
   /**
    * Backend database synchronization flow handler for ItemStatus -> sample_recovery.
@@ -1268,6 +1169,13 @@ async function startServer() {
       let rawRows = [];
 
       if (pool) {
+        // Dynamic real-time incremental synchronizer from Amazon & Shopify sources
+        try {
+          await syncClaimsAllTable(pool);
+        } catch (syncErr: any) {
+          console.warn('[Real-time Sync WARNING] Failed to dynamically sync claims_all table:', syncErr.message);
+        }
+
          // Query Evidence table to find valid identifiers
         let evidenceOrderIds = new Set<string>();
         let evidenceLpns = new Set<string>();
@@ -1488,6 +1396,17 @@ async function startServer() {
         return res.status(400).json({
           status: "Error",
           message: `The background automated bot cannot process Shopify channels. Automation is restricted strictly to Amazon channels ('Amazon B2B', 'AMZ/B2c', or 'amazon b2c').`
+        });
+      }
+    }
+
+    // Refactored bot pipeline: enforce 'Ready for claim' status constraint
+    if (claimData) {
+      const statusLower = (claimData.status || "").trim().toLowerCase();
+      if (statusLower !== "ready for claim") {
+        return res.status(400).json({
+          status: "Error",
+          message: `This claim cannot be processed by the automated filing bots. Bots execute strictly upon receiving the 'Ready for claim' status signature. Current status is: '${claimData.status || "unclaimed"}'.`
         });
       }
     }
@@ -2122,6 +2041,426 @@ async function startServer() {
       }
       res.json({ status: "Success", message: `Status updated to ${status}` });
     } catch (err) {
+      next(err);
+    }
+  });
+
+  // --- IMAGE GENERATION WORKSPACE ENDPOINTS ---
+  app.get("/api/claims/locked-sessions", (req, res) => {
+    res.json({ lockedOrderIds: Array.from(lockedSessions) });
+  });
+
+  app.post("/api/claims/lock-session", (req, res) => {
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: "Missing orderId" });
+    }
+    lockedSessions.add(orderId);
+    res.json({ status: "Success", message: `Order ID ${orderId} locked` });
+  });
+
+  app.post("/api/claims/release-session", (req, res) => {
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: "Missing orderId" });
+    }
+    lockedSessions.delete(orderId);
+    res.json({ status: "Success", message: `Order ID ${orderId} released` });
+  });
+
+  app.get("/api/claims/evidence-type/:orderId", async (req, res, next) => {
+    try {
+      const { orderId } = req.params;
+      const db = getDbPool();
+      if (db) {
+        const evRes = await db.query('SELECT type FROM "Evidence" WHERE "orderId" = $1 LIMIT 1', [orderId]);
+        if (evRes.rows.length > 0) {
+          return res.json({ type: evRes.rows[0].type });
+        }
+      }
+      // Fallback or mock
+      const mockClaim = mockClaims.find((c: any) => c.orderId === orderId);
+      if (mockClaim) {
+        return res.json({ type: mockClaim.condition === "damaged" ? "PRODUCT_DAMAGE_PHOTO" : "RECEIVER_REJECTION" });
+      }
+      res.json({ type: null });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/claims/upload-annotated", async (req, res, next) => {
+    try {
+      const { lpn, imageData } = req.body;
+      if (!lpn || !imageData) {
+        return res.status(400).json({ error: "Missing lpn or imageData" });
+      }
+      
+      const dir = path.join(process.cwd(), "public", "annotated");
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      const cleanImage = imageData.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(cleanImage, "base64");
+      const filename = `${lpn}.png`;
+      const localPath = path.join(dir, filename);
+      fs.writeFileSync(localPath, buffer);
+      
+      const localUrl = `/public/annotated/${filename}`;
+      const db = getDbPool();
+      if (db) {
+        try {
+          await db.query(`UPDATE "claims_all" SET "driveLink" = $1 WHERE lpn = $2`, [localUrl, lpn]);
+        } catch (e) {}
+        try {
+          await db.query(`UPDATE "Evidence" SET "lpnDriveLink" = $1 WHERE lpn = $2`, [localUrl, lpn]);
+        } catch (e) {}
+      } else {
+        const item = mockClaims.find((c: any) => c.lpn === lpn);
+        if (item) {
+          item.driveLink = localUrl;
+        }
+      }
+      
+      res.json({ status: "Success", localUrl });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/claims/ready-for-claim", async (req, res, next) => {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "Missing orderId" });
+      }
+      const db = getDbPool();
+      if (db) {
+        await db.query(`
+          INSERT INTO "claims_status" ("orderId", status)
+          VALUES ($1, 'Ready for claim')
+          ON CONFLICT ("orderId")
+          DO UPDATE SET status = 'Ready for claim'
+        `, [orderId]);
+        
+        try {
+          await db.query(`UPDATE "claims_all" SET status = 'Ready for claim' WHERE "orderId" = $1`, [orderId]);
+        } catch (e) {}
+        
+        await handleEvidenceTypeClaimedUpdate(db, orderId, 'Ready for claim');
+      } else {
+        mockClaims.forEach((c: any) => {
+          if (c.orderId === orderId) {
+            c.status = "Ready for claim";
+          }
+        });
+      }
+      res.json({ status: "Success", message: `Successfully updated Order ID ${orderId} to 'Ready for claim'.` });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/claims/partial-save", async (req, res, next) => {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "Missing orderId" });
+      }
+      const db = getDbPool();
+      if (db) {
+        await db.query(`
+          INSERT INTO "claims_status" ("orderId", status)
+          VALUES ($1, 'Partial')
+          ON CONFLICT ("orderId")
+          DO UPDATE SET status = 'Partial'
+        `, [orderId]);
+        
+        try {
+          await db.query(`UPDATE "claims_all" SET status = 'Partial' WHERE "orderId" = $1`, [orderId]);
+        } catch (e) {}
+        
+        await handleEvidenceTypeClaimedUpdate(db, orderId, 'Partial');
+      } else {
+        mockClaims.forEach((c: any) => {
+          if (c.orderId === orderId) {
+            c.status = "Partial";
+          }
+        });
+      }
+      res.json({ status: "Success", message: `Successfully updated Order ID ${orderId} to 'Partial'.` });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Helper helper to extract folder ID from Google Drive folder url
+  function extractFolderId(url: string | undefined): string | null {
+    if (!url) return null;
+    const folderMatch = url.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+    if (folderMatch) return folderMatch[1];
+    const idMatch = url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+    if (idMatch) return idMatch[1];
+    // Simple fallback if they just paste the folder ID directly
+    if (url.length >= 25 && !url.includes('/') && !url.includes(':') && !url.includes('?')) {
+      return url;
+    }
+    return null;
+  }
+
+  // --- GOOGLE DRIVE INTEGRATION API HANDLERS ---
+  
+  // Google Drive Refresh Token Cache and helper functions
+  let cachedAccessToken: string | null = null;
+  let cachedTokenExpiryNum = 0; // ms epoch time
+
+  async function getGoogleAccessToken(clientOverride?: { clientId: string; clientSecret: string; refreshToken: string }): Promise<string> {
+    const isOverride = !!clientOverride;
+    const clientId = clientOverride?.clientId || process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = clientOverride?.clientSecret || process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = clientOverride?.refreshToken || process.env.GOOGLE_REFRESH_TOKEN;
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new Error("Missing Google OAuth credentials (Client ID, Client Secret, or Refresh Token). Please configure your permanent Refresh credentials in UI settings or set them in the server's .env.");
+    }
+
+    if (!isOverride && cachedAccessToken && Date.now() < cachedTokenExpiryNum) {
+      return cachedAccessToken;
+    }
+
+    console.log("[Google Drive OAuth] Exchanging refresh token for a fresh short-lived access token...");
+    
+    // Call Google's standard OAuth token endpoint
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token"
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[Google OAuth Refresh Failed] Status:", response.status, errText);
+      throw new Error(`Google OAuth Refresh Failed: ${errText}`);
+    }
+
+    const data: any = await response.json();
+    const accessToken = data.access_token;
+    if (!accessToken) {
+      throw new Error("Invalid response from Google server. No access_token was returned.");
+    }
+
+    if (!isOverride) {
+      cachedAccessToken = accessToken;
+      const expiresInSec = data.expires_in || 3600;
+      cachedTokenExpiryNum = Date.now() + (expiresInSec - 300) * 1000; // five minutes safety buffer
+      console.log(`[Google Drive OAuth] Successfully refreshed access_token. Expires in ${expiresInSec}s`);
+    }
+
+    return accessToken;
+  }
+
+  async function resolveGoogleToken(req: any): Promise<string> {
+    // A. Check if the request contains override credentials in queries, body, or headers
+    const clientId = (req.query.clientId as string) || (req.body && req.body.clientId) || req.headers["x-google-client-id"];
+    const clientSecret = (req.query.clientSecret as string) || (req.body && req.body.clientSecret) || req.headers["x-google-client-secret"];
+    const refreshToken = (req.query.refreshToken as string) || (req.body && req.body.refreshToken) || req.headers["x-google-refresh-token"];
+
+    if (clientId && clientSecret && refreshToken) {
+      return getGoogleAccessToken({ clientId, clientSecret, refreshToken });
+    }
+
+    // B. Check if we have standard accessToken passed in directly
+    const authHeader = req.headers.authorization;
+    const directToken = (req.query.accessToken as string) || (req.body && req.body.accessToken) || (authHeader && authHeader.replace(/^Bearer\s+/, ""));
+    if (directToken && directToken !== "undefined" && directToken !== "null" && directToken !== "") {
+      return directToken;
+    }
+
+    // C. Fallback to server-side dynamic Refresh Token environment variables if set
+    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+      return getGoogleAccessToken();
+    }
+
+    throw new Error("No Google credentials or valid Access Token found. Paste a short-lived access token, configure your permanent Refresh credentials in UI settings, or set them in the server's .env file.");
+  }
+
+  // 1. Fetch Google Drive Folder files step2.jpg through step6.jpg
+  app.get("/api/drive/list", async (req, res, next) => {
+    try {
+      const { driveLink } = req.query;
+      if (!driveLink) {
+        return res.status(400).json({ error: "Missing driveLink" });
+      }
+
+      const folderId = extractFolderId(driveLink as string);
+      if (!folderId) {
+        return res.status(400).json({ error: "Could not parse Google Drive Folder ID from link." });
+      }
+
+      // Automatically resolve target authentication token
+      let actualToken = "";
+      try {
+        actualToken = await resolveGoogleToken(req);
+      } catch (authErr: any) {
+        console.error("[Google OAuth Resolve Error] list:", authErr.message);
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      console.log(`[Google Drive] Listing files for Folder ID: ${folderId}`);
+
+      // Query any image files inside specified folder
+      const q = `'${folderId}' in parents and trashed = false and mimeType contains 'image/'`;
+      const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,webContentLink,thumbnailLink,size)&pageSize=50&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+
+      const googleRes = await fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${actualToken}`
+        }
+      });
+
+      if (!googleRes.ok) {
+        const errText = await googleRes.text();
+        console.error(`[Google Drive API error] Code ${googleRes.status}:`, errText);
+        return res.status(googleRes.status).json({ 
+          error: `Google Drive Access Failed: ${errText || "Inaccessible folder or expired session"}` 
+        });
+      }
+
+      const responseData: any = await googleRes.json();
+      const files = responseData.files || [];
+
+      console.log(`[Google Drive Audit] Success. Folder ID: ${folderId}, Images discovered:`, files.map((f: any) => f.name));
+
+      res.json({ files: files.slice(0, 50) });
+    } catch (err: any) {
+      console.error("[Drive API Router Error] List Files:", err);
+      next(err);
+    }
+  });
+
+  // 2. Proxy endpoint for high-resolution images to prevent Canvas taint issues
+  app.get("/api/drive/file/:fileId", async (req, res, next) => {
+    try {
+      const { fileId } = req.params;
+
+      // Automatically resolve target authentication token
+      let actualToken = "";
+      try {
+        actualToken = await resolveGoogleToken(req);
+      } catch (authErr: any) {
+        console.error("[Google OAuth Resolve Error] file download:", authErr.message);
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      // Supports shared drives for media downloads as well
+      const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
+      const googleRes = await fetch(downloadUrl, {
+        headers: {
+          "Authorization": `Bearer ${actualToken}`
+        }
+      });
+
+      if (!googleRes.ok) {
+        const errText = await googleRes.text();
+        console.error(`[Google Drive API File Error] Code ${googleRes.status}:`, errText);
+        return res.status(googleRes.status).send(`Google Drive file access error: ${googleRes.status}`);
+      }
+
+      const contentType = googleRes.headers.get("content-type") || "image/jpeg";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      
+      const arrayBuffer = await googleRes.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.error("[Drive API Router Error] Download File:", err);
+      next(err);
+    }
+  });
+
+  // 3. Upload composition image back to initial folder
+  app.post("/api/drive/upload", async (req, res, next) => {
+    try {
+      const { driveLink, filename, imageData, lpn } = req.body;
+      if (!driveLink || !filename || !imageData) {
+        return res.status(400).json({ error: "Missing driveLink, filename, or imageData parameters." });
+      }
+
+      const folderId = extractFolderId(driveLink);
+      if (!folderId) {
+        return res.status(400).json({ error: "Could not parse Google Drive Folder ID from link." });
+      }
+
+      // Automatically resolve target authentication token
+      let actualToken = "";
+      try {
+        actualToken = await resolveGoogleToken(req);
+      } catch (authErr: any) {
+        console.error("[Google OAuth Resolve Error] upload:", authErr.message);
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      // Convert chunked or full base64 data url to binary-ready format
+      const base64Content = imageData.replace(/^data:image\/\w+;base64,/, "");
+
+      console.log(`[Google Drive Audit] Commencing upload for LPN: ${lpn || "N/A"}, Target folderId: ${folderId}, Filename: ${filename}`);
+
+      const metadata = {
+        name: filename,
+        parents: [folderId],
+        mimeType: 'image/jpeg'
+      };
+
+      const boundary = 'xxxxxxxxxxxxxxxx';
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelimiter = `\r\n--${boundary}--`;
+
+      const metadataChunk = JSON.stringify(metadata);
+      const requestPayload = Buffer.concat([
+        Buffer.from(delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + metadataChunk),
+        Buffer.from(delimiter + 'Content-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n' + base64Content),
+        Buffer.from(closeDelimiter)
+      ]);
+
+      const googleRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${actualToken}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`
+        },
+        body: requestPayload
+      });
+
+      if (!googleRes.ok) {
+        const errorDetail = await googleRes.text();
+        console.error(`[Google Drive API upload error] Code ${googleRes.status}:`, errorDetail);
+        
+        console.log(`[Google Drive Audit] Upload FAILED. LPN: ${lpn || "N/A"}, Folder ID: ${folderId}, Filename: ${filename}`);
+        
+        return res.status(googleRes.status).json({ 
+          error: `Google Drive Upload Failed: ${errorDetail || "Access issue or token expiration"}` 
+        });
+      }
+
+      const uploadResult: any = await googleRes.json();
+      
+      console.log(`[Google Drive Audit] Upload SUCCESS. LPN: ${lpn || "N/A"}, Folder ID: ${folderId}, Filename: ${filename}, New ID: ${uploadResult.id}`);
+
+      res.json({
+        status: "Success",
+        message: `Images uploaded successfully. Filename path: ${filename}`,
+        fileId: uploadResult.id
+      });
+    } catch (err: any) {
+      console.error("[Drive API Router Error] Upload File:", err);
       next(err);
     }
   });
