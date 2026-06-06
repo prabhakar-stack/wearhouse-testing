@@ -2718,13 +2718,6 @@ function InspectTab({
                       )}
                     </div>
                   </div>
-
-                  {/* Safety Valve for Missing Items */}
-                  {phase === "ITEM_INSPECTION" && activeStepObj.id === 7 && itemsProcessed < expectedItems && (
-                    <button onClick={handleMissing} className="mt-6 w-full min-h-10 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 text-red-600 text-xs font-black uppercase tracking-widest flex items-center justify-center space-x-2 rounded transition-colors shrink-0">
-                      <AlertTriangle size={14} /> <span>{t("No Products Left in Box")}</span>
-                    </button>
-                  )}
                 </div>
 
                 {/* 2nd Part: Image / Future Animation (Bottom) */}
