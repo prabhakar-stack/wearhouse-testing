@@ -1360,8 +1360,16 @@ function InspectTab({
 
   const orderIdRef = useRef(orderId);
   const userIdRef = useRef(userId);
+  const manifestIdRef = useRef(manifestId);
+  const activeOrderPlatformIdRef = useRef(activeOrderPlatformId);
+  const itemsProcessedRef = useRef(itemsProcessed);
+  const expectedItemsRef = useRef(expectedItems);
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
+  useEffect(() => { manifestIdRef.current = manifestId; }, [manifestId]);
+  useEffect(() => { activeOrderPlatformIdRef.current = activeOrderPlatformId; }, [activeOrderPlatformId]);
+  useEffect(() => { itemsProcessedRef.current = itemsProcessed; }, [itemsProcessed]);
+  useEffect(() => { expectedItemsRef.current = expectedItems; }, [expectedItems]);
 
   const resetProcess = () => {
     setPhase("START");
@@ -1622,18 +1630,19 @@ function InspectTab({
           mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
-            const activeOrderId = orderId;
-            // Always use the ref to capture the latest userId, even if the prop updated after mount
-            const activeUserId = userIdRef.current || userId || "";
+            // ⚠️ Read all values from refs — onstop is a stale closure (registered at camera-init time)
+            // so direct state reads (orderId, manifestId, etc.) would return the values from mount ("" / 0).
+            const activeOrderId = orderIdRef.current;
+            const activeUserId = userIdRef.current || "";
             const activeUserRole = (typeof localStorage !== "undefined" ? localStorage.getItem("userRole") : null) || "INSPECTOR";
-            const activeManifestId = manifestId;
-            const activePlatformOrderId = activeOrderPlatformId;
+            const activeManifestId = manifestIdRef.current;
+            const activePlatformOrderId = activeOrderPlatformIdRef.current;
             const capturedImages = [...capturedImagesRef.current];
             const lpnConditions = { ...lpnConditionsRef.current };
             const lpnRecoveryTypes = { ...lpnRecoveryTypesRef.current };
-            const itemsScanned = itemsProcessed;
-            const itemsExpected = expectedItems;
-            const isMissingItemFlagged = itemsProcessed < expectedItems;
+            const itemsScanned = itemsProcessedRef.current;
+            const itemsExpected = expectedItemsRef.current;
+            const isMissingItemFlagged = itemsProcessedRef.current < expectedItemsRef.current;
 
             resetProcess();
 
