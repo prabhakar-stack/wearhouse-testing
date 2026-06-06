@@ -1,6 +1,6 @@
 export type ClaimSource = 'Amazon' | 'Flipkart' | 'Email' | 'Shopify';
 export type ClaimType = 'Missing' | 'Damaged' | 'CustomerReturn' | 'CustomerServiceIssue' | 'RejectedDelivery';
-export type ClaimStatus = 'New' | 'Awaiting Triage' | 'In Review' | 'Escalated' | 'Resolved' | 'Inspected';
+export type ClaimStatus = 'New' | 'Awaiting Triage' | 'In Review' | 'Escalated' | 'Resolved' | 'Inspected' | 'Ready for claim' | 'Partial';
 
 export interface Claim {
   claimId?: string;
