@@ -71,11 +71,22 @@ export async function POST(req: Request) {
       itemsScanned,
       itemsExpected,
       evidenceUrl,
-      orderDriveLink, // optional order‑level Google Drive folder URL
+      orderDriveLink, // order-level Google Drive folder URL (same as evidenceUrl, kept explicit)
       lpnConditions, // Record of scanned items: { [lpn]: 'good' | 'bad' | 'recovery' }
       lpnRecoveryTypes, // Record of recovery types: { [lpn]: string }
       lpnFolderLinks, // Record of LPN folder links: { [lpn]: string }
     } = body;
+
+    // Build a case-insensitive lookup for lpnFolderLinks
+    const lpnFolderLinksNormalized: Record<string, string> = {};
+    if (lpnFolderLinks && typeof lpnFolderLinks === 'object') {
+      for (const [k, v] of Object.entries(lpnFolderLinks as Record<string, string>)) {
+        lpnFolderLinksNormalized[k.trim().toUpperCase()] = v;
+      }
+    }
+
+    // Use orderDriveLink if present, fall back to evidenceUrl
+    const resolvedOrderDriveLink = orderDriveLink || evidenceUrl || null;
 
     if (!manifestId) {
       return NextResponse.json({ error: 'Missing manifestId' }, { status: 400 });
@@ -160,6 +171,9 @@ export async function POST(req: Request) {
       ? Object.entries(lpnConditions as Record<string, unknown>)
       : [];
 
+    console.log(`[Inspector Evaluate] Manifest ${manifestId}: scannedEntries=${scannedEntries.length}, orderDriveLink=${resolvedOrderDriveLink}, lpnFolderLinks keys=${Object.keys(lpnFolderLinksNormalized).join(',')}`);
+    scannedEntries.forEach(([lpn, cond]) => console.log(`  LPN: ${lpn} => ${cond}`));
+
     await prisma.$transaction(async (tx) => {
       // A. Process all scanned return items
       for (const [lpn, rawCondition] of scannedEntries) {
@@ -211,8 +225,8 @@ export async function POST(req: Request) {
                 status: 'GOOD',
                 recoveryType: null,
                 orderId: orderPlatformId,
-                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
-                orderDriveLink: evidenceUrl || null,
+                lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
+                orderDriveLink: resolvedOrderDriveLink,
                 manifestId: manifest.id,
               } as any,
               create: {
@@ -220,11 +234,12 @@ export async function POST(req: Request) {
                 status: 'GOOD',
                 recoveryType: null,
                 orderId: orderPlatformId,
-                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
-                orderDriveLink: evidenceUrl || null,
+                lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
+                orderDriveLink: resolvedOrderDriveLink,
                 manifestId: manifest.id,
               } as any,
             });
+          console.log(`  [ItemStatus] Upserted GOOD for ${normalizedLpnVal}`);
           // 2. Delete any Evidence for this LPN (no longer needed for GOOD)
           await tx.evidence.deleteMany({
             where: { lpn: normalizedLpnVal }
@@ -238,8 +253,8 @@ export async function POST(req: Request) {
                 status: 'RECOVERY',
                 recoveryType: recoveryType,
                 orderId: orderPlatformId,
-                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
-                orderDriveLink: evidenceUrl || null,
+                lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
+                orderDriveLink: resolvedOrderDriveLink,
                 manifestId: manifest.id,
               } as any,
               create: {
@@ -247,11 +262,12 @@ export async function POST(req: Request) {
                 status: 'RECOVERY',
                 recoveryType: recoveryType,
                 orderId: orderPlatformId,
-                lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
-                orderDriveLink: evidenceUrl || null,
+                lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
+                orderDriveLink: resolvedOrderDriveLink,
                 manifestId: manifest.id,
               } as any,
             });
+          console.log(`  [ItemStatus] Upserted RECOVERY for ${normalizedLpnVal}`);
           // 4. Delete any Evidence for this LPN (not needed for RECOVERY)
           await tx.evidence.deleteMany({
             where: { lpn: normalizedLpnVal }
@@ -270,8 +286,8 @@ export async function POST(req: Request) {
               type: 'INSPECTOR_REJECTION',
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
-              orderDriveLink: evidenceUrl || null,
-              lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+              orderDriveLink: resolvedOrderDriveLink,
+              lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
             },
@@ -281,12 +297,13 @@ export async function POST(req: Request) {
               type: 'INSPECTOR_REJECTION',
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
-              orderDriveLink: evidenceUrl || null,
-              lpnDriveLink: lpnFolderLinks ? (lpnFolderLinks[normalizedLpnVal] || lpnFolderLinks[lpn] || null) : null,
+              orderDriveLink: resolvedOrderDriveLink,
+              lpnDriveLink: lpnFolderLinksNormalized[normalizedLpnVal] || null,
               uploadedByEmail: userEmail,
               manifestId: manifest.id,
             }
           });
+          console.log(`  [Evidence] Upserted BAD/REJECTED for ${normalizedLpnVal}`);
         }
       }
 

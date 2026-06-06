@@ -1623,7 +1623,9 @@ function InspectTab({
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
             const activeOrderId = orderId;
-            const activeUserId = userId;
+            // Always use the ref to capture the latest userId, even if the prop updated after mount
+            const activeUserId = userIdRef.current || userId || "";
+            const activeUserRole = (typeof localStorage !== "undefined" ? localStorage.getItem("userRole") : null) || "INSPECTOR";
             const activeManifestId = manifestId;
             const activePlatformOrderId = activeOrderPlatformId;
             const capturedImages = [...capturedImagesRef.current];
@@ -1677,10 +1679,17 @@ function InspectTab({
                 const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } = await initRes.json();
 
                 try {
+                  if (!activeUserId) throw new Error("[Evaluate] Missing user ID – cannot submit inspection results.");
                   const evalRes = await fetch("/api/inspector/evaluate", {
-                    method: "POST", headers: { "Content-Type": "application/json", "x-user-role": "INSPECTOR", "x-user-id": activeUserId || "" },
-                    body: JSON.stringify({ manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, itemsScanned, itemsExpected, isMissingItemFlagged, lpnConditions, lpnRecoveryTypes, evidenceUrl: folderLink || null, lpnFolderLinks: lpnFolderLinks || null }),
+                    method: "POST", headers: { "Content-Type": "application/json", "x-user-role": activeUserRole, "x-user-id": activeUserId },
+                    body: JSON.stringify({ manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, itemsScanned, itemsExpected, isMissingItemFlagged, lpnConditions, lpnRecoveryTypes, evidenceUrl: folderLink || null, orderDriveLink: folderLink || null, lpnFolderLinks: lpnFolderLinks || null }),
                   });
+                  if (!evalRes.ok) {
+                    const errData = await evalRes.json().catch(() => ({}));
+                    console.error("[BG Upload] Evaluate failed:", evalRes.status, errData);
+                  } else {
+                    console.log("[BG Upload] Evaluate succeeded.");
+                  }
                 } catch (evalErr) { console.error("[BG Upload] Early evaluate error:", evalErr); }
 
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
@@ -1956,14 +1965,23 @@ function InspectTab({
     };
 
     const isRecActive = isStreamActive(recStreamRef.current);
-    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current) : isRecActive;
+    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current) : false;
 
-    if (dualCameraMode) {
-      if (!isRecActive && !isCapActive) { setStartError(t("Warning: Both cameras are inactive.")); return; }
-      if (!isRecActive) { setStartError(t("Warning: Recording camera is inactive.")); return; }
-      if (!isCapActive) { setStartError(t("Warning: Capture camera is inactive.")); return; }
-    } else {
-      if (!isRecActive) { setStartError(t("Warning: Camera is inactive.")); return; }
+    if (!isRecActive && !isCapActive) {
+      setStartError(t("Warning: Both cameras are inactive. Please connect two different cameras and allow access."));
+      return;
+    }
+    if (!isRecActive) {
+      setStartError(t("Warning: Recording camera is inactive."));
+      return;
+    }
+    if (!isCapActive || !dualCameraMode) {
+      setStartError(t("Warning: Capture camera is inactive or not configured. Two different cameras must be active."));
+      return;
+    }
+    if (recCameraId === imgCameraId) {
+      setStartError(t("Warning: The same camera cannot be utilized for both recording and capture. Please configure different cameras."));
+      return;
     }
 
     try {
