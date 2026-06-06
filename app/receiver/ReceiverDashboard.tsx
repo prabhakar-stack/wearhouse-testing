@@ -692,6 +692,7 @@ function ReceiveTab({
   const [shutterFlash, setShutterFlash] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   // OTP
   const [otpState, setOtpState] = useState<
@@ -738,18 +739,6 @@ function ReceiveTab({
     }
   }, [scannedTrackingId, trackingIdMarketplaceMap]);
 
-  // Once all 3 checks are done, evaluate
-  useEffect(() => {
-    if (tapeState !== "null" && boxState !== "null" && tamperState !== "null") {
-      setAllChecked(true);
-      if (isDamaged) {
-        setShowEvidencePanel(true);
-      } else {
-        fetchSystemOTP();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tapeState, boxState, tamperState]);
 
   // Camera for evidence panel
   useEffect(() => {
@@ -885,7 +874,7 @@ function ReceiveTab({
         setAllChecked(true);
         setShowEvidencePanel(true);
       } else if (activeStep === 1) {
-        setActiveStep(2);
+        setTimeout(() => setActiveStep(2), 150);
       }
     }
     if (step === 2) {
@@ -894,7 +883,7 @@ function ReceiveTab({
         setAllChecked(true);
         setShowEvidencePanel(true);
       } else if (activeStep === 2) {
-        setActiveStep(3);
+        setTimeout(() => setActiveStep(3), 150);
       }
     }
     if (step === 3) {
@@ -902,14 +891,17 @@ function ReceiveTab({
       if (value === "damaged") {
         setAllChecked(true);
         setShowEvidencePanel(true);
-      } else {
-        setActiveStep(4);
+      } else if (value === "good") {
+        setTimeout(() => {
+          setAllChecked(true);
+          fetchSystemOTP();
+        }, 150);
       }
     }
   };
 
-  // Capture evidence → silent background upload → show "done" screen immediately
-  const handleCaptureAndReject = () => {
+  // Capture frame for preview
+  const handleCapture = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -918,93 +910,115 @@ function ReceiveTab({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(
-      async (blob) => {
-        if (!blob) return;
-        setShutterFlash(true);
-        setTimeout(() => setShutterFlash(false), 150);
+    
+    // Trigger shutter flash
+    setShutterFlash(true);
+    setTimeout(() => setShutterFlash(false), 150);
 
-        // Show rejection screen immediately — don't wait for upload
-        setShowDoneScreen(true);
+    // Save as data URL for preview screen
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedImage(dataUrl);
+  };
 
-        // Silent background upload
-        const orderId = scannedTrackingId;
-        const uid = userId;
-        const ts = tapeState;
-        const bs = boxState;
-        const ts2 = tamperState;
-        (async () => {
-          try {
-            const filesMetaData = [
-              {
-                key: "file",
-                name: `rejection-${orderId}-${Date.now()}.jpg`,
-                mimeType: "image/jpeg",
-              },
-            ];
-            let folderLink = `https://mock.local/${orderId}`;
-            let finalFileId = `folder-${orderId}`;
-            let fileLink = "";
+  // Continue after preview -> submit silent background upload & show done screen
+  const handleContinueReject = () => {
+    if (!capturedImage) return;
 
-            const initRes = await fetch("/api/upload/init", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                orderId,
-                type: "RECEIVER_REJECTION",
-                filesMetaData,
-              }),
+    // Convert data URL to blob synchronously
+    let blob: Blob;
+    try {
+      const arr = capturedImage.split(',');
+      const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      blob = new Blob([u8arr], { type: mime });
+    } catch (e) {
+      console.error("Failed to convert image to blob:", e);
+      return;
+    }
+
+    // Show done screen immediately
+    setShowDoneScreen(true);
+
+    const orderId = scannedTrackingId;
+    const uid = userId;
+    const ts = tapeState;
+    const bs = boxState;
+    const ts2 = tamperState;
+
+    // Silent background upload
+    (async () => {
+      try {
+        const filesMetaData = [
+          {
+            key: "file",
+            name: `rejection-${orderId}-${Date.now()}.jpg`,
+            mimeType: "image/jpeg",
+          },
+        ];
+        let folderLink = `https://mock.local/${orderId}`;
+        let finalFileId = `folder-${orderId}`;
+        let fileLink = "";
+
+        const initRes = await fetch("/api/upload/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId,
+            type: "RECEIVER_REJECTION",
+            filesMetaData,
+          }),
+        });
+        if (initRes.ok) {
+          const d = await initRes.json();
+          folderLink = d.folderLink;
+          finalFileId = d.orderFolderId;
+          if (d.uploadUrls?.["file"]) {
+            const rawRes = await fetch(d.uploadUrls["file"], {
+              method: "PUT",
+              body: blob,
             });
-            if (initRes.ok) {
-              const d = await initRes.json();
-              folderLink = d.folderLink;
-              finalFileId = d.orderFolderId;
-              if (d.uploadUrls?.["file"]) {
-                const rawRes = await fetch(d.uploadUrls["file"], {
-                  method: "PUT",
-                  body: blob,
-                });
-                if (rawRes.ok) {
-                  const rd = await rawRes.json();
-                  fileLink = rd.webViewLink;
-                  finalFileId = rd.fileId || finalFileId;
-                }
-              }
+            if (rawRes.ok) {
+              const rd = await rawRes.json();
+              fileLink = rd.webViewLink;
+              finalFileId = rd.fileId || finalFileId;
             }
-
-            await fetch("/api/upload/finalize", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                orderId,
-                folderLink: fileLink || folderLink,
-                orderFolderId: finalFileId,
-                type: "RECEIVER_REJECTION",
-                uploadedById: uid,
-                reason: "Package failed visual inspection",
-                manifestId: orderId,
-              }),
-            }).catch(console.error);
-
-            await fetch("/api/dock/receive", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                trackingId: orderId,
-                tapeIntact: ts !== "damaged",
-                boxCrushed: bs === "damaged",
-                isTampered: ts2 === "damaged",
-                evidenceUrl: fileLink || folderLink || "UPLOAD_FAILED",
-              }),
-            }).catch(console.error);
-          } catch (e) {
-            console.error("[Silent Rejection Upload] failed:", e);
           }
-        })();
-      },
-      "image/jpeg",
-      0.8,
-    );
+        }
+
+        await fetch("/api/upload/finalize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId,
+            folderLink: fileLink || folderLink,
+            orderFolderId: finalFileId,
+            type: "RECEIVER_REJECTION",
+            uploadedById: uid,
+            reason: "Package failed visual inspection",
+            manifestId: orderId,
+          }),
+        }).catch(console.error);
+
+        await fetch("/api/dock/receive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trackingId: orderId,
+            tapeIntact: ts !== "damaged",
+            boxCrushed: bs === "damaged",
+            isTampered: ts2 === "damaged",
+            evidenceUrl: fileLink || folderLink || "UPLOAD_FAILED",
+          }),
+        }).catch(console.error);
+      } catch (e) {
+        console.error("[Silent Rejection Upload] failed:", e);
+      }
+    })();
   };
 
   const handleAcceptGood = async () => {
@@ -1041,6 +1055,33 @@ function ReceiveTab({
     })();
   };
 
+  const handleCancelCamera = () => {
+    setShowEvidencePanel(false);
+    setAllChecked(false);
+    setCapturedImage(null);
+    // Reset the damaged step state back to "null"
+    if (tapeState === "damaged") {
+      setTapeState("null");
+      setActiveStep(1);
+    } else if (boxState === "damaged") {
+      setBoxState("null");
+      setActiveStep(2);
+    } else if (tamperState === "damaged") {
+      setTamperState("null");
+      setActiveStep(3);
+    }
+  };
+
+  const handleBackFromOtp = () => {
+    setAllChecked(false);
+    setActiveStep(3);
+    setOtpState("IDLE");
+    setFetchedOtp("");
+    setManualOtp("");
+    setOtpRecordId(null);
+    stopOtpPolling();
+  };
+
   const resetForm = () => {
     setScannedTrackingId("");
     setTrackingId("");
@@ -1056,6 +1097,7 @@ function ReceiveTab({
     setOtpRecordId(null);
     stopOtpPolling();
     setMarketplace("AMAZON");
+    setCapturedImage(null);
   };
 
   const tapeImgs = getTapeImages(marketplace);
@@ -1094,23 +1136,23 @@ function ReceiveTab({
   // ── SCANNER SCREEN ─────────────────────────────────────────────
   if (!scannedTrackingId) {
     return (
-      <div className="max-w-lg mx-auto px-2 pb-10">
-        <div className="border border-[#313079]/10 bg-white p-6 flex flex-col space-y-5 rounded-2xl shadow-sm">
+      <div className="max-w-2xl mx-auto px-2 sm:px-6 pb-10">
+        <div className="border border-[#313079]/10 bg-white p-8 flex flex-col space-y-6 rounded-2xl shadow-sm">
           <div className="text-center">
-            <h2 className="text-base uppercase tracking-widest text-[#FF6700] font-black">
+            <h2 className="text-xl uppercase tracking-widest text-[#FF6700] font-black">
               {t("Scan Package Tracking ID")}
             </h2>
-            <p className="text-sm text-[#313079]/70 font-medium mt-1">
+            <p className="text-base text-[#313079]/70 font-medium mt-1">
               {t("Position barcode in frame")}
             </p>
           </div>
           <div className="relative bg-[#FF6700]/5 w-full aspect-square border-2 border-dashed border-[#313079]/10 overflow-hidden flex flex-col items-center justify-center rounded-xl">
             <div id="reader" className="absolute inset-0 w-full h-full" />
             {!scanning && (
-              <Camera size={56} className="mb-3 text-[#313079]/30" />
+              <Camera size={64} className="mb-3 text-[#313079]/30" />
             )}
             {!scanning && (
-              <p className="text-sm uppercase tracking-widest text-[#313079]/45 font-bold">
+              <p className="text-base uppercase tracking-widest text-[#313079]/45 font-bold">
                 {t("Camera Offline")}
               </p>
             )}
@@ -1118,28 +1160,28 @@ function ReceiveTab({
           {!scanning ? (
             <button
               onClick={startScanner}
-              className="w-full py-5 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white transition-colors font-black uppercase tracking-widest text-base flex items-center justify-center space-x-3 rounded-2xl shadow-md"
+              className="w-full py-6 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white transition-colors font-black uppercase tracking-widest text-lg flex items-center justify-center space-x-3 rounded-2xl shadow-md"
             >
-              <Camera size={22} />
+              <Camera size={24} />
               <span>{t("Activate Camera")}</span>
             </button>
           ) : (
             <button
               onClick={stopScanner}
-              className="w-full py-5 bg-red-500 hover:bg-red-600 text-white transition-colors font-black uppercase tracking-widest text-base rounded-2xl"
+              className="w-full py-6 bg-red-500 hover:bg-red-600 text-white transition-colors font-black uppercase tracking-widest text-lg rounded-2xl"
             >
               {t("Stop Camera")}
             </button>
           )}
           <div className="relative flex items-center py-1">
             <div className="absolute border-t border-[#313079]/10 w-full" />
-            <span className="bg-white px-4 text-[#313079]/45 text-xs uppercase font-bold tracking-widest relative z-10 mx-auto">
+            <span className="bg-white px-4 text-[#313079]/45 text-sm uppercase font-bold tracking-widest relative z-10 mx-auto">
               {t("Manual Override")}
             </span>
           </div>
           <form
             onSubmit={handleManualSearch}
-            className="flex flex-col space-y-3"
+            className="flex flex-col space-y-4"
           >
             <input
               type="text"
@@ -1149,18 +1191,18 @@ function ReceiveTab({
                 setTrackingId(e.target.value);
                 setSearchError("");
               }}
-              className="w-full bg-white border-2 border-[#313079]/20 text-[#313079] p-4 font-mono text-lg focus:outline-none focus:border-[#FF6700] text-center rounded-xl"
+              className="w-full bg-white border-2 border-[#313079]/20 text-[#313079] p-5 font-mono text-xl focus:outline-none focus:border-[#FF6700] text-center rounded-xl font-bold"
             />
             {searchError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-xs font-bold rounded flex items-center space-x-2 w-full">
-                <AlertOctagon size={16} className="shrink-0" />
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm font-bold rounded flex items-center space-x-2 w-full">
+                <AlertOctagon size={18} className="shrink-0" />
                 <span>{t(searchError)}</span>
               </div>
             )}
             <button
               type="submit"
               disabled={!trackingId || loadingVerify}
-              className="w-full py-4 bg-[#FF6700]/5 border border-[#FF6700]/10 text-[#313079]/70 hover:text-[#FF6700] hover:border-[#FF6700] transition-colors uppercase tracking-widest text-sm font-black disabled:opacity-50 rounded-2xl flex items-center justify-center space-x-2"
+              className="w-full py-5 bg-[#FF6700]/5 border border-[#FF6700]/10 text-[#313079]/70 hover:text-[#FF6700] hover:border-[#FF6700] transition-colors uppercase tracking-widest text-base font-black disabled:opacity-50 rounded-2xl flex items-center justify-center space-x-2"
             >
               {loadingVerify ? (
                 <div className="w-5 h-5 border-2 border-[#313079]/70 border-t-transparent rounded-full animate-spin" />
@@ -1206,203 +1248,336 @@ function ReceiveTab({
   ];
 
   return (
-    <div className="max-w-lg mx-auto px-2 pb-10 space-y-3">
-      {/* Tracking ID header */}
-      <div className="border border-[#FF6700]/20 bg-[#FF6700]/5 p-4 flex justify-between items-center rounded-2xl shadow-sm">
+    <div 
+      className={`max-w-2xl mx-auto px-2 sm:px-6 pb-2 select-none flex flex-col ${allChecked ? "justify-start gap-y-4" : "justify-between"}`}
+      style={{ height: "calc(100vh - 105px)", minHeight: "500px", gap: allChecked ? undefined : "1.66%" }}
+    >
+      {/* Tracking ID header - 15% height */}
+      <div 
+        style={{ height: "15%" }}
+        className="border border-[#FF6700]/20 bg-[#FF6700]/5 px-5 py-3 flex justify-between items-center rounded-2xl shadow-sm shrink-0"
+      >
         <div>
-          <p className="text-xs uppercase tracking-widest text-[#313079]/60 font-bold">
+          <p className="text-xs uppercase tracking-widest text-[#313079]/60 font-black">
             {t("Scanned Tracking ID")} &bull;{" "}
             <span className="text-[#FF6700]">{marketplace}</span>
           </p>
-          <p className="font-mono text-xl text-[#313079] font-black mt-0.5">
+          <p className="font-mono text-2xl text-[#313079] font-black mt-0.5">
             {scannedTrackingId}
           </p>
         </div>
         <button
           onClick={resetForm}
-          className="text-[#313079]/70 hover:text-red-600 text-xs uppercase tracking-widest font-bold px-4 py-2 border border-[#313079]/20 rounded-xl transition-colors"
+          className="text-[#313079]/70 hover:text-red-600 text-xs uppercase tracking-widest font-black px-4 py-2 border border-[#313079]/20 rounded-xl transition-colors"
         >
           {t("Reset")}
         </button>
       </div>
 
-      <h3 className="text-sm font-black tracking-widest text-[#313079] uppercase text-center pt-2">
-        {t("Visual Health Check")}
-      </h3>
+      {!allChecked && (
+        <>
+           {/* Horizontal Progress Bar - 5% height */}
+          <div 
+            style={{ height: "5%" }}
+            className="px-6 bg-slate-50 border border-[#313079]/10 rounded-2xl shadow-sm overflow-hidden select-none shrink-0"
+          >
+            <div className="relative w-full h-full flex items-center justify-between">
+              {/* Background progress line */}
+              <div className="absolute left-[16.67%] right-[16.67%] top-1/2 -translate-y-1/2 h-[3px] bg-slate-200 z-0 rounded-full" />
+              {/* Active progress overlay */}
+              <div 
+                className="absolute left-[16.67%] top-1/2 -translate-y-1/2 h-[3px] bg-gradient-to-r from-[#FF6700] to-orange-500 z-0 transition-all duration-500 rounded-full shadow-[0_1px_2px_rgba(255,103,0,0.2)]"
+                style={{
+                  width: activeStep === 1 ? "0%" : activeStep === 2 ? "33.33%" : "66.67%"
+                }}
+              />
+              
+              {steps.map((s, index) => {
+                const stepNum = s.id;
+                const isCurrent = activeStep === stepNum;
+                const isDone = s.state !== "null";
+                
+                return (
+                  <button
+                    key={stepNum}
+                    type="button"
+                    onClick={() => {
+                      const isPrevDone = index === 0 || steps[index - 1].state !== "null";
+                      if (isDone || isCurrent || isPrevDone) {
+                        setActiveStep(stepNum);
+                      }
+                    }}
+                    disabled={!(isDone || isCurrent || (index === 0 || steps[index - 1].state !== "null"))}
+                    className="relative z-10 flex flex-col items-center justify-center focus:outline-none w-1/3 disabled:cursor-not-allowed h-full"
+                  >
+                    <div
+                      className={`rounded-full flex items-center justify-center transition-all duration-300 ${
+                        isDone && s.state === "good"
+                          ? "w-5 h-5 bg-green-500 border border-green-500 text-white scale-110 shadow-md"
+                          : isDone && s.state === "damaged"
+                            ? "w-5 h-5 bg-red-500 border border-red-500 text-white scale-110 shadow-md"
+                            : isCurrent
+                              ? "w-5 h-5 bg-white border-2 border-[#FF6700] scale-110 shadow-lg ring-4 ring-orange-500/20"
+                              : "w-4 h-4 bg-white border border-slate-200 shadow-sm"
+                      }`}
+                    >
+                      {isDone && s.state === "good" && (
+                        <Check className="w-3 h-3 stroke-[4]" />
+                      )}
+                      {isDone && s.state === "damaged" && (
+                        <X className="w-3 h-3 stroke-[4]" />
+                      )}
+                      {isCurrent && (
+                        <div className="w-2 h-2 rounded-full bg-[#FF6700] animate-pulse" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      {/* Accordion steps */}
-      <div className="space-y-2">
-        {steps
-          .filter((step) => {
-            if (isDamaged) {
-              return step.state !== "null";
-            }
-            return true;
-          })
-          .map((step) => {
-            const isActive = activeStep === step.id && !allChecked;
-            const isCompleted = step.state !== "null";
-            const isLocked = !isActive && !isCompleted;
-
+          {/* Current Step Card - 65% height */}
+          {steps.map((step) => {
+            if (activeStep !== step.id) return null;
+            
             return (
               <div
                 key={step.id}
-                className={`rounded-2xl border overflow-hidden transition-all duration-300 ${
-                  isActive
-                    ? "border-[#FF6700] shadow-lg shadow-[#FF6700]/10"
-                    : isCompleted && step.state === "good"
-                      ? "border-green-300"
-                      : isCompleted && step.state === "damaged"
-                        ? "border-red-300"
-                        : "border-[#313079]/10"
-                } bg-white`}
+                style={{ height: "65%" }}
+                className="rounded-2xl border border-[#FF6700]/20 shadow-lg shadow-[#FF6700]/5 bg-white overflow-hidden flex flex-col justify-between animate-in fade-in duration-300 animate-out fade-out shrink-0"
               >
-                {/* Step header — always visible */}
-                <button
-                  className={`w-full flex items-center justify-between px-5 py-4 transition-colors ${isActive ? "bg-[#FF6700]/5" : isCompleted ? (step.state === "good" ? "bg-green-50" : "bg-red-50") : "bg-white"}`}
-                  onClick={() => {
-                    if (!allChecked && isCompleted) setActiveStep(step.id);
-                  }}
-                  disabled={isLocked}
-                >
+                {/* Step Header */}
+                <div className="w-full flex items-center justify-between px-5 py-4 bg-[#FF6700]/5 border-b border-[#313079]/10 shrink-0">
                   <div className="flex items-center space-x-4">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xl border-2 ${
-                        isCompleted && step.state === "good"
-                          ? "bg-green-500 border-green-500 text-white"
-                          : isCompleted && step.state === "damaged"
-                            ? "bg-red-500 border-red-500 text-white"
-                            : isActive
-                              ? "bg-[#FF6700] border-[#FF6700] text-white"
-                              : "bg-[#FF6700]/5 border-[#FF6700]/10 text-[#313079]/50"
-                      }`}
-                    >
-                      {isCompleted && step.state === "good" ? (
-                        <Check size={20} strokeWidth={3} />
-                      ) : isCompleted && step.state === "damaged" ? (
-                        "✕"
-                      ) : (
-                        step.id
-                      )}
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-xl bg-[#FF6700] text-white">
+                      {step.id}
                     </div>
                     <div className="text-left">
-                      <p
-                        className={`text-base font-black uppercase tracking-widest ${isActive ? "text-[#FF6700]" : isCompleted ? (step.state === "good" ? "text-green-700" : "text-red-700") : "text-[#313079]/40"}`}
-                      >
+                      <p className="text-xl font-black uppercase tracking-widest text-[#FF6700]">
                         {step.label}
                       </p>
-                      {isCompleted && (
-                        <p
-                          className={`text-xs font-bold uppercase tracking-wider ${step.state === "good" ? "text-green-600" : "text-red-600"}`}
-                        >
+                      {step.state !== "null" && (
+                        <p className={`text-sm font-bold uppercase tracking-wider ${step.state === "good" ? "text-green-600" : "text-red-600"}`}>
                           {step.state === "good" ? t("✅ Good") : t("❌ Damaged")}
                         </p>
                       )}
                     </div>
                   </div>
-                  {isActive && (
-                    <ChevronDown size={20} className="text-[#FF6700]" />
-                  )}
-                </button>
+                </div>
 
-                {/* Expanded content — only for active step */}
-                {isActive && (
-                  <div className="px-4 pb-5 space-y-4 animate-in slide-in-from-top-2 duration-200">
-                    <p className="text-sm text-[#313079]/80 font-medium leading-relaxed px-1">
-                      {step.instruction}
-                    </p>
+                {/* Content */}
+                <div className="px-5 py-4 flex-1 flex flex-col justify-between overflow-y-auto space-y-3">
+                  <p className="text-base text-[#313079]/90 font-bold leading-relaxed px-1 shrink-0">
+                    {step.instruction}
+                  </p>
 
-                    {/* Reference images — takes majority of mobile screen */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col space-y-1">
-                        <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden border-2 border-green-200 bg-[#FF6700]/5">
-                          <Image
-                            src={step.goodImg}
-                            alt="Good example"
-                            fill
-                            className="object-cover"
-                            unoptimized
-                          />
-                        </div>
-                        <p className="text-center text-xs font-black uppercase tracking-wider text-green-600">
-                          {t("✅ GOOD")}
-                        </p>
+                  {/* Reference Images */}
+                  <div className="grid grid-cols-2 gap-4 flex-1 min-h-[120px] max-h-[300px]">
+                    <div className="flex flex-col space-y-1 h-full">
+                      <div className="relative w-full flex-1 rounded-xl overflow-hidden border-2 border-green-200 bg-[#FF6700]/5 shadow-sm">
+                        <Image
+                          src={step.goodImg}
+                          alt="Good example"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
                       </div>
-                      <div className="flex flex-col space-y-1">
-                        <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden border-2 border-red-200 bg-[#FF6700]/5">
-                          <Image
-                            src={step.badImg}
-                            alt="Damaged example"
-                            fill
-                            className="object-cover"
-                            unoptimized
-                          />
-                        </div>
-                        <p className="text-center text-xs font-black uppercase tracking-wider text-red-600">
-                          {t("❌ DAMAGED")}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <button
-                        onClick={() => handleStepMark(step.id, "good")}
-                        className="py-5 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white font-black text-lg uppercase tracking-widest rounded-2xl shadow-md transition-all active:scale-95"
-                      >
+                      <p className="text-center text-sm font-black uppercase tracking-wider text-green-600 mt-1 shrink-0">
                         {t("✅ GOOD")}
-                      </button>
-                      <button
-                        onClick={() => handleStepMark(step.id, "damaged")}
-                        className="py-5 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-black text-lg uppercase tracking-widest rounded-2xl shadow-md transition-all active:scale-95"
-                      >
+                      </p>
+                    </div>
+                    <div className="flex flex-col space-y-1 h-full">
+                      <div className="relative w-full flex-1 rounded-xl overflow-hidden border-2 border-red-200 bg-[#FF6700]/5 shadow-sm">
+                        <Image
+                          src={step.badImg}
+                          alt="Damaged example"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                      <p className="text-center text-sm font-black uppercase tracking-wider text-red-600 mt-1 shrink-0">
                         {t("❌ DAMAGED")}
-                      </button>
+                      </p>
                     </div>
                   </div>
-                )}
+
+                  {/* GOOD / DAMAGED selection buttons */}
+                  <div className="grid grid-cols-2 gap-4 pt-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleStepMark(step.id, "good")}
+                      className={`py-5 font-black text-xl uppercase tracking-widest rounded-2xl shadow-sm border-2 transition-all active:scale-95 flex items-center justify-center space-x-2 ${
+                        step.state === "good"
+                          ? "bg-green-500 border-green-500 text-white shadow-md ring-4 ring-green-500/20"
+                          : "bg-white border-green-200 text-green-600 hover:bg-green-50"
+                      }`}
+                    >
+                      <Check size={24} strokeWidth={3} />
+                      <span>{t("GOOD")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStepMark(step.id, "damaged")}
+                      className={`py-5 font-black text-xl uppercase tracking-widest rounded-2xl shadow-sm border-2 transition-all active:scale-95 flex items-center justify-center space-x-2 ${
+                        step.state === "damaged"
+                          ? "bg-red-500 border-red-500 text-white shadow-md ring-4 ring-red-500/20"
+                          : "bg-white border-red-200 text-red-600 hover:bg-red-50"
+                      }`}
+                    >
+                      <X size={24} strokeWidth={3} />
+                      <span>{t("DAMAGED")}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             );
           })}
-      </div>
 
-      {/* Evidence camera — slides up after all checks if damaged */}
-      {showEvidencePanel && !showDoneScreen && (
-        <div className="animate-in slide-in-from-bottom-4 duration-300 space-y-3">
-          <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center space-x-3">
-            <AlertTriangle className="text-red-500 shrink-0" size={20} />
-            <p className="text-red-700 text-sm font-black uppercase tracking-widest">
-              {t("Damage Detected — Upload Evidence")}
-            </p>
-          </div>
-          <div
-            className="relative w-full bg-black rounded-2xl overflow-hidden border-4 border-red-500 shadow-xl"
-            style={{ minHeight: "56vw", maxHeight: "70vh" }}
+          {/* Navigation Buttons - 10% height */}
+          <div 
+            style={{ height: "10%" }}
+            className="flex items-center justify-between shrink-0"
           >
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ display: "block", minHeight: "56vw", maxHeight: "70vh" }}
-            />
-            <canvas ref={canvasRef} className="hidden" />
-            {shutterFlash && (
-              <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150" />
-            )}
-            <div className="absolute top-3 left-3 bg-red-600/90 text-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest flex items-center space-x-2 rounded-full z-10">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              <span>{t("LIVE")}</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (activeStep > 1) {
+                  setActiveStep(activeStep - 1);
+                }
+              }}
+              className={`flex items-center space-x-2 px-6 py-4 rounded-xl border font-black text-sm uppercase tracking-widest transition-all ${
+                activeStep === 1
+                  ? "opacity-0 pointer-events-none"
+                  : "border-[#313079]/20 text-[#313079]/70 hover:bg-[#FF6700]/5 hover:border-[#FF6700] hover:text-[#FF6700]"
+              }`}
+            >
+              <ArrowLeft size={18} />
+              <span>{t("Back")}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (activeStep < 3) {
+                  setActiveStep(activeStep + 1);
+                } else {
+                  // Finish wizard
+                  setAllChecked(true);
+                  if (isDamaged) {
+                    setShowEvidencePanel(true);
+                  } else {
+                    fetchSystemOTP();
+                  }
+                }
+              }}
+              disabled={steps[activeStep - 1].state === "null"}
+              className={`flex items-center space-x-2 px-10 py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-md active:scale-95 ${
+                steps[activeStep - 1].state === "null"
+                  ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
+                  : "bg-[#FF6700] hover:bg-[#FF6700]/95 text-white"
+              }`}
+            >
+              <span>{activeStep === 3 ? t("Complete") : t("Next")}</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Evidence camera — Full Screen Overlay */}
+      {showEvidencePanel && !showDoneScreen && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between overflow-hidden animate-in fade-in duration-300">
+          {/* Shutter flash overlay */}
+          {shutterFlash && (
+            <div className="absolute inset-0 bg-white z-[100] animate-out fade-out duration-150" />
+          )}
+
+          {/* Floating Tracking ID header */}
+          <div className="absolute top-10 left-0 right-0 z-10 flex flex-col items-center px-4">
+            <div className="bg-black/60 backdrop-blur-md border border-white/20 px-6 py-2.5 rounded-2xl text-center shadow-2xl max-w-sm flex items-center space-x-3">
+              <div className="w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse shrink-0" />
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-white/50 font-black">
+                  {t("Damage Rejection Evidence")}
+                </p>
+                <p className="font-mono text-sm font-black text-white mt-0.5">
+                  AWB: {scannedTrackingId}
+                </p>
+              </div>
             </div>
           </div>
+
+          {/* Close/Reset Button (Floating Top Right) */}
           <button
-            onClick={handleCaptureAndReject}
-            className="w-full py-6 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white uppercase font-black tracking-widest text-xl rounded-2xl shadow-lg flex items-center justify-center space-x-3 transition-all active:scale-95"
+            type="button"
+            onClick={handleCancelCamera}
+            className="absolute top-10 right-6 z-20 w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center border border-white/10 shadow-lg focus:outline-none transition-colors"
           >
-            <Camera size={26} />
-            <span>{t("Capture & Reject")}</span>
+            <X size={20} />
           </button>
+
+          {/* Main Visual Display (Live camera or captured preview) */}
+          <div className="absolute inset-0 w-full h-full bg-slate-950">
+            {!capturedImage ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={capturedImage}
+                alt="Captured damage evidence"
+                className="w-full h-full object-contain bg-black"
+              />
+            )}
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+
+          {/* Controls Overlay (Floating Bottom) */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-20 pb-10 px-6 z-10 flex flex-col items-center justify-center">
+            {!capturedImage ? (
+              /* Circular Capture Button */
+              <div className="flex flex-col items-center space-y-4">
+                <button
+                  type="button"
+                  onClick={handleCapture}
+                  className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-4 border-slate-300 shadow-2xl transition-all active:scale-90 focus:outline-none ring-8 ring-white/10 hover:brightness-95"
+                >
+                  <div className="w-14 h-14 bg-red-600 rounded-full transition-transform active:scale-95" />
+                </button>
+                <span className="text-[10px] uppercase tracking-widest font-black text-white/70 shadow-sm">
+                  {t("Capture Image")}
+                </span>
+              </div>
+            ) : (
+              /* Retake & Continue Buttons */
+              <div className="w-full max-w-sm flex items-center justify-between space-x-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapturedImage(null);
+                  }}
+                  className="flex-1 py-4 bg-white/10 hover:bg-white/15 border border-white/30 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg focus:outline-none transition-all active:scale-95"
+                >
+                  {t("Retake")}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleContinueReject}
+                  className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-lg focus:outline-none transition-all active:scale-95"
+                >
+                  {t("Continue")}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1455,15 +1630,29 @@ function ReceiveTab({
               </div>
             )}
           </div>
-          {(["NOT_REQUIRED", "FETCHED"].includes(otpState) || (otpState === "ERROR" && manualOtp.trim().length > 0)) && (
+          <div className="flex items-center justify-between shrink-0 gap-4 mt-2">
             <button
-              onClick={handleAcceptGood}
-              className="w-full py-6 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white uppercase font-black tracking-widest text-xl rounded-2xl shadow-lg flex items-center justify-center space-x-3 transition-all active:scale-95"
+              type="button"
+              onClick={handleBackFromOtp}
+              className="flex items-center space-x-2 px-6 py-5 rounded-2xl border border-[#313079]/20 text-[#313079]/70 hover:bg-[#FF6700]/5 hover:border-[#FF6700] hover:text-[#FF6700] font-black text-sm uppercase tracking-widest transition-all shadow-sm active:scale-95 shrink-0"
             >
-              <CheckCircle2 size={26} />
-              <span>{t("Complete & Accept")}</span>
+              <ArrowLeft size={18} />
+              <span>{t("Back")}</span>
             </button>
-          )}
+
+            {(["NOT_REQUIRED", "FETCHED"].includes(otpState) || (otpState === "ERROR" && manualOtp.trim().length > 0)) ? (
+              <button
+                type="button"
+                onClick={handleAcceptGood}
+                className="flex-1 py-5 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white uppercase font-black tracking-widest text-base sm:text-lg rounded-2xl shadow-lg flex items-center justify-center space-x-2 transition-all active:scale-95"
+              >
+                <CheckCircle2 size={22} />
+                <span>{t("Complete & Accept")}</span>
+              </button>
+            ) : (
+              <div className="flex-1" />
+            )}
+          </div>
         </div>
       )}
     </div>

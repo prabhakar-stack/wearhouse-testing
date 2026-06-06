@@ -11,7 +11,7 @@ const NEW_TRANSLATIONS = {
   "Secure single sign-on with organization Google Workspace": "संगठनात्मक Google वर्कस्पेस के साथ सुरक्षित सिंगल साइन-ऑन",
   "Design Mode Login": "डिजाइन मोड लॉगिन",
   "Internal Deployment v1.0.4": "आंतरिक परिनियोजन v1.0.4",
-  "Aegis System": "एजिस सिस्टम",
+  "Cubelelo ": "क्यूबेलैलो",
   "or": "या",
   "Security Protocol": "सुरक्षा प्रोटोकॉल",
   "Encrypted Session (AES-256)": "एन्क्रिप्टेड सत्र (AES-256)",

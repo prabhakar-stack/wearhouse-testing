@@ -91,8 +91,10 @@ export default function InspectorPage() {
 
 function StepVisualGuide({
   step,
+  className = "relative w-56 h-36 rounded-lg overflow-hidden border border-[#FF6700]/20 bg-[#313079] flex items-center justify-center shrink-0 shadow-lg",
 }: {
   step: { id: number; title: string; desc: string; sampleImg: string | string[] | null };
+  className?: string;
 }) {
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const t = (text: string) => translateInstruction(text, preferredLanguage);
@@ -571,13 +573,13 @@ function StepVisualGuide({
   if (step.sampleImg) {
     const images = Array.isArray(step.sampleImg) ? step.sampleImg : [step.sampleImg];
     return (
-      <div className="flex space-x-2 shrink-0 h-36 w-fit">
+      <div className="flex flex-col space-y-2 items-center justify-center w-full h-full p-2 bg-slate-950/5 rounded-lg border border-[#313079]/10">
         {images.map((imgSrc, index) => (
-          <div key={index} className="relative h-full w-fit rounded-lg overflow-hidden border border-[#313079]/10 bg-slate-950/5 shadow-sm">
+          <div key={index} className="relative flex-1 w-full rounded-lg overflow-hidden bg-black flex items-center justify-center">
             <img
               src={imgSrc}
               alt={`Sample reference ${index + 1}`}
-              className="h-full w-auto object-contain"
+              className="max-w-full max-h-full object-contain"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
               {t("Reference Sample")} {images.length > 1 ? `#${index + 1}` : ""}
@@ -589,7 +591,7 @@ function StepVisualGuide({
   }
 
   return (
-    <div className="relative w-56 h-36 rounded-lg overflow-hidden border border-[#FF6700]/20 bg-[#313079] flex items-center justify-center shrink-0 shadow-lg">
+    <div className={className}>
       <div className="absolute inset-0 bg-gradient-to-br from-[#313079] via-[#000000] to-[#313079] opacity-95"></div>
       <style>{`
         @keyframes laser {
@@ -1241,6 +1243,7 @@ function InspectTab({
   const router = useRouter();
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const t = (text: string) => translateInstruction(text, preferredLanguage);
+
   const [phase, setPhase] = useState<
     "START" | "BOX_EVIDENCE" | "ITEM_INSPECTION" | "COMPLETED"
   >("START");
@@ -1277,8 +1280,6 @@ function InspectTab({
     };
   }, []);
 
-
-
   const [boxStep, setBoxStep] = useState(1);
   const [boxStep6Part, setBoxStep6Part] = useState<1 | 2>(1);
 
@@ -1288,18 +1289,14 @@ function InspectTab({
   const [currentCategory, setCurrentCategory] = useState<
     "GOOD" | "RECOVERY" | "BAD" | null
   >(null);
-  const [selectedClaimReason, setSelectedClaimReason] = useState<string | null>(
-    null,
-  );
-  const [selectedClaimSubReason, setSelectedClaimSubReason] = useState<
-    string | null
-  >(null);
+  const [selectedClaimReason, setSelectedClaimReason] = useState<string | null>(null);
+  const [selectedClaimSubReason, setSelectedClaimSubReason] = useState<string | null>(null);
   const [showDefectDropdown, setShowDefectDropdown] = useState(false);
   const [showRecoveryDropdown, setShowRecoveryDropdown] = useState(false);
-
   const [missingAcknowledged, setMissingAcknowledged] = useState(false);
+  const [showMissingConfirm, setShowMissingConfirm] = useState(false);
 
-  // Dynamic expected items — fetched from DB on order start
+  // Dynamic expected items
   const [expectedItems, setExpectedItems] = useState(0);
   const [expectedFnskuQuantities, setExpectedFnskuQuantities] = useState<Record<string, number>>({});
   const [isValidatingLpn, setIsValidatingLpn] = useState(false);
@@ -1314,22 +1311,19 @@ function InspectTab({
   const [currentSku, setCurrentSku] = useState<string | null>(null);
   const [currentProductName, setCurrentProductName] = useState<string | null>(null);
 
+  // ── PREVIEW STATE ADDITIONS ────────────────────────────────────────────────
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewMeta, setPreviewMeta] = useState<{ type: "box" | "lpn" | "product", id?: string } | null>(null);
+
   // ── Camera refs ────────────────────────────────────────────────────────────
-  /** Hidden video element — feeds the RECORDING canvas (Camera 1) */
   const recVideoRef = useRef<HTMLVideoElement>(null);
-  /** Hidden video element — feeds the CAPTURE canvas (Camera 2) */
   const capVideoRef = useRef<HTMLVideoElement>(null);
-  /** Canvas drawn by Camera 1 — displayed in the top strip + fed to MediaRecorder */
   const recCanvasRef = useRef<HTMLCanvasElement>(null);
-  /** Canvas drawn by Camera 2 — shown as the main large view */
   const capCanvasRef = useRef<HTMLCanvasElement>(null);
-  /** Off-screen canvas for collage generation */
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
-  /** Raw MediaStream for recording camera */
   const recStreamRef = useRef<MediaStream | null>(null);
-  /** Raw MediaStream for image-capture camera */
   const capStreamRef = useRef<MediaStream | null>(null);
-  /** ImageCapture API instance — gives full-sensor stills without stopping recording */
   const imageCaptureRef = useRef<any>(null);
   const reqAnimRecRef = useRef<number>(0);
   const reqAnimCapRef = useRef<number>(0);
@@ -1340,12 +1334,8 @@ function InspectTab({
   const [imgCameraId, setImgCameraId] = useState<string>("");
   const recCameraIdRef = useRef(recCameraId);
   const imgCameraIdRef = useRef(imgCameraId);
-  useEffect(() => {
-    recCameraIdRef.current = recCameraId;
-  }, [recCameraId]);
-  useEffect(() => {
-    imgCameraIdRef.current = imgCameraId;
-  }, [imgCameraId]);
+  useEffect(() => { recCameraIdRef.current = recCameraId; }, [recCameraId]);
+  useEffect(() => { imgCameraIdRef.current = imgCameraId; }, [imgCameraId]);
   const [dualCameraMode, setDualCameraMode] = useState(false);
   const [isSwitchingCameras, setIsSwitchingCameras] = useState(false);
   const [showCameraSelector, setShowCameraSelector] = useState(false);
@@ -1370,14 +1360,8 @@ function InspectTab({
 
   const orderIdRef = useRef(orderId);
   const userIdRef = useRef(userId);
-
-  useEffect(() => {
-    orderIdRef.current = orderId;
-  }, [orderId]);
-
-  useEffect(() => {
-    userIdRef.current = userId;
-  }, [userId]);
+  useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
 
   const resetProcess = () => {
     setPhase("START");
@@ -1406,14 +1390,14 @@ function InspectTab({
     setStartError("");
     setCurrentImageUrl(null);
     setCurrentSku(null);
+    setShowMissingConfirm(false);
     setCurrentProductName(null);
+    setPreviewDataUrl(null);
+    setPreviewBlob(null);
+    setPreviewMeta(null);
     isOrderCompleteRef.current = false;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {
-        console.error("Error stopping MediaRecorder in resetProcess:", e);
-      }
+      try { mediaRecorderRef.current.stop(); } catch (e) { }
     }
     setIsRecording(false);
     capturedImagesRef.current = [];
@@ -1434,33 +1418,24 @@ function InspectTab({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isUploading]);
 
-  const isCameraActive =
-    phase === "START" || phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION";
+  const isCameraActive = phase === "START" || phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION";
 
-  // ── Enumerate cameras ───────────────────────────────────────────────────
   const enumerateAvailableCameras = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cams = devices.filter((d) => d.kind === "videoinput");
       setAvailableCameras(cams);
-      
-      // Only modify camera assignments and modes when in the START phase
+
       if (phaseRef.current === "START") {
         if (cams.length >= 2) {
           const currentRec = recCameraIdRef.current;
           const currentImg = imgCameraIdRef.current;
-
           let nextRec = cams.some((c) => c.deviceId === currentRec) && currentRec !== "" ? currentRec : cams[0].deviceId;
           let nextImg = cams.some((c) => c.deviceId === currentImg) && currentImg !== "" ? currentImg : cams[1].deviceId;
-
-          // Ensure they are not the same camera if we have multiple cameras
           if (nextRec === nextImg) {
             const alternate = cams.find((c) => c.deviceId !== nextRec);
-            if (alternate) {
-              nextImg = alternate.deviceId;
-            }
+            if (alternate) nextImg = alternate.deviceId;
           }
-
           setRecCameraId(nextRec);
           setImgCameraId(nextImg);
           setDualCameraMode(true);
@@ -1477,12 +1452,10 @@ function InspectTab({
     }
   }, []);
 
-  // ── Enumerate cameras once on mount ──────────────────────────────────────
   useEffect(() => {
     enumerateAvailableCameras();
   }, [enumerateAvailableCameras]);
 
-  // ── Helpers to start / stop a stream on a video element + canvas ──────────
   const startStreamOnCanvas = (
     deviceId: string,
     videoEl: HTMLVideoElement,
@@ -1524,7 +1497,6 @@ function InspectTab({
       setCameraConnectionError(null);
       return;
     }
-
     const isStreamActive = (stream: MediaStream | null, expectedDeviceId?: string) => {
       if (!stream) return false;
       const tracks = stream.getVideoTracks();
@@ -1533,8 +1505,6 @@ function InspectTab({
         const settings = track.getSettings();
         const activeDeviceId = settings.deviceId;
         const isLive = track.readyState === "live" && track.enabled;
-        
-        // If we expect a specific deviceId, check if it matches
         if (expectedDeviceId && activeDeviceId && activeDeviceId !== expectedDeviceId) {
           return false;
         }
@@ -1543,35 +1513,22 @@ function InspectTab({
     };
 
     const isRecActive = isStreamActive(recStreamRef.current, recCameraId);
-    const isCapActive = dualCameraMode
-      ? isStreamActive(capStreamRef.current, imgCameraId)
-      : isRecActive;
+    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current, imgCameraId) : isRecActive;
 
     if (dualCameraMode) {
-      if (!isRecActive && !isCapActive) {
-        setCameraConnectionError("BOTH_DISCONNECTED");
-      } else if (!isRecActive) {
-        setCameraConnectionError("REC_DISCONNECTED");
-      } else if (!isCapActive) {
-        setCameraConnectionError("CAP_DISCONNECTED");
-      } else {
-        setCameraConnectionError(null);
-      }
+      if (!isRecActive && !isCapActive) setCameraConnectionError("BOTH_DISCONNECTED");
+      else if (!isRecActive) setCameraConnectionError("REC_DISCONNECTED");
+      else if (!isCapActive) setCameraConnectionError("CAP_DISCONNECTED");
+      else setCameraConnectionError(null);
     } else {
-      if (!isRecActive) {
-        setCameraConnectionError("BOTH_DISCONNECTED");
-      } else {
-        setCameraConnectionError(null);
-      }
+      if (!isRecActive) setCameraConnectionError("BOTH_DISCONNECTED");
+      else setCameraConnectionError(null);
     }
   }, [isCameraActive, dualCameraMode, recCameraId, imgCameraId]);
 
-  // ── Main camera init effect ───────────────────────────────────────────────
   useEffect(() => {
     if (!isCameraActive) return;
-    // Wait until camera IDs have been enumerated (at least one frame)
     if (availableCameras.length === 0 && recCameraId === "") return;
-
     let cancelled = false;
 
     const init = async () => {
@@ -1581,7 +1538,6 @@ function InspectTab({
       const capCanvas = capCanvasRef.current;
       if (!recVideo || !recCanvas) return;
 
-      // ── Stream 1: Recording camera ──────────────────────────────────────
       try {
         const hasEndedTrack = recStreamRef.current && recStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
         const hasWrongDevice = recStreamRef.current && recCameraId !== "" && recStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== recCameraId);
@@ -1597,19 +1553,14 @@ function InspectTab({
           if (cancelled) { recStream.getTracks().forEach((t) => t.stop()); return; }
           recStreamRef.current = recStream;
           recStream.getVideoTracks().forEach((track) => {
-            track.onended = () => {
-              checkCameraStreams();
-            };
+            track.onended = () => { checkCameraStreams(); };
           });
-
-          // Re-enumerate cameras now that permission is granted to get real device IDs
           await enumerateAvailableCameras();
         }
       } catch (err) {
         console.error("Recording camera setup failed:", err);
       }
 
-      // ── Stream 2: Image capture camera ──────────────────────────────────
       try {
         if (dualCameraMode && capVideo && capCanvas && imgCameraId) {
           const hasEndedTrack = capStreamRef.current && capStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
@@ -1626,31 +1577,26 @@ function InspectTab({
             if (cancelled) { capStream.getTracks().forEach((t) => t.stop()); return; }
             capStreamRef.current = capStream;
             capStream.getVideoTracks().forEach((track) => {
-              track.onended = () => {
-                checkCameraStreams();
-              };
+              track.onended = () => { checkCameraStreams(); };
             });
-            // Wire up ImageCapture API for max-res stills
             const track = capStream.getVideoTracks()[0];
             if (track && typeof (window as any).ImageCapture !== "undefined") {
               imageCaptureRef.current = new (window as any).ImageCapture(track);
             }
           }
         } else if (!dualCameraMode && capVideo && capCanvas) {
-          // Single camera — mirror recording stream to the capture canvas
           if (recStreamRef.current) {
-            recVideo.onloadedmetadata = null; // already resolved
+            recVideo.onloadedmetadata = null;
             capVideo.srcObject = recStreamRef.current;
             capCanvas.width = recCanvas.width;
             capCanvas.height = recCanvas.height;
-            await capVideo.play().catch(() => {});
+            await capVideo.play().catch(() => { });
             const ctx = capCanvas.getContext("2d");
             if (ctx) {
               const drawCap = () => {
                 if (capVideo.paused || capVideo.ended) return;
                 ctx.save();
                 ctx.translate(capCanvas.width / 2, capCanvas.height / 2);
-                // Do not rotate capturing camera view
                 ctx.drawImage(capVideo, -capCanvas.width / 2, -capCanvas.height / 2, capCanvas.width, capCanvas.height);
                 ctx.restore();
                 reqAnimCapRef.current = requestAnimationFrame(drawCap);
@@ -1667,25 +1613,15 @@ function InspectTab({
         console.error("Capture camera setup failed:", err);
       }
 
-      // ── MediaRecorder on recording canvas stream ─────────────────────────
       try {
         if (!mediaRecorderRef.current && recStreamRef.current) {
-          // @ts-ignore
-          const canvasStream = recCanvas.captureStream(30);
-          const mr = new MediaRecorder(canvasStream, {
-            mimeType: "video/webm",
-          });
+          const canvasStream = (recCanvas as any).captureStream(30);
+          const mr = new MediaRecorder(canvasStream, { mimeType: "video/webm" });
           mediaRecorderRef.current = mr;
           chunksRef.current = [];
-
-          mr.ondataavailable = (e) => {
-            if (e.data.size > 0) chunksRef.current.push(e.data);
-          };
-
+          mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
-
-            // Capture current values in local scope immediately before resetting states
             const activeOrderId = orderId;
             const activeUserId = userId;
             const activeManifestId = manifestId;
@@ -1697,30 +1633,14 @@ function InspectTab({
             const itemsExpected = expectedItems;
             const isMissingItemFlagged = itemsProcessed < expectedItems;
 
-            // Reset the UI instantly to the START phase
             resetProcess();
 
-            // Non-blocking fire-and-forget background upload
             const backgroundUpload = async () => {
-              if (!activeOrderId) {
-                console.error(
-                  "[Background Upload] Aborted: activeOrderId is empty",
-                );
-                return;
-              }
-
+              if (!activeOrderId) return;
               setIsUploading(true);
-              console.log(`[Background Upload] Starting background upload for order: ${activeOrderId}, manifest: ${activeManifestId}`);
-              console.log(`[Background Upload] Number of captured images to process: ${capturedImages.length}`);
-
               try {
-                const videoChunks =
-                  chunksRef.current.length > 0
-                    ? chunksRef.current
-                    : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
-
+                const videoChunks = chunksRef.current.length > 0 ? chunksRef.current : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
                 const blob = new Blob(videoChunks, { type: "video/webm" });
-
                 const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
                 filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
 
@@ -1746,35 +1666,23 @@ function InspectTab({
                 });
 
                 const filesMetaData = filesToUpload.map((f) => ({
-                  key: f.key,
-                  name: f.name,
-                  mimeType: f.mimeType,
-                  lpn: f.lpn,
-                  condition: f.lpn ? lpnConditions[f.lpn] : undefined,
+                  key: f.key, name: f.name, mimeType: f.mimeType, lpn: f.lpn, condition: f.lpn ? lpnConditions[f.lpn] : undefined,
                 }));
 
-                // 1. Init — creates Drive folder structure and returns upload URLs
                 const initRes = await fetch("/api/upload/init", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  method: "POST", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ orderId: activeOrderId, type: "INSPECTION_VIDEO", filesMetaData }),
                 });
                 if (!initRes.ok) throw new Error("Failed to initialize Google Drive upload");
                 const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } = await initRes.json();
 
-                // 2. Early evaluate — removes from custody stack
                 try {
                   const evalRes = await fetch("/api/inspector/evaluate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "x-user-role": "INSPECTOR", "x-user-id": activeUserId || "" },
+                    method: "POST", headers: { "Content-Type": "application/json", "x-user-role": "INSPECTOR", "x-user-id": activeUserId || "" },
                     body: JSON.stringify({ manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, itemsScanned, itemsExpected, isMissingItemFlagged, lpnConditions, lpnRecoveryTypes, evidenceUrl: folderLink || null, lpnFolderLinks: lpnFolderLinks || null }),
                   });
-                  if (!evalRes.ok) console.error("[BG Upload] Early evaluate failed:", await evalRes.json().catch(() => ({})));
-                } catch (evalErr) {
-                  console.error("[BG Upload] Early evaluate error:", evalErr);
-                }
+                } catch (evalErr) { console.error("[BG Upload] Early evaluate error:", evalErr); }
 
-                // 3. Upload files
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
                   const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((f.blob.size / 100000) * 1000)));
                   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1784,14 +1692,9 @@ function InspectTab({
                       const res = await fetch(url, { method: "PUT", body: f.blob, signal: controller.signal });
                       clearTimeout(tid);
                       if (res.ok) return;
-                      console.warn(`[Queue Upload] Attempt ${attempt} failed for ${f.name}: HTTP ${res.status}`);
-                    } catch (err: any) {
-                      clearTimeout(tid);
-                      console.error(`[Queue Upload] Attempt ${attempt} error for ${f.name}:`, err.name === "AbortError" ? "Timeout" : err.message);
-                    }
+                    } catch (err: any) { clearTimeout(tid); }
                     if (attempt < 3) await new Promise((r) => setTimeout(r, 1000 * attempt));
                   }
-                  console.error(`[Queue Upload] Gave up on ${f.name} after 3 attempts.`);
                 };
 
                 const uploadVideoChunked = async (f: { key: string; name: string; mimeType: string; blob: Blob }, targetFolderId: string) => {
@@ -1808,82 +1711,52 @@ function InspectTab({
                         const res = await fetch(`/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&name=${encodeURIComponent(f.name)}`, { method: "PUT", body: chunk, signal: controller.signal });
                         clearTimeout(tid);
                         if (res.ok) { chunkOk = true; break; }
-                        console.warn(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt} failed: HTTP ${res.status}`);
-                      } catch (err: any) {
-                        clearTimeout(tid);
-                        console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} attempt ${attempt}:`, err.name === "AbortError" ? "Timeout" : err.message);
-                      }
+                      } catch (err: any) { clearTimeout(tid); }
                       if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
                     }
-                    if (!chunkOk) { console.error(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} failed — aborting.`); return; }
+                    if (!chunkOk) return;
                   }
                   try {
-                    const assembleRes = await fetch("/api/upload/assemble", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                    await fetch("/api/upload/assemble", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
                     });
-                    if (assembleRes.ok) {
-                      const data = await assembleRes.json();
-                      console.log(`[Chunked Upload] Assembly complete. Drive fileId=${data.fileId}`);
-                    } else {
-                      console.error(`[Chunked Upload] Assembly failed: HTTP ${assembleRes.status}`, await assembleRes.json().catch(() => ({})));
-                    }
-                  } catch (err: any) {
-                    console.error("[Chunked Upload] Assembly request error:", err.message);
-                  }
+                  } catch (err: any) { }
                 };
 
                 for (const f of filesToUpload) {
-                  if (f.key === "file") {
-                    await uploadVideoChunked(f, orderFolderId);
-                  } else {
+                  if (f.key === "file") await uploadVideoChunked(f, orderFolderId);
+                  else {
                     const url = uploadUrls[f.key];
-                    if (!url) { console.warn(`[Queue Upload] No URL for key: ${f.key}`); continue; }
-                    await uploadSmallFile(f, url);
+                    if (url) await uploadSmallFile(f, url);
                   }
                 }
 
-                // 4. Finalize DB write
-                const cleanUserId =
-                  activeUserId && activeUserId !== "undefined" && activeUserId !== "null"
-                    ? activeUserId
-                    : undefined;
+                const cleanUserId = activeUserId && activeUserId !== "undefined" && activeUserId !== "null" ? activeUserId : undefined;
                 await fetch("/api/upload/finalize", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  method: "POST", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ orderId: activeOrderId, manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, folderLink, orderFolderId, type: "INSPECTION_VIDEO", uploadedById: cleanUserId, reason: "Complete Order Inspection Folder", lpnConditions, lpnRecoveryTypes }),
                 });
               } catch (e) {
                 console.error("Silent background pipeline failed:", e);
-              } finally {
-                setIsUploading(false);
-              }
+              } finally { setIsUploading(false); }
             };
-
-            backgroundUpload(); // Trigger silently without blocking UI
+            backgroundUpload();
           };
-
           if (phaseRef.current !== "START") {
             mr.start(1000);
             setIsRecording(true);
           }
         }
-      } catch (e) {
-        console.error("MediaRecorder init failed", e);
-      }
-
+      } catch (e) { console.error("MediaRecorder init failed", e); }
       checkCameraStreams();
     };
 
     init();
-
     return () => {
       cancelled = true;
       if (reqAnimRecRef.current) cancelAnimationFrame(reqAnimRecRef.current);
       if (reqAnimCapRef.current) cancelAnimationFrame(reqAnimCapRef.current);
-      
-      // Keep MediaRecorder alive if phase is active (not START) and inspection not completed
       if (phaseRef.current === "START" || isOrderCompleteRef.current) {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
           mediaRecorderRef.current.stop();
@@ -1891,89 +1764,58 @@ function InspectTab({
         mediaRecorderRef.current = null;
         setIsRecording(false);
       }
-      
       recStreamRef.current?.getTracks().forEach((t) => t.stop());
       capStreamRef.current?.getTracks().forEach((t) => t.stop());
       recStreamRef.current = null;
       capStreamRef.current = null;
       imageCaptureRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCameraActive, recCameraId, imgCameraId, dualCameraMode, cameraInitTrigger]);
 
-  // Start recording on transition to active inspection phases
   useEffect(() => {
     if ((phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
       try {
         chunksRef.current = [];
         mediaRecorderRef.current.start(1000);
         setIsRecording(true);
-      } catch (e) {
-        console.error("Failed to start MediaRecorder on phase transition", e);
-      }
+      } catch (e) { }
     }
   }, [phase]);
 
-  // ── Swap cameras ─────────────────────────────────────────────────────────
   const swapCameras = async () => {
     if (!dualCameraMode || isSwitchingCameras) return;
     setIsSwitchingCameras(true);
-    // Swap IDs — the camera init effect will re-run and reinitialize both streams
     setRecCameraId(imgCameraId);
     setImgCameraId(recCameraId);
     setTimeout(() => setIsSwitchingCameras(false), 1200);
   };
 
-  // Periodic camera connection monitoring
   useEffect(() => {
-    if (!isCameraActive) {
-      setCameraConnectionError(null);
-      return;
-    }
-
+    if (!isCameraActive) { setCameraConnectionError(null); return; }
     checkCameraStreams();
-
-    const interval = setInterval(() => {
-      checkCameraStreams();
-    }, 1000);
-
+    const interval = setInterval(() => { checkCameraStreams(); }, 1000);
     const handleDeviceChange = async () => {
       await enumerateAvailableCameras();
       forceCameraReinit();
       checkCameraStreams();
     };
-
     navigator.mediaDevices?.addEventListener("devicechange", handleDeviceChange);
-
     return () => {
       clearInterval(interval);
       navigator.mediaDevices?.removeEventListener("devicechange", handleDeviceChange);
     };
   }, [isCameraActive, checkCameraStreams, enumerateAvailableCameras, forceCameraReinit]);
 
-  // Pause / Resume MediaRecorder based on recording camera status
   useEffect(() => {
     if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return;
-
     const isRecDisconnected = cameraConnectionError === "BOTH_DISCONNECTED" || cameraConnectionError === "REC_DISCONNECTED";
-
     if (isRecDisconnected) {
       if (mediaRecorderRef.current.state === "recording") {
-        try {
-          mediaRecorderRef.current.pause();
-          console.log("MediaRecorder paused because recording camera disconnected.");
-        } catch (e) {
-          console.error("Error pausing MediaRecorder:", e);
-        }
+        try { mediaRecorderRef.current.pause(); } catch (e) { }
       }
     } else {
       if (mediaRecorderRef.current.state === "paused") {
-        try {
-          mediaRecorderRef.current.resume();
-          console.log("MediaRecorder resumed because recording camera reconnected.");
-        } catch (e) {
-          console.error("Error resuming MediaRecorder:", e);
-        }
+        try { mediaRecorderRef.current.resume(); } catch (e) { }
       }
     }
   }, [cameraConnectionError]);
@@ -1989,7 +1831,6 @@ function InspectTab({
     return () => clearInterval(interval);
   }, [isRecording, cameraConnectionError]);
 
-  /** Push a blob into capturedImagesRef and optionally build a Shopify collage */
   const pushCapturedBlob = (
     blob: Blob,
     type: "box" | "lpn" | "product",
@@ -1998,7 +1839,6 @@ function InspectTab({
     capturedImagesRef.current!.push({ type, id: identifier, step: boxStep, blob });
 
     if (type === "product" && currentImageUrl && identifier) {
-      // Build side-by-side collage asynchronously
       const camImg = new Image();
       camImg.onload = () => {
         const shopifyImg = new Image();
@@ -2031,24 +1871,19 @@ function InspectTab({
             if (b) capturedImagesRef.current!.push({ type: "collage", id: identifier, blob: b });
           }, "image/jpeg", 0.88);
         };
-        shopifyImg.onerror = () => {};
+        shopifyImg.onerror = () => { };
         shopifyImg.src = currentImageUrl!;
       };
       camImg.src = URL.createObjectURL(blob);
     }
   };
 
-  const captureImage = (
-    type: "box" | "lpn" | "product",
-    identifier?: string,
-  ) => {
+  const captureImage = (type: "box" | "lpn" | "product", identifier?: string) => {
     setShutterFlash(true);
     setTimeout(() => setShutterFlash(false), 150);
 
     const doCapture = async () => {
       let rawBlob: Blob | null = null;
-
-      // ── Strategy 1: ImageCapture API (full sensor resolution) ──────────────
       if (imageCaptureRef.current) {
         try {
           const ic = imageCaptureRef.current;
@@ -2058,42 +1893,50 @@ function InspectTab({
               ? { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max }
               : {},
           );
-        } catch {
-          rawBlob = null;
-        }
+        } catch { rawBlob = null; }
       }
-
-      // ── Strategy 2: Snapshot from capture canvas ────────────────────────────
       if (!rawBlob) {
         const srcCanvas = capCanvasRef.current;
         if (!srcCanvas) return;
-        rawBlob = await new Promise<Blob | null>((res) =>
-          srcCanvas.toBlob(res, "image/jpeg", 0.92),
-        );
+        rawBlob = await new Promise<Blob | null>((res) => srcCanvas.toBlob(res, "image/jpeg", 0.92));
       }
-
       if (!rawBlob) return;
 
-      pushCapturedBlob(rawBlob, type, identifier);
+      setPreviewBlob(rawBlob);
+      setPreviewMeta({ type, id: identifier });
+      setPreviewDataUrl(URL.createObjectURL(rawBlob));
     };
 
     doCapture();
   };
 
+  const handleRetakePreview = () => {
+    if (previewDataUrl) URL.revokeObjectURL(previewDataUrl);
+    setPreviewDataUrl(null);
+    setPreviewBlob(null);
+    setPreviewMeta(null);
+  };
+
+  const handleConfirmPreview = () => {
+    if (previewBlob && previewMeta) {
+      pushCapturedBlob(previewBlob, previewMeta.type, previewMeta.id);
+    }
+    const type = previewMeta?.type;
+    handleRetakePreview();
+
+    if (type === "box") nextBoxStep();
+    else nextItemStep();
+  };
+
   const stopAndFinalizeRecording = () => {
     isOrderCompleteRef.current = true;
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state === "recording"
-    ) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
   };
 
-  const triggerXp = (amount: number) => {
-    // XP and gamification elements removed
-  };
+  const triggerXp = (amount: number) => { };
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2105,7 +1948,6 @@ function InspectTab({
       return;
     }
 
-    // ── Camera activity check ────────────────────────────────────────────────
     const isStreamActive = (stream: MediaStream | null) => {
       if (!stream) return false;
       const tracks = stream.getVideoTracks();
@@ -2114,89 +1956,45 @@ function InspectTab({
     };
 
     const isRecActive = isStreamActive(recStreamRef.current);
-    const isCapActive = dualCameraMode
-      ? isStreamActive(capStreamRef.current)
-      : isRecActive;
+    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current) : isRecActive;
 
     if (dualCameraMode) {
-      if (!isRecActive && !isCapActive) {
-        setStartError(t("Warning: Both cameras are inactive. Please connect cameras or allow access."));
-        return;
-      }
-      if (!isRecActive) {
-        setStartError(t("Warning: Recording camera is inactive. Please connect camera or allow access."));
-        return;
-      }
-      if (!isCapActive) {
-        setStartError(t("Warning: Capture camera is inactive. Please connect camera or allow access."));
-        return;
-      }
+      if (!isRecActive && !isCapActive) { setStartError(t("Warning: Both cameras are inactive.")); return; }
+      if (!isRecActive) { setStartError(t("Warning: Recording camera is inactive.")); return; }
+      if (!isCapActive) { setStartError(t("Warning: Capture camera is inactive.")); return; }
     } else {
-      if (!isRecActive) {
-        setStartError(t("Warning: Camera is inactive. Please connect camera or allow access."));
-        return;
-      }
+      if (!isRecActive) { setStartError(t("Warning: Camera is inactive.")); return; }
     }
 
     try {
-      const res = await fetch(
-        `/api/manifest/${encodeURIComponent(orderId.trim())}`,
-      );
+      const res = await fetch(`/api/manifest/${encodeURIComponent(orderId.trim())}`);
       if (res.ok) {
         const data = await res.json();
         const manifest = data.manifest;
 
-        if (!manifest) {
-          setStartError(t("This Order ID / Tracking ID is not found in the system."));
-          return;
-        }
-
-        if (manifest.status !== "IN_INSPECTION") {
-          setStartError(
-            t("This package is not active in your inspection stack. Take custody from the receiver before scanning.")
-          );
-          return;
-        }
-
-        if (manifest.inspection?.completedAt) {
-          setStartError(t("This package has already been inspected."));
-          return;
-        }
+        if (!manifest) { setStartError(t("This Order ID / Tracking ID is not found in the system.")); return; }
+        if (manifest.status !== "IN_INSPECTION") { setStartError(t("This package is not active in your inspection stack. Take custody from the receiver before scanning.")); return; }
+        if (manifest.inspection?.completedAt) { setStartError(t("This package has already been inspected.")); return; }
 
         setManifestId(manifest.id);
         setDisplayTrackingId(manifest.trackingId || "");
         setDisplayOrderId(manifest.removalOrderId || "");
 
         const resolvedOrderId = manifest.matchedOrderId || "";
-        const manifestOrderIds = Array.from(
-          new Set(
-            (manifest.returnItems || [])
-              .map((ri: any) => ri.orderId)
-              .filter(Boolean),
-          ),
-        );
+        const manifestOrderIds = Array.from(new Set((manifest.returnItems || []).map((ri: any) => ri.orderId).filter(Boolean)));
 
         if (!resolvedOrderId && manifestOrderIds.length > 1) {
-          setStartError(
-            t("This tracking ID contains multiple orders. Please scan the exact Order ID before inspection.")
-          );
+          setStartError(t("This tracking ID contains multiple orders. Please scan the exact Order ID before inspection."));
           return;
         }
 
-        const scopedReturnItems = (manifest.returnItems || []).filter((ri: any) =>
-          resolvedOrderId ? ri.orderId === resolvedOrderId : true,
-        );
+        const scopedReturnItems = (manifest.returnItems || []).filter((ri: any) => resolvedOrderId ? ri.orderId === resolvedOrderId : true);
 
         setActiveOrderPlatformId(resolvedOrderId || (manifestOrderIds[0] as string) || "");
         setExpectedLpnItems(
-          scopedReturnItems
-            .filter((ri: any) => ri.lpn)
-            .map((ri: any) => ({
-              lpn: String(ri.lpn).trim(),
-              orderId: ri.orderId,
-              sku: ri.sku,
-              quantity: ri.quantity,
-            })),
+          scopedReturnItems.filter((ri: any) => ri.lpn).map((ri: any) => ({
+            lpn: String(ri.lpn).trim(), orderId: ri.orderId, sku: ri.sku, quantity: ri.quantity,
+          })),
         );
 
         const totalExpected = manifest.totalExpectedQuantity || 1;
@@ -2205,9 +2003,7 @@ function InspectTab({
         const fnskuMap: Record<string, number> = {};
         if (manifest.expectedFnskus && Array.isArray(manifest.expectedFnskus)) {
           for (const item of manifest.expectedFnskus) {
-            if (item.fnsku) {
-              fnskuMap[String(item.fnsku).trim().toUpperCase()] = item.quantity || 0;
-            }
+            if (item.fnsku) fnskuMap[String(item.fnsku).trim().toUpperCase()] = item.quantity || 0;
           }
         }
         setExpectedFnskuQuantities(fnskuMap);
@@ -2224,15 +2020,11 @@ function InspectTab({
     triggerXp(50);
   };
 
-
   const nextBoxStep = () => {
     triggerXp(20);
     setBoxStep6Part(1);
-    if (boxStep < 8) {
-      setBoxStep((prev) => prev + 1);
-    } else {
-      setPhase("ITEM_INSPECTION");
-    }
+    if (boxStep < 8) setBoxStep((prev) => prev + 1);
+    else setPhase("ITEM_INSPECTION");
   };
 
   const nextItemStep = async () => {
@@ -2241,10 +2033,25 @@ function InspectTab({
       if (!ok) return;
     }
     triggerXp(30);
-    if (itemStep < 6) {
-      setItemStep((prev) => prev + 1);
-    } else {
-      console.warn("Item step out of bounds");
+    if (itemStep < 7) setItemStep((prev) => prev + 1);
+  };
+
+  // ── UNIFIED BACK NAVIGATION ──────────────────────────────────────────────────
+  const handleBack = () => {
+    if (phase === "ITEM_INSPECTION") {
+      if (itemStep > 1) {
+        setItemStep((prev) => prev - 1);
+      } else {
+        setPhase("BOX_EVIDENCE");
+        setBoxStep(BOX_STEPS.length);
+      }
+    } else if (phase === "BOX_EVIDENCE") {
+      if (boxStep === 6 && boxStep6Part === 2) {
+        setBoxStep6Part(1);
+      } else if (boxStep > 1) {
+        setBoxStep((prev) => prev - 1);
+        if (boxStep - 1 === 6) setBoxStep6Part(2);
+      }
     }
   };
 
@@ -2252,34 +2059,22 @@ function InspectTab({
 
   const confirmCurrentLpn = async () => {
     const scannedLpn = currentLpn.trim().toUpperCase();
-    if (!scannedLpn) {
-      setLpnScanError(t("Scan or type the LPN before continuing."));
-      return false;
-    }
-
-    if (scannedLpnsRef.current.has(scannedLpn)) {
-      setLpnScanError(t("This LPN has already been scanned for this order."));
-      return false;
-    }
+    if (!scannedLpn) { setLpnScanError(t("Scan or type the LPN before continuing.")); return false; }
+    if (scannedLpnsRef.current.has(scannedLpn)) { setLpnScanError(t("This LPN has already been scanned for this order.")); return false; }
 
     setIsValidatingLpn(true);
     setLpnScanError("");
 
     try {
-      const res = await fetch(
-        `/api/product/status?lpn=${encodeURIComponent(scannedLpn)}&orderId=${encodeURIComponent(activeOrderPlatformId)}`
-      );
-
+      const res = await fetch(`/api/product/status?lpn=${encodeURIComponent(scannedLpn)}&orderId=${encodeURIComponent(activeOrderPlatformId)}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setLpnScanError(data.error || t("LPN validation failed."));
         setIsValidatingLpn(false);
         return false;
       }
-
       const itemInfo = await res.json();
       const resolvedFnsku = String(itemInfo.fnsku || "").trim().toUpperCase();
-
       const remainingQty = expectedFnskuQuantities[resolvedFnsku] ?? 0;
 
       if (!(resolvedFnsku in expectedFnskuQuantities)) {
@@ -2287,24 +2082,16 @@ function InspectTab({
         setIsValidatingLpn(false);
         return false;
       }
-
       if (remainingQty <= 0) {
         setLpnScanError(t(`All expected units of this item (FNSKU: ${resolvedFnsku}) have already been scanned.`));
         setIsValidatingLpn(false);
         return false;
       }
 
-      // Decrement the local remaining quantity for this FNSKU
-      setExpectedFnskuQuantities(prev => ({
-        ...prev,
-        [resolvedFnsku]: remainingQty - 1
-      }));
-
-      // Store variant reference image and product info for visual verification & collage
+      setExpectedFnskuQuantities(prev => ({ ...prev, [resolvedFnsku]: remainingQty - 1 }));
       setCurrentImageUrl(itemInfo.imageUrl || null);
       setCurrentSku(itemInfo.sku || null);
       setCurrentProductName(itemInfo.productName || null);
-
       setCurrentLpn(scannedLpn);
       setLpnScanError("");
       setIsValidatingLpn(false);
@@ -2318,45 +2105,16 @@ function InspectTab({
 
   const CLAIM_REASONS = [
     {
-      id: "damaged_used",
-      label: t("I received damaged/ used item(s)"),
-      subReasons: [
-        { value: "heavily_damaged", label: t("Item(s) heavily damaged") },
-        {
-          value: "minor_damages",
-          label: t("Item(s) with minor damages/dents/scratches"),
-        },
-        {
-          value: "packaging_damaged",
-          label: t("Only product packaging damaged"),
-        },
-      ],
+      id: "damaged_used", label: t("I received damaged/ used item(s)"),
+      subReasons: [{ value: "heavily_damaged", label: t("Item(s) heavily damaged") }, { value: "minor_damages", label: t("Item(s) with minor damages/dents/scratches") }, { value: "packaging_damaged", label: t("Only product packaging damaged") }],
     },
     {
-      id: "different_empty",
-      label: t("I received different item or empty box"),
-      subReasons: [
-        { value: "different_junk", label: t("Different/junk item received") },
-        { value: "empty_box", label: t("Empty box received") },
-        {
-          value: "fake_counterfeit",
-          label: t("Fake/ replica/ counterfeit item received"),
-        },
-      ],
+      id: "different_empty", label: t("I received different item or empty box"),
+      subReasons: [{ value: "different_junk", label: t("Different/junk item received") }, { value: "empty_box", label: t("Empty box received") }, { value: "fake_counterfeit", label: t("Fake/ replica/ counterfeit item received") }],
     },
     {
-      id: "missing_quantity",
-      label: "I received removal order with missing quantity/ accessories/parts",
-      subReasons: [
-        {
-          value: "missing_parts",
-          label: "Missing parts/accessories/components",
-        },
-        {
-          value: "missing_main_item",
-          label: "Missing main item",
-        },
-      ],
+      id: "missing_quantity", label: "I received removal order with missing quantity/ accessories/parts",
+      subReasons: [{ value: "missing_parts", label: "Missing parts/accessories/components" }, { value: "missing_main_item", label: "Missing main item" }],
     },
   ];
 
@@ -2364,23 +2122,13 @@ function InspectTab({
     triggerXp(100);
     setCurrentCategory(cat);
     if (cat === "BAD") {
-      // Do NOT write lpnConditionsRef yet — wait for claim reason + subreason selection
-      setShowDefectDropdown(true);
-      setShowRecoveryDropdown(false);
-      setSelectedClaimReason(null);
-      setSelectedClaimSubReason(null);
+      setShowDefectDropdown(true); setShowRecoveryDropdown(false); setSelectedClaimReason(null); setSelectedClaimSubReason(null);
     } else if (cat === "RECOVERY") {
       lpnConditionsRef.current[currentLpn] = "PACKAGING_DAMAGED";
-      setShowDefectDropdown(false);
-      setShowRecoveryDropdown(true);
-      setSelectedClaimReason(null);
-      setSelectedClaimSubReason(null);
+      setShowDefectDropdown(false); setShowRecoveryDropdown(true); setSelectedClaimReason(null); setSelectedClaimSubReason(null);
     } else {
       lpnConditionsRef.current[currentLpn] = "GOOD_SELLABLE";
-      setShowDefectDropdown(false);
-      setShowRecoveryDropdown(false);
-      setSelectedClaimReason(null);
-      setSelectedClaimSubReason(null);
+      setShowDefectDropdown(false); setShowRecoveryDropdown(false); setSelectedClaimReason(null); setSelectedClaimSubReason(null);
       delete lpnRecoveryTypesRef.current[currentLpn];
       nextItemStep();
     }
@@ -2395,8 +2143,6 @@ function InspectTab({
   const handleDefectSelected = (reason: string, subReason: string) => {
     setSelectedClaimReason(reason);
     setSelectedClaimSubReason(subReason);
-    // Encode claim details into lpnConditionsRef using bad:REASON::SUBREASON format.
-    // The finalize and evaluate routes parse this prefix to extract claimReason + claimSubReason.
     lpnConditionsRef.current[currentLpn] = `bad:${reason}::${subReason}`;
     setShowDefectDropdown(false);
     nextItemStep();
@@ -2404,23 +2150,13 @@ function InspectTab({
 
   const handleBinning = () => {
     const finalizedLpn = currentLpn;
-    const finalizedCondition = finalizedLpn
-      ? lpnConditionsRef.current[finalizedLpn]
-      : undefined;
+    const finalizedCondition = finalizedLpn ? lpnConditionsRef.current[finalizedLpn] : undefined;
 
     if (finalizedLpn && finalizedCondition) {
       void fetch("/api/product/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lpn: finalizedLpn,
-          condition: finalizedCondition,
-          orderPlatformId: activeOrderPlatformId,
-          recoveryType: finalizedLpn ? lpnRecoveryTypesRef.current[finalizedLpn] : undefined,
-        }),
-      }).catch((error) =>
-        console.error("[Live Product Status] failed:", error),
-      );
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lpn: finalizedLpn, condition: finalizedCondition, orderPlatformId: activeOrderPlatformId, recoveryType: finalizedLpn ? lpnRecoveryTypesRef.current[finalizedLpn] : undefined }),
+      }).catch((error) => console.error("[Live Product Status] failed:", error));
     }
 
     triggerXp(50);
@@ -2438,161 +2174,68 @@ function InspectTab({
     setCurrentProductName(null);
     setItemStep(1);
 
-    if (newProcessed >= expectedItems) {
-      stopAndFinalizeRecording();
-    }
+    if (newProcessed >= expectedItems) stopAndFinalizeRecording();
   };
 
-  const handleMissing = () => {
-    stopAndFinalizeRecording();
-    setMissingAcknowledged(true);
-  };
+  const handleMissing = () => { stopAndFinalizeRecording(); setMissingAcknowledged(true); };
 
   const BOX_STEPS = [
-    {
-      id: 1,
-      title: "Top Side",
-      desc: "Just a plain image showing no rotation. Lay the box flat and center the top face in the camera frame.",
-      sampleImg: "/samples/1.png",
-    },
-    {
-      id: 2,
-      title: "Bottom Side",
-      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
-      sampleImg: "/samples/234.png",
-    },
-    {
-      id: 3,
-      title: "Front Side",
-      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
-      sampleImg: "/samples/234.png",
-    },
-    {
-      id: 4,
-      title: "Back Side",
-      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
-      sampleImg: "/samples/234.png",
-    },
-    {
-      id: 5,
-      title: "Left Side",
-      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
-      sampleImg: "/samples/566.png",
-    },
-    {
-      id: 6,
-      title: "Right Side",
-      desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.",
-      sampleImg: "/samples/566.png",
-    },
-    {
-      id: 7,
-      title: "Delivery Label",
-      desc: "Hold the DELIVERY LABEL clearly to the camera. All text must be readable. Ensure AWB matches scanned number.",
-      sampleImg: null,
-    },
-    {
-      id: 8,
-      title: "Open Box & Contents",
-      desc: "Open the box completely and capture a clear image of the contents inside the box. Ensure all items are visible.",
-      sampleImg: null,
-    },
+    { id: 1, title: "Top Side", desc: "Just a plain image showing no rotation. Lay the box flat and center the top face in the camera frame.", sampleImg: "/samples/1.png" },
+    { id: 2, title: "Bottom Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
+    { id: 3, title: "Front Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
+    { id: 4, title: "Back Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
+    { id: 5, title: "Left Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/566.png" },
+    { id: 6, title: "Right Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/566.png" },
+    { id: 7, title: "Delivery Label", desc: "Hold the DELIVERY LABEL clearly to the camera. All text must be readable. Ensure AWB matches scanned number.", sampleImg: null },
+    { id: 8, title: "Open Box & Contents", desc: "Open the box completely and capture a clear image of the contents inside the box. Ensure all items are visible.", sampleImg: null },
   ];
 
   const ITEM_STEPS = [
-    {
-      id: 1,
-      title: "Scan Item LPN",
-      instruction:
-        "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the order before proceeding.",
-    },
-    {
-      id: 2,
-      title: "Capture LPN Photo",
-      instruction:
-        "Point the camera at the LPN label on the item. Keep the LPN label in the RIGHT HALF of the frame. Hold steady and capture.",
-      sampleImg: "/samples/inspector_lpn_scan.png",
-    },
-    {
-      id: 3,
-      title: "Testing Instructions",
-      instruction:
-        "Perform the physical product check below before capturing the image. Ensure no step is skipped.",
-    },
-    {
-      id: 4,
-      title: "Capture Product Image",
-      instruction:
-        "Place the product in the RIGHT HALF of the camera frame. Capture all visible sides — scratches, dents, missing parts must be visible.",
-      sampleImg: "/samples/inspector_product_photo.png",
-    },
-    {
-      id: 5,
-      title: "Categorize Condition",
-      instruction:
-        "Based on your physical test and visual inspection, select the correct condition grade. This determines the bin the item goes into.",
-    },
-    {
-      id: 6,
-      title: "Physical Binning",
-      instruction:
-        "Place the item into the labelled bin shown below. Confirm once placed — this cannot be undone without a supervisor override.",
-    },
+    { id: 1, title: "Scan Item LPN", instruction: "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the order before proceeding." },
+    { id: 2, title: "Product Verification", instruction: "Verify that the scanned LPN matches the expected product details shown below before continuing with inspection." },
+    { id: 3, title: "Capture LPN Photo", instruction: "Point the camera at the LPN label on the item. Keep the LPN label in the RIGHT HALF of the frame. Hold steady and capture.", sampleImg: "/samples/inspector_lpn_scan.png" },
+    { id: 4, title: "Testing Instructions", instruction: "Perform the physical product check below before capturing the image. Ensure no step is skipped." },
+    { id: 5, title: "Capture Product Image", instruction: "Place the product in the RIGHT HALF of the camera frame. Capture all visible sides — scratches, dents, missing parts must be visible.", sampleImg: "/samples/inspector_product_photo.png" },
+    { id: 6, title: "Categorize Condition", instruction: "Based on your physical test and visual inspection, select the correct condition grade. This determines the bin the item goes into." },
+    { id: 7, title: "Physical Binning", instruction: "Place the item into the labelled bin shown below. Confirm once placed — this cannot be undone without a supervisor override." },
   ];
 
   return (
     <div className="absolute inset-0 z-40 flex flex-row bg-slate-900 select-none overflow-hidden text-slate-800">
+
       {/* ═══════════════════════════════════════════════════════════════════
            LEFT PANEL — Cameras
-           Top strip (30%): Recording camera + Product details
-           Main area (70%): Image capture camera (large, high-res)
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="w-[60%] bg-black flex flex-col border-r border-slate-800 shadow-2xl">
+      <div className="w-1/2 bg-black flex flex-col border-r border-slate-800 shadow-2xl">
+        <div className="h-1/2 flex shrink-0 border-b border-white/10 relative">
+          <div className="relative w-full overflow-hidden bg-black">
+            <video ref={recVideoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
+            <canvas ref={recCanvasRef} className="absolute inset-0 w-full h-full object-cover bg-black" />
 
-        {/* ── TOP STRIP: Recording camera + Product details ──────────────── */}
-        <div className="h-[30%] flex shrink-0 border-b border-white/10 relative">
-
-          {/* Recording camera feed */}
-          <div className="relative shrink-0 overflow-hidden bg-black" style={{ width: "50%" }}>
-            <video ref={recVideoRef} autoPlay playsInline muted
-              className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
-            <canvas ref={recCanvasRef}
-              className="absolute inset-0 w-full h-full object-cover bg-black" />
-
-            {/* REC badge */}
             <div className={`absolute top-2 left-2 backdrop-blur text-white px-2 py-1 text-[9px] font-black uppercase tracking-widest flex items-center space-x-1.5 rounded shadow-lg z-10 transition-colors duration-300 ${isRecording ? "bg-red-600/90" : "bg-slate-700/95"}`}>
               <div className={`w-2 h-2 rounded-full ${isRecording ? "bg-white animate-pulse" : "bg-slate-400"}`} />
               <span>{isRecording ? t("REC") : t("STANDBY")}</span>
             </div>
 
-            {/* Timer */}
             <div className="absolute top-2 right-2 bg-black/70 border border-white/20 text-white px-2 py-1 text-[10px] font-mono tracking-widest rounded flex items-center space-x-1.5 z-10">
               {isRecording && <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
               <span>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</span>
             </div>
 
+            {availableCameras.length > 0 && (
+              <button
+                onClick={() => setShowCameraSelector((v) => !v)}
+                className="absolute bottom-2 left-2 z-10 text-[8px] font-bold uppercase tracking-widest text-white/70 hover:text-white transition-colors border border-white/10 hover:border-white/20 bg-black/50 px-2 py-1 rounded"
+              >
+                {showCameraSelector ? "Hide" : "Configure"} Cameras
+              </button>
+            )}
 
-
-            {/* Camera label */}
-            <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
-              <VideoIcon size={9} />
-              <span>REC CAM</span>
-            </div>
-          </div>
-
-          {/* ── Product Details — lives here in dual-cam layout ──────────── */}
-          <div className="shrink-0 bg-slate-950 border-l border-white/10 flex flex-col overflow-hidden" style={{ width: "50%" }}>
-            <div className="px-3 pt-2 pb-1 border-b border-white/5 flex items-center shrink-0">
-              <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400">Product Reference</span>
-            </div>
-
-            {/* Camera selector dropdown — shown when only 1 cam detected or in non-active phases */}
             {showCameraSelector && availableCameras.length >= 2 && (
-              <div className="px-3 py-2 bg-slate-900 border-b border-white/5 space-y-1 shrink-0 animate-in fade-in duration-200">
+              <div className="absolute left-2 bottom-10 z-20 w-64 bg-slate-950/95 border border-white/10 rounded-lg p-3 space-y-2 shadow-xl backdrop-blur animate-in fade-in duration-200">
                 <div className="flex items-center space-x-2">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">REC</span>
-                  <select value={recCameraId} onChange={(e) => setRecCameraId(e.target.value)}
-                    className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-0.5 focus:outline-none focus:border-[#FF6700]">
+                  <select value={recCameraId} onChange={(e) => setRecCameraId(e.target.value)} className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-1 focus:outline-none focus:border-[#FF6700]">
                     {availableCameras.map((c) => (
                       <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === imgCameraId}>
                         {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
@@ -2602,8 +2245,7 @@ function InspectTab({
                 </div>
                 <div className="flex items-center space-x-2">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">IMG</span>
-                  <select value={imgCameraId} onChange={(e) => setImgCameraId(e.target.value)}
-                    className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-0.5 focus:outline-none focus:border-[#FF6700]">
+                  <select value={imgCameraId} onChange={(e) => setImgCameraId(e.target.value)} className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-1 focus:outline-none focus:border-[#FF6700]">
                     {availableCameras.map((c) => (
                       <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === recCameraId}>
                         {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
@@ -2613,8 +2255,16 @@ function InspectTab({
                 </div>
               </div>
             )}
+            <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
+              <VideoIcon size={9} />
+              <span>REC CAM</span>
+            </div>
+          </div>
 
-            {/* Product details content */}
+          <div className="hidden shrink-0 bg-slate-950 border-l border-white/10 flex-col overflow-hidden" style={{ width: "50%" }}>
+            <div className="px-3 pt-2 pb-1 border-b border-white/5 flex items-center shrink-0">
+              <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400">Product Reference</span>
+            </div>
             {phase === "ITEM_INSPECTION" ? (
               <div className="flex-1 overflow-y-auto p-2">
                 {isValidatingLpn ? (
@@ -2656,57 +2306,53 @@ function InspectTab({
                 <p className="text-[8px] font-black uppercase tracking-widest text-white/20">
                   {phase === "START" ? "Awaiting Order" : "Box Evidence Phase"}
                 </p>
-                {availableCameras.length > 0 && (
-                  <button
-                    onClick={() => setShowCameraSelector((v) => !v)}
-                    className="mt-3 text-[8px] font-bold uppercase tracking-widest text-white/30 hover:text-white/60 transition-colors border border-white/10 hover:border-white/20 px-2 py-1 rounded">
-                    {showCameraSelector ? "Hide" : "Configure"} Cameras
-                  </button>
-                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* ── MAIN AREA: Image capture camera ────────────────────────────────── */}
+        {/* ── IMAGE CAPTURE CAMERA w/ PREVIEW OVERLAY ── */}
         <div className="flex-1 relative overflow-hidden bg-black">
-          <video ref={capVideoRef} autoPlay playsInline muted
-            className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
-          <canvas ref={capCanvasRef}
-            className="absolute inset-0 w-full h-full object-cover bg-black" />
+          <video ref={capVideoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
+          <canvas ref={capCanvasRef} className={`absolute inset-0 w-full h-full object-cover bg-black transition-opacity ${previewDataUrl ? "opacity-0" : "opacity-100"}`} />
           <canvas ref={hiddenCanvasRef} className="hidden" />
 
-          {/* Floating Swap Camera Button */}
+          {/* Captured Image Preview Overlay */}
+          {previewDataUrl && (
+            <img
+              src={previewDataUrl}
+              alt="Preview"
+              className="absolute inset-0 w-full h-full object-contain bg-slate-950 z-20 animate-in fade-in duration-200"
+            />
+          )}
+
           {dualCameraMode && (
             <button
               onClick={swapCameras}
               disabled={isSwitchingCameras}
               className="absolute top-4 right-4 z-30 bg-gradient-to-r from-[#FF6700] to-[#ff8c3b] hover:from-[#ff8c3b] hover:to-[#FF6700] active:scale-95 text-white disabled:opacity-40 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-full shadow-lg flex items-center space-x-2 transition-all border border-[#FF6700]/30"
-              title={t("Swap recording and image cameras")}
             >
               <SwitchCamera size={14} className={isSwitchingCameras ? "animate-spin" : ""} />
               <span>{isSwitchingCameras ? t("Switching...") : t("Swap Cameras")}</span>
             </button>
           )}
 
-          {/* Shutter flash */}
           {shutterFlash && (
             <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150" />
           )}
 
-          {/* Camera label badge */}
-          <div className="absolute bottom-3 left-3 z-10 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
+          <div className="absolute bottom-3 left-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
             <Camera size={10} />
             <span>{dualCameraMode ? "Image Cam" : "Camera"}</span>
           </div>
-
-
         </div>
-
       </div>
 
-      <div className="w-[40%] bg-white flex flex-col relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20">
-        <div className="bg-white border-b border-[#313079]/10 p-4 flex justify-between items-center shrink-0 shadow-sm relative">
+      {/* ═══════════════════════════════════════════════════════════════════
+           RIGHT PANEL — Workflow UI
+      ════════════════════════════════════════════════════════════════════ */}
+      <div className="w-1/2 bg-white flex flex-col relative shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20">
+        <div className="bg-white border-b border-[#313079]/10 p-4 flex justify-between items-center shrink-0 shadow-sm relative z-10">
           <div className="flex items-center space-x-2">
             <div className="bg-[#FF6700]/10 p-1.5 rounded text-[#FF6700]">
               <Box size={16} />
@@ -2748,11 +2394,7 @@ function InspectTab({
             <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
               To Begin Continuous Evidence
             </p>
-
-            <form
-              onSubmit={handleStart}
-              className="w-full flex flex-col space-y-4 max-w-sm"
-            >
+            <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
               <input
                 type="text"
                 placeholder={t("ENTER ORDER ID...")}
@@ -2778,512 +2420,451 @@ function InspectTab({
           </div>
         )}
 
-        {phase === "BOX_EVIDENCE" && (
-          <div className="flex-1 flex flex-col p-6 animate-in fade-in duration-300 overflow-y-auto custom-scrollbar">
-            <div className="mb-6">
-              <h3 className="text-[10px] uppercase font-black tracking-widest text-[#FF6700] mb-1">
-                {t("Phase 1")}
-              </h3>
-              <h2 className="text-lg font-black uppercase tracking-widest text-[#313079]">
-                Box Evidence
-              </h2>
-            </div>
+        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (() => {
+          if (showMissingConfirm) {
+            return (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 bg-red-50/50 animate-in fade-in duration-300 text-center">
+                <div className="bg-red-100 p-4 rounded-full mb-6 text-red-600 border border-red-200 shadow-inner">
+                  <AlertTriangle size={48} />
+                </div>
+                <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-2">
+                  {t("Confirm Missing Items")}
+                </h2>
+                <p className="text-[#313079]/70 font-bold uppercase tracking-wider text-xs max-w-sm mb-8 leading-relaxed">
+                  {t("You are ending the inspection early. You acknowledge that no more items/products are left in the box.")}
+                </p>
+                <div className="bg-white border border-[#313079]/10 rounded-xl p-4 w-full max-w-sm text-left mb-8 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{t("Inspection Stats")}</p>
+                  <div className="flex justify-between text-xs font-bold text-[#313079]">
+                     <span>{t("Scanned Items:")}</span>
+                     <span>{itemsProcessed} / {expectedItems}</span>
+                  </div>
+                  <div className="flex justify-between text-xs font-bold text-[#313079]">
+                     <span>{t("Missing Items:")}</span>
+                     <span className="text-red-600 font-black">{expectedItems - itemsProcessed}</span>
+                  </div>
+                </div>
+                <div className="flex space-x-4 w-full max-w-sm">
+                  <button
+                    onClick={() => setShowMissingConfirm(false)}
+                    className="flex-1 min-h-12 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 text-slate-500 font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all active:scale-95 shadow-sm"
+                  >
+                    {t("Cancel")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMissingConfirm(false);
+                      handleMissing();
+                    }}
+                    className="flex-1 min-h-12 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-black uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex justify-center items-center space-x-2 border border-red-700"
+                  >
+                    <span>{t("Acknowledge & End")}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          }
 
-            <div className="flex-1 relative">
-              {BOX_STEPS.map((step, idx) => {
-                const isActive = boxStep === step.id;
-                const isCompleted = boxStep > step.id;
-                const isLast = idx === BOX_STEPS.length - 1;
+          const activeStepsList = phase === "BOX_EVIDENCE" ? BOX_STEPS : ITEM_STEPS;
+          const activeStepIndex = phase === "BOX_EVIDENCE" ? boxStep : itemStep;
+          const activeStepObj = phase === "BOX_EVIDENCE" ? BOX_STEPS[boxStep - 1] : ITEM_STEPS[itemStep - 1];
+          const activeBoxStepObj = phase === "BOX_EVIDENCE" ? BOX_STEPS[boxStep - 1] : null;
 
-                return (
-                  <div key={step.id} className="relative pl-8 pb-4">
-                    {!isLast && (
+          if (!activeStepObj) return null;
+
+          const instructionText = phase === "BOX_EVIDENCE"
+            ? activeBoxStepObj?.desc || ""
+            : "instruction" in activeStepObj
+              ? translateInstruction(activeStepObj.instruction || "", preferredLanguage)
+              : "";
+
+          const hideBottomRef = phase === "ITEM_INSPECTION" && [1, 2, 4, 6, 7].includes(activeStepObj.id);
+
+          return (
+            <div className="flex-1 flex flex-col overflow-hidden bg-white relative animate-in fade-in duration-300">
+
+              {/* ── PHASE HEADER & NODE PROGRESS BAR ────────────────────── */}
+              <div className="px-6 pt-1 pb-4 bg-slate-50 border-b border-[#313079]/10 shrink-0 shadow-sm z-10">
+                <h3 className="text-xs uppercase font-black tracking-widest text-[#313079]">
+                  {phase === "BOX_EVIDENCE" ? t("Phase 1: Box Evidence") : t("Phase 2: Product Verification")}
+                </h3>
+
+                <div className="mt-4 relative w-full h-2 flex items-center justify-between px-2">
+                  {/* Background progress line */}
+                  <div className="absolute left-2 right-2 top-1/2 -translate-y-1/2 h-[3px] bg-slate-200 z-0 rounded-full" />
+
+                  {/* Active progress line */}
+                  <div
+                    className="absolute left-2 top-1/2 -translate-y-1/2 h-[3px] bg-gradient-to-r from-[#FF6700] to-orange-500 z-0 transition-all duration-500 rounded-full shadow-[0_1px_2px_rgba(255,103,0,0.2)]"
+                    style={{ width: `calc(${((activeStepIndex - 1) / (activeStepsList.length - 1)) * 100}% - 16px)` }}
+                  />
+
+                  {/* Progress Nodes */}
+                  {activeStepsList.map((s, index) => {
+                    const stepNum = index + 1;
+                    const isCurrent = activeStepIndex === stepNum;
+                    const isPast = activeStepIndex > stepNum;
+
+                    return (
                       <div
-                        className={`absolute left-[11px] top-6 bottom-[-8px] w-[2px] ${isCompleted ? "bg-[#FF6700]/30" : "bg-[#313079]/10"}`}
-                      ></div>
-                    )}
+                        key={s.id}
+                        className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors duration-300 ${isCurrent
+                          ? "bg-[#FF6700] text-white ring-4 ring-orange-500/20 shadow-md"
+                          : isPast
+                            ? "bg-[#FF6700] text-white"
+                            : "bg-white border-2 border-slate-200 text-slate-400"
+                          }`}
+                      >
+                        {isPast ? <Check size={12} strokeWidth={4} /> : s.id}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                    <div
-                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${isCompleted
-                          ? "bg-[#313079] border-[#313079]"
-                          : isActive
-                            ? "bg-white border-[#FF6700] shadow-[0_0_8px_rgba(255,103,0,0.4)]"
-                            : "bg-white border-[#313079]/15"
-                        }`}
-                    >
-                      {isCompleted && (
-                        <Check
-                          size={12}
-                          strokeWidth={4}
-                          className="text-white"
-                        />
-                      )}
-                      {isActive && (
-                        <div className="w-2 h-2 bg-[#FF6700] rounded-full animate-pulse"></div>
-                      )}
-                    </div>
+              {/* ── SPLIT INSTRUCTIONS SECTION ─────────────────────── */}
+              <div className="flex-1 w-full flex flex-col min-h-0 shrink-0 bg-white">
 
-                    <div
-                      className={`text-sm font-bold uppercase tracking-wider transition-colors ${isActive ? "text-[#FF6700]" : isCompleted ? "text-[#313079]/60" : "text-[#313079]/40"}`}
-                    >
-                      {step.id}. {step.title}
-                    </div>
-
-                    {isActive && (
-                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="flex flex-col md:flex-row gap-4 items-stretch">
-                          {/* Left Side: Visual Guide / Image */}
-                          <div className="shrink-0">
-                            <StepVisualGuide step={step} />
-                          </div>
-
-                          {/* Right Side: Step Info & Actions */}
-                          <div className="flex-1 flex flex-col justify-between space-y-3">
-                            {step.id === 6 ? (
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                                  {step.desc}
-                                </p>
-                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-left">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700] mb-0.5 animate-pulse">
-                                    Rotation Step {boxStep6Part} of 2
-                                  </p>
-                                  <p className="text-xs font-bold text-orange-700 leading-normal">
-                                    {boxStep6Part === 1
-                                      ? "Rotate the box 90 degrees to check the first section of continuous seam tape."
-                                      : "Again rotate the box 90 degrees to inspect the second section of seam tape before capturing."
-                                    }
-                                  </p>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                                {step.desc}
-                              </p>
-                            )}
-                            {step.id === 6 && boxStep6Part === 1 ? (
-                              <button
-                                onClick={() => setBoxStep6Part(2)}
-                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all mt-auto"
-                              >
-                                <span>Next Rotation →</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  captureImage("box");
-                                  nextBoxStep();
-                                }}
-                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex items-center justify-center space-x-2 transition-all mt-auto"
-                              >
-                                <Camera size={16} /> <span>{t("Capture Image")}</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                {/* 1st Part: Instructions (Top) */}
+                <div className={`${hideBottomRef ? "h-full" : "h-[40%]"} w-full p-6 overflow-y-auto custom-scrollbar flex flex-col justify-between`}>
+                  <div className="space-y-6">
+                    {/* Items Processed Counter */}
+                    {phase === "ITEM_INSPECTION" && (
+                      <div className="flex justify-between items-center text-xs font-bold text-[#313079]/60 uppercase tracking-wider">
+                        <span>Items Processed:</span>
+                        <span className="font-mono text-[#313079] font-black">{itemsProcessed} / {expectedItems}</span>
                       </div>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {phase === "ITEM_INSPECTION" && (
-          <div className="flex-1 flex flex-col p-6 animate-in fade-in duration-300 overflow-y-auto custom-scrollbar">
-            <div className="mb-4 flex justify-between items-start border-b border-[#313079]/10 pb-4">
-              <div>
-                <h3 className="text-[10px] uppercase font-black tracking-widest text-[#FF6700] mb-1">
-                  {t("Phase 2")}
-                </h3>
-                <h2 className="text-lg font-black uppercase tracking-widest text-[#313079] leading-tight">
-                  Product Verification
-                </h2>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] uppercase font-bold tracking-widest text-[#313079]/50 mb-1">
-                  Items Processed
-                </p>
-                <p className="text-base font-black font-mono text-[#313079]">
-                  {itemsProcessed}{" "}
-                  <span className="text-[#313079]/40">/ {expectedItems}</span>
-                </p>
-              </div>
-            </div>
+                    <div className="space-y-4">
+                      {/* Big Instruction Text */}
+                      <p className="text-3xl font-black text-[#313079] leading-tight uppercase tracking-wide">
+                        {instructionText}
+                      </p>
 
-            <div className="flex-1 relative">
-              {ITEM_STEPS.map((step, idx) => {
-                const isActive = itemStep === step.id;
-                const isCompleted = itemStep > step.id;
-                const isLast = idx === ITEM_STEPS.length - 1;
+                      {/* Phase Specific Additions */}
+                      {/* {phase === "BOX_EVIDENCE" && activeStepObj.id === 7 && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-left">
+                          <p className="text-xs font-bold text-orange-700 leading-normal">
+                            {boxStep6Part === 1
+                              ? t("Rotate the box 90 degrees to check the first section of continuous seam tape.")
+                              : t("Again rotate the box 90 degrees to inspect the second section of seam tape before capturing.")
+                            }
+                          </p>
+                        </div>
+                      )} */}
 
-                return (
-                  <div key={step.id} className="relative pl-8 pb-4">
-                    {!isLast && (
-                      <div
-                        className={`absolute left-[11px] top-6 bottom-[-8px] w-[2px] ${isCompleted ? "bg-[#FF6700]/30" : "bg-[#313079]/10"}`}
-                      ></div>
-                    )}
-
-                    <div
-                      className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-colors ${isCompleted
-                          ? "bg-[#313079] border-[#313079]"
-                          : isActive
-                            ? "bg-white border-[#FF6700] shadow-[0_0_8px_rgba(255,103,0,0.4)]"
-                            : "bg-white border-[#313079]/15"
-                        }`}
-                    >
-                      {isCompleted && (
-                        <Check
-                          size={12}
-                          strokeWidth={4}
-                          className="text-white"
-                        />
+                      {phase === "ITEM_INSPECTION" && activeStepObj.id === 1 && (
+                        <div className="space-y-4 pt-2">
+                          <input
+                            type="text"
+                            placeholder="SCAN OR TYPE LPN..."
+                            value={currentLpn}
+                            onChange={(e) => {
+                              setCurrentLpn(e.target.value);
+                              setLpnScanError("");
+                            }}
+                            autoFocus
+                            className={`w-full min-h-12 bg-white border text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded-lg ${lpnScanError ? "border-red-400" : "border-[#313079]/20"}`}
+                          />
+                          {lpnScanError && (
+                            <p className="text-xs font-bold text-red-600 text-center uppercase tracking-wider">{lpnScanError}</p>
+                          )}
+                          {activeOrderPlatformId && (
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
+                              Order: {activeOrderPlatformId}
+                            </p>
+                          )}
+                        </div>
                       )}
-                      {isActive && (
-                        <div className="w-2 h-2 bg-[#FF6700] rounded-full animate-pulse"></div>
-                      )}
-                    </div>
 
-                    <div
-                      className={`text-sm font-bold uppercase tracking-wider transition-colors ${isActive ? "text-[#FF6700]" : isCompleted ? "text-[#313079]/60" : "text-[#313079]/40"}`}
-                    >
-                      {step.id}. {step.title}
-                    </div>
-
-                    {isActive && (
-                      <div className="mt-3 bg-white p-4 rounded-lg border border-[#FF6700]/20 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className={`flex ${"sampleImg" in step && step.sampleImg ? "flex-col md:flex-row gap-4" : "flex-col space-y-3"}`}>
-                          {"sampleImg" in step && step.sampleImg && (
-                            <div className="shrink-0">
-                              <div className="relative h-40 w-fit rounded-lg overflow-hidden border border-[#313079]/10 bg-slate-950/5 shadow-sm">
-                                <img
-                                  src={step.sampleImg}
-                                  alt="Reference sample"
-                                  className="h-full w-auto object-contain"
-                                />
-                                <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 text-white text-[10px] font-bold uppercase tracking-widest text-center py-1">
-                                  Reference Sample
+                      {phase === "ITEM_INSPECTION" && activeStepObj.id === 2 && (
+                        <div className="pt-2">
+                          <div className="rounded-2xl border border-[#313079]/10 bg-slate-50 p-4 shadow-sm">
+                            <div className="flex items-stretch gap-4 min-h-[280px]">
+                              <div className="w-1/2 shrink-0 rounded-xl border border-[#313079]/10 bg-white flex items-center justify-center overflow-hidden p-2">
+                                {currentImageUrl ? (
+                                  <img src={currentImageUrl} alt="Expected product" className="w-full h-full object-contain" />
+                                ) : (
+                                  <Box size={28} className="text-[#313079]/25" />
+                                )}
+                              </div>
+                              <div className="w-1/2 min-w-0 flex flex-col justify-between py-1">
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">{t("Product Details")}</p>
+                                  <p className="text-base font-black text-[#313079] leading-snug line-clamp-4">{currentProductName || t("Product name unavailable")}</p>
+                                </div>
+                                <div className="space-y-2 mt-4">
+                                  <div className="flex flex-col gap-1.5">
+                                    <span className="px-2 py-1 rounded border border-[#313079]/10 bg-white text-[10px] font-mono font-black text-[#313079] w-fit truncate">LPN: {currentLpn || "—"}</span>
+                                    <span className="px-2 py-1 rounded border border-[#313079]/10 bg-white text-[10px] font-mono font-black text-[#313079] w-fit truncate">SKU: {currentSku || "—"}</span>
+                                  </div>
+                                  <p className="text-xs font-bold text-[#313079]/70 uppercase tracking-wide leading-tight">
+                                    {t("Confirm the scanned product matches this expected item before continuing.")}
+                                  </p>
                                 </div>
                               </div>
                             </div>
-                          )}
-
-                          <div className="flex-1 flex flex-col space-y-3 justify-between">
-                            {"instruction" in step && step.instruction && (
-                              <p className="text-sm font-medium text-[#313079]/80 leading-relaxed">
-                                {translateInstruction(step.instruction, preferredLanguage)}
-                              </p>
-                            )}
-
-                            {step.id === 1 && (
-                              <div className="space-y-3">
-                                <input
-                                  type="text"
-                                  placeholder="SCAN OR TYPE LPN..."
-                                  value={currentLpn}
-                                  onChange={(e) => {
-                                    setCurrentLpn(e.target.value);
-                                    setLpnScanError("");
-                                  }}
-                                  autoFocus
-                                  className={`w-full min-h-12 bg-white border text-[#313079] px-4 py-2 text-center text-sm font-mono focus:outline-none focus:border-[#FF6700] uppercase rounded ${lpnScanError ? "border-red-400" : "border-[#313079]/20"
-                                    }`}
-                                />
-                                {lpnScanError && (
-                                  <p className="text-xs font-bold text-red-600 text-center">
-                                    {lpnScanError}
-                                  </p>
-                                )}
-                                {activeOrderPlatformId && (
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
-                                    Order: {activeOrderPlatformId}
-                                  </p>
-                                )}
-                                <button
-                                  onClick={nextItemStep}
-                                  disabled={!currentLpn.trim() || isValidatingLpn}
-                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-colors flex items-center justify-center space-x-2"
-                                >
-                                  {isValidatingLpn ? (
-                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                  ) : (
-                                    <span>LPN Confirmed →</span>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-
-                            {step.id === 2 && (
-                              <button
-                                onClick={() => {
-                                  captureImage("lpn", currentLpn);
-                                  nextItemStep();
-                                }}
-                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                              >
-                                <Camera size={16} /> <span>Capture LPN Photo</span>
-                              </button>
-                            )}
-
-                            {step.id === 3 && (
-                              <div className="space-y-3">
-                                <ul className="text-[#313079]/80 font-medium space-y-2 text-sm list-none">
-                                  <li className="flex items-start space-x-2">
-                                    <span className="text-[#FF6700] font-black mt-0.5">
-                                      ①
-                                    </span>
-                                    <span>
-                                      Inspect all corners and surfaces for scratches
-                                      or cracks.
-                                    </span>
-                                  </li>
-                                  <li className="flex items-start space-x-2">
-                                    <span className="text-[#FF6700] font-black mt-0.5">
-                                      ②
-                                    </span>
-                                    <span>
-                                      Verify all mechanical parts and buttons
-                                      move/click correctly.
-                                    </span>
-                                  </li>
-                                  <li className="flex items-start space-x-2">
-                                    <span className="text-[#FF6700] font-black mt-0.5">
-                                      ③
-                                    </span>
-                                    <span>
-                                      Confirm all accessories listed on the slip are
-                                      present.
-                                    </span>
-                                  </li>
-                                </ul>
-                                <button
-                                  onClick={nextItemStep}
-                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded"
-                                >
-                                  Testing Done →
-                                </button>
-                              </div>
-                            )}
-
-                            {step.id === 4 && (
-                              <button
-                                onClick={() => {
-                                  captureImage("product", currentLpn);
-                                  nextItemStep();
-                                }}
-                                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                              >
-                                <Camera size={16} />{" "}
-                                <span>Capture Product Image</span>
-                              </button>
-                            )}
-
-                            {step.id === 5 && !showDefectDropdown && !showRecoveryDropdown && (
-                              <div className="flex flex-col space-y-2">
-                                <button
-                                  onClick={() => handleCategory("GOOD")}
-                                  className="w-full min-h-12 bg-green-600 active:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                                >
-                                  <CheckCircle2 size={18} />{" "}
-                                  <span>{t("Good — Resellable")}</span>
-                                </button>
-                                <button
-                                  onClick={() => handleCategory("RECOVERY")}
-                                  className="w-full min-h-12 bg-[#FF6700] active:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                                >
-                                  <AlertTriangle size={18} />{" "}
-                                  <span>{t("Recovery — Minor Damage")}</span>
-                                </button>
-                                <button
-                                  onClick={() => handleCategory("BAD")}
-                                  className="w-full min-h-12 bg-red-600 active:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95"
-                                >
-                                  <AlertOctagon size={18} />{" "}
-                                  <span>{t("Bad — Unsalvageable")}</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {step.id === 5 && showRecoveryDropdown && (
-                              <div className="flex flex-col space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                                  <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">
-                                    {t("Select Recovery Type")}
-                                  </p>
-                                  <p className="text-[10px] text-orange-700 leading-relaxed font-bold">
-                                    Select the required recovery/refurbishment process for LPN {currentLpn}
-                                  </p>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <button
-                                    onClick={() => handleRecoverySelected("Barcode Damaged")}
-                                    className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                  >
-                                    <span className="flex-1 pr-2">
-                                      {t("Barcode Damaged")}
-                                    </span>
-                                    <ArrowRight
-                                      size={14}
-                                      className="text-orange-400 shrink-0"
-                                    />
-                                  </button>
-                                  <button
-                                    onClick={() => handleRecoverySelected("Packaging Damaged")}
-                                    className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                  >
-                                    <span className="flex-1 pr-2">
-                                      {t("Packaging Damaged")}
-                                    </span>
-                                    <ArrowRight
-                                      size={14}
-                                      className="text-orange-400 shrink-0"
-                                    />
-                                  </button>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    setShowRecoveryDropdown(false);
-                                    setCurrentCategory(null);
-                                  }}
-                                  className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
-                                >
-                                  {t("Back to Grade Selection")}
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Amazon Claim Defect Type Dropdown — appears when BAD is selected */}
-                            {step.id === 5 && showDefectDropdown && (
-                              <div className="flex flex-col space-y-3">
-                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                  <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">
-                                    {selectedClaimReason
-                                      ? "2) Select Claim Sub-Reason"
-                                      : "1) Select Claim Reason"}
-                                  </p>
-                                  <p className="text-[10px] text-red-600 leading-relaxed font-bold">
-                                    {selectedClaimReason
-                                      ? `Selected Reason: ${selectedClaimReason}`
-                                      : "Select the primary claim category matching Amazon's IDR portal"}
-                                  </p>
-                                </div>
-                                <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
-                                  {!selectedClaimReason
-                                    ? CLAIM_REASONS.map((cr) => (
-                                      <button
-                                        key={cr.id}
-                                        onClick={() =>
-                                          setSelectedClaimReason(cr.label)
-                                        }
-                                        className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                      >
-                                        <span className="flex-1 pr-2">
-                                          {cr.label}
-                                        </span>
-                                        <ArrowRight
-                                          size={14}
-                                          className="text-red-400 shrink-0"
-                                        />
-                                      </button>
-                                    ))
-                                    : CLAIM_REASONS.find(
-                                      (r) => r.label === selectedClaimReason,
-                                    )?.subReasons.map((csr) => (
-                                      <button
-                                        key={csr.value}
-                                        onClick={() =>
-                                          handleDefectSelected(
-                                            selectedClaimReason,
-                                            csr.label,
-                                          )
-                                        }
-                                        className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]"
-                                      >
-                                        <span className="flex-1 pr-2">
-                                          {csr.label}
-                                        </span>
-                                        <ArrowRight
-                                          size={14}
-                                          className="text-red-400 shrink-0"
-                                        />
-                                      </button>
-                                    ))}
-                                </div>
-                                <div className="flex space-x-2">
-                                  {selectedClaimReason ? (
-                                    <button
-                                      onClick={() => setSelectedClaimReason(null)}
-                                      className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors"
-                                    >
-                                      {t("Back to Reasons")}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => {
-                                        setShowDefectDropdown(false);
-                                        setCurrentCategory(null);
-                                      }}
-                                      className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors"
-                                    >
-                                      {t("Back to Grade Selection")}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {step.id === 6 && (
-                              <div className="flex flex-col items-center justify-center space-y-4 py-2">
-                                <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
-                                  <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">
-                                    {t("Place item in")}
-                                  </p>
-                                  <p
-                                    className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}
-                                  >
-                                    {currentCategory ? `${t(currentCategory)} BIN` : ""}
-                                  </p>
-                                </div>
-                                <button
-                                  onClick={handleBinning}
-                                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white text-sm font-black uppercase tracking-widest rounded flex justify-center items-center space-x-2 transition-all"
-                                >
-                                  <span>{t("Confirm Binning")}</span>
-                                  <ArrowRight size={18} />
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </div>
-                      </div>
+                      )}
+
+                      {phase === "ITEM_INSPECTION" && activeStepObj.id === 4 && (
+                        <ul className="text-[#313079]/80 font-bold space-y-4 text-2xl list-none pt-2 text-left uppercase tracking-wide">
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">1.</span><span>{t("Inspect all corners and surfaces for scratches or cracks.")}</span></li>
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">2.</span><span>{t("Verify all mechanical parts and buttons move/click correctly.")}</span></li>
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">3.</span><span>{t("Confirm all accessories listed on the slip are present.")}</span></li>
+                        </ul>
+                      )}
+
+                      {phase === "ITEM_INSPECTION" && activeStepObj.id === 6 && (
+                        <div className="space-y-4 pt-2">
+                          {!showDefectDropdown && !showRecoveryDropdown && (
+                            <div className="flex flex-col space-y-3">
+                              <button onClick={() => handleCategory("GOOD")} className="w-full min-h-12 bg-green-600 hover:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
+                                <CheckCircle2 size={18} /> <span>{t("Good - Resellable")}</span>
+                              </button>
+                              <button onClick={() => handleCategory("RECOVERY")} className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
+                                <AlertTriangle size={18} /> <span>{t("Recovery - Minor Damage")}</span>
+                              </button>
+                              <button onClick={() => handleCategory("BAD")} className="w-full min-h-12 bg-red-600 hover:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
+                                <AlertOctagon size={18} /> <span>{t("Bad - Unsalvageable")}</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {showRecoveryDropdown && (
+                            <div className="flex flex-col space-y-3 animate-in fade-in duration-200">
+                              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">{t("Select Recovery Type")}</p>
+                                <p className="text-[10px] text-orange-700 leading-relaxed font-bold">{t("Select the required recovery/refurbishment process for LPN")} {currentLpn}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <button onClick={() => handleRecoverySelected("Barcode Damaged")} className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
+                                  <span className="flex-1 pr-2">{t("Barcode Damaged")}</span>
+                                  <ArrowRight size={14} className="text-orange-400 shrink-0" />
+                                </button>
+                                <button onClick={() => handleRecoverySelected("Packaging Damaged")} className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
+                                  <span className="flex-1 pr-2">{t("Packaging Damaged")}</span>
+                                  <ArrowRight size={14} className="text-orange-400 shrink-0" />
+                                </button>
+                              </div>
+                              <button onClick={() => { setShowRecoveryDropdown(false); setCurrentCategory(null); }} className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors">
+                                {t("Back to Grade Selection")}
+                              </button>
+                            </div>
+                          )}
+
+                          {showDefectDropdown && (
+                            <div className="flex flex-col space-y-3">
+                              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">{selectedClaimReason ? t("2) Select Claim Sub-Reason") : t("1) Select Claim Reason")}</p>
+                                <p className="text-[10px] text-red-600 leading-relaxed font-bold">{selectedClaimReason ? `${t("Selected Reason:")} ${selectedClaimReason}` : t("Select the primary claim category matching Amazon's IDR portal")}</p>
+                              </div>
+                              <div className="space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                {!selectedClaimReason
+                                  ? CLAIM_REASONS.map((cr) => (
+                                    <button key={cr.id} onClick={() => setSelectedClaimReason(cr.label)} className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
+                                      <span className="flex-1 pr-2">{cr.label}</span>
+                                      <ArrowRight size={14} className="text-red-400 shrink-0" />
+                                    </button>
+                                  ))
+                                  : CLAIM_REASONS.find((r) => r.label === selectedClaimReason)?.subReasons.map((csr) => (
+                                    <button key={csr.value} onClick={() => handleDefectSelected(selectedClaimReason, csr.label)} className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
+                                      <span className="flex-1 pr-2">{csr.label}</span>
+                                      <ArrowRight size={14} className="text-red-400 shrink-0" />
+                                    </button>
+                                  ))}
+                              </div>
+                              <div className="flex space-x-2">
+                                {selectedClaimReason ? (
+                                  <button onClick={() => setSelectedClaimReason(null)} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors">{t("Back to Reasons")}</button>
+                                ) : (
+                                  <button onClick={() => { setShowDefectDropdown(false); setCurrentCategory(null); }} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors">{t("Back to Grade Selection")}</button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {phase === "ITEM_INSPECTION" && activeStepObj.id === 7 && (
+                        <div className="flex flex-col items-center justify-center space-y-4 py-2">
+                          <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
+                            <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">{t("Place item in")}</p>
+                            <p className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}>
+                              {currentCategory ? `${t(currentCategory)} BIN` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Safety Valve for Missing Items */}
+                  {phase === "ITEM_INSPECTION" && activeStepObj.id === 7 && itemsProcessed < expectedItems && (
+                    <button onClick={handleMissing} className="mt-6 w-full min-h-10 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 text-red-600 text-xs font-black uppercase tracking-widest flex items-center justify-center space-x-2 rounded transition-colors shrink-0">
+                      <AlertTriangle size={14} /> <span>{t("No Products Left in Box")}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 2nd Part: Image / Future Animation (Bottom) */}
+                {!hideBottomRef && (
+                  <div className="h-[60%] w-full flex items-center justify-center p-4 bg-slate-50 border-t border-[#313079]/10 shrink-0 relative">
+                    {phase === "BOX_EVIDENCE" && activeBoxStepObj ? (
+                      <StepVisualGuide
+                        step={activeBoxStepObj}
+                        className="w-full h-full max-w-sm mx-auto bg-slate-900 rounded-lg flex flex-col items-center justify-center relative overflow-hidden shadow-inner"
+                      />
+                    ) : (
+                      "sampleImg" in activeStepObj && activeStepObj.sampleImg ? (
+                        <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-[#313079]/10 bg-white flex items-center justify-center">
+                          <img src={activeStepObj.sampleImg} alt="Reference sample" className="max-w-full max-h-full object-contain" />
+                          <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 text-white text-[9px] font-bold uppercase tracking-widest text-center py-1">
+                            {t("Reference Sample")}
+                          </div>
+                        </div>
+                      ) : currentImageUrl ? (
+                        <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-[#313079]/10 bg-white flex items-center justify-center p-2">
+                          <img src={currentImageUrl} alt="Product reference" className="max-w-full max-h-full object-contain" />
+                          <div className="absolute bottom-0 left-0 right-0 bg-indigo-600/80 text-white text-[9px] font-bold uppercase tracking-widest text-center py-1">
+                            {t("Product Ref Image")}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-dashed border-[#313079]/20 bg-slate-100 flex flex-col items-center justify-center p-4 text-center">
+                          <Box size={24} className="text-[#313079]/30 mb-2" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#313079]/40">{t("No Reference Image")}</span>
+                        </div>
+                      )
                     )}
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
 
-            {/* Safety Valve */}
-            {itemsProcessed < expectedItems && (
-              <button
-                onClick={handleMissing}
-                className="w-full min-h-12 mt-6 bg-red-50 border-2 border-red-200 text-red-600 hover:bg-red-100 active:bg-red-200 text-xs font-black uppercase tracking-widest flex items-center justify-center space-x-2 rounded transition-colors shrink-0"
-              >
-                <AlertTriangle size={16} /> <span>No Products Left in Box</span>
-              </button>
-            )}
-          </div>
-        )}
+              {/* ── UNIFIED NAVIGATION & ACTION BAR (LOWER TAB) ─────────────────────── */}
+              <div className="h-12 w-full shrink-0 border-t border-[#313079]/10 bg-white flex items-center px-4 gap-4 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] z-30">
+
+                {/* LEFT BUTTON: Cancel / Back / Retake */}
+                <div className="w-[30%] h-full py-1">
+                  {(phase === "BOX_EVIDENCE" && activeStepIndex === 1 && !previewDataUrl) ? (
+                    <button
+                      onClick={resetProcess}
+                      className="w-full h-full bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase tracking-widest text-xs rounded-xl transition-all border border-red-200 flex items-center justify-center space-x-2 active:scale-95"
+                    >
+                      <X size={16} /> <span>{t("Cancel Inspection")}</span>
+                    </button>
+                  ) : previewDataUrl ? (
+                    <button
+                      onClick={handleRetakePreview}
+                      className="w-full h-full bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 rounded-xl font-extrabold uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all active:scale-95 shadow-sm"
+                    >
+                      <RefreshCw size={16} /> <span>{t("Retake")}</span>
+                    </button>
+                  ) : (phase === "ITEM_INSPECTION" && activeStepObj.id === 1) ? (
+                    <button
+                      onClick={() => setShowMissingConfirm(true)}
+                      className="w-full h-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-extrabold uppercase tracking-widest text-[10px] flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm"
+                    >
+                      <AlertTriangle size={14} /> <span>{t("No Item Left")}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleBack}
+                      className="w-full h-full bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-extrabold uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all active:scale-95 shadow-sm"
+                    >
+                      <ArrowLeft size={16} /> <span>{t("Back")}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* RIGHT BUTTON: Contextual Next / Action */}
+                <div className="w-[70%] h-full py-1">
+                  {previewDataUrl ? (
+                    <button
+                      onClick={handleConfirmPreview}
+                      className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white rounded-xl font-black uppercase tracking-widest text-sm shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2"
+                    >
+                      <CheckCircle2 size={18} /> <span>{t("Confirm & Next")}</span>
+                    </button>
+                  ) : (
+                    (() => {
+                      if (phase === "BOX_EVIDENCE") {
+                        if (activeStepObj.id === 6 && boxStep6Part === 1) {
+                          return (
+                            <button onClick={() => setBoxStep6Part(2)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
+                              <span>{t("Next Rotation ->")}</span>
+                            </button>
+                          );
+                        }
+                        return (
+                          <button onClick={() => captureImage("box")} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
+                            <Camera size={16} /> <span>{t("Capture Image")}</span>
+                          </button>
+                        );
+                      } else {
+                        // ITEM_INSPECTION phase handling
+                        if (activeStepObj.id === 1) {
+                          return (
+                            <button onClick={nextItemStep} disabled={!currentLpn.trim() || isValidatingLpn} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest disabled:bg-[#313079]/10 disabled:text-[#313079]/40 rounded-xl shadow-md transition-colors flex items-center justify-center space-x-2 active:scale-95">
+                              {isValidatingLpn ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <span>{t("LPN Confirmed ->")}</span>}
+                            </button>
+                          );
+                        } else if (activeStepObj.id === 2) {
+                          return (
+                            <button onClick={nextItemStep} disabled={!currentLpn.trim() || !currentSku} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest disabled:bg-[#313079]/10 disabled:text-[#313079]/40 rounded-xl shadow-md transition-colors flex items-center justify-center space-x-2 active:scale-95">
+                              <CheckCircle2 size={16} /> <span>{t("Product Verified ->")}</span>
+                            </button>
+                          );
+                        } else if (activeStepObj.id === 3) {
+                          return (
+                            <button onClick={() => captureImage("lpn", currentLpn)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
+                              <Camera size={16} /> <span>{t("Capture LPN Photo")}</span>
+                            </button>
+                          );
+                        } else if (activeStepObj.id === 4) {
+                          return (
+                            <button onClick={nextItemStep} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95">
+                              {t("Testing Done ->")}
+                            </button>
+                          );
+                        } else if (activeStepObj.id === 5) {
+                          return (
+                            <button onClick={() => captureImage("product", currentLpn)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
+                              <Camera size={16} /> <span>{t("Capture Product Image")}</span>
+                            </button>
+                          );
+                        } else if (activeStepObj.id === 6) {
+                          return (
+                            <div className="w-full h-full bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center px-4">
+                              <span className="text-xs font-bold uppercase tracking-wider text-[#313079]/40 text-center leading-normal">
+                                {showRecoveryDropdown ? t("Grade: Recovery Selected") : showDefectDropdown ? t("Grade: Bad (Claim Setup)") : t("Awaiting Grade Selection")}
+                              </span>
+                            </div>
+                          );
+                        } else if (activeStepObj.id === 7) {
+                          return (
+                            <button onClick={handleBinning} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
+                              <span>{t("Confirm Binning")}</span> <ArrowRight size={18} />
+                            </button>
+                          );
+                        }
+                      }
+                    })()
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {phase === "COMPLETED" && (
           <div className="flex-1 flex flex-col justify-center items-center p-8 bg-green-50 animate-in fade-in zoom-in-95 duration-300 text-center">
             <div className="bg-green-100 p-6 rounded-full mb-6 shadow-inner border-4 border-green-200">
               <CheckCircle2 size={64} className="text-green-600" />
             </div>
-            <h2 className="text-2xl font-black text-green-700 uppercase tracking-widest mb-3">
-              Order Complete
-            </h2>
+            <h2 className="text-2xl font-black text-green-700 uppercase tracking-widest mb-3">Order Complete</h2>
             <p className={`text-xs font-bold tracking-widest uppercase mb-10 bg-white px-4 py-2 rounded-full shadow-sm ${isUploading ? "text-amber-600 border border-amber-200" : "text-green-600 border border-green-200"}`}>
               {isUploading ? "Uploading evidence to Drive..." : "Evidence successfully uploaded"}
             </p>
@@ -3291,50 +2872,26 @@ function InspectTab({
             {missingAcknowledged && (
               <div className="bg-[#FFF700]/15 border border-[#FFF700]/50 text-[#313079] p-4 rounded-lg mb-8 flex items-center space-x-3 w-full justify-center text-left">
                 <AlertTriangle size={20} className="shrink-0 text-[#FF6700]" />
-                <span className="font-bold uppercase tracking-wider text-xs">
-                  Missing items flagged for claims
-                </span>
+                <span className="font-bold uppercase tracking-wider text-xs">Missing items flagged for claims</span>
               </div>
             )}
 
             <button
               onClick={resetProcess}
               disabled={isUploading}
-              className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${isUploading
-                  ? "bg-gray-400 cursor-not-allowed text-gray-200"
-                  : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-transform active:scale-95"
-                }`}
+              className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${isUploading ? "bg-gray-400 cursor-not-allowed text-gray-200" : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-transform active:scale-95"}`}
             >
               {isUploading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>Uploading Evidence...</span>
-                </>
+                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div><span>Uploading Evidence...</span></>
               ) : (
-                <>
-                  <span>Process Next Order</span>
-                  <ArrowRight size={18} />
-                </>
+                <><span>Process Next Order</span><ArrowRight size={18} /></>
               )}
             </button>
           </div>
         )}
 
-        {/* Bottom Static Bar for Cancel Control */}
-        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (
-          <div className="bg-white border-t border-[#313079]/10 p-4 flex justify-between items-center shrink-0 shadow-[0_-4px_12px_rgba(0,0,0,0.03)] z-30">
-            <button
-              onClick={resetProcess}
-              className="bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs px-4 py-2.5 rounded-lg shadow-sm flex items-center space-x-2 transition-all border border-red-700"
-            >
-              <ArrowLeft size={12} />
-              <span>Cancel Inspection</span>
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Camera Offline Modal Overlay */}
       {phase !== "START" && cameraConnectionError && (cameraConnectionError === "REC_DISCONNECTED" || cameraConnectionError === "BOTH_DISCONNECTED") && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-6 animate-in fade-in duration-200">
           <div className="bg-white border-2 border-red-500 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center flex flex-col items-center space-y-6 transform scale-100 transition-all duration-300">
@@ -3342,28 +2899,18 @@ function InspectTab({
               <AlertOctagon size={48} />
             </div>
             <div>
-              <h3 className="text-xl font-black uppercase tracking-wider text-slate-900">
-                {t("Camera Offline")}
-              </h3>
+              <h3 className="text-xl font-black uppercase tracking-wider text-slate-900">{t("Camera Offline")}</h3>
               <p className="text-[#313079]/80 font-bold text-xs mt-3 leading-relaxed uppercase tracking-wider">
                 {dualCameraMode
-                  ? (cameraConnectionError === "BOTH_DISCONNECTED"
-                    ? t("Warning: Both cameras are inactive. Please connect cameras or allow access. Please restart the inspection again.")
-                    : t("Warning: Recording camera is inactive. Please connect camera or allow access. Please restart the inspection again."))
-                  : t("Warning: Camera is inactive. Please connect camera or allow access. Please restart the inspection again.")
-                }
+                  ? (cameraConnectionError === "BOTH_DISCONNECTED" ? t("Warning: Both cameras are inactive. Please restart the inspection.") : t("Warning: Recording camera is inactive. Please restart the inspection."))
+                  : t("Warning: Camera is inactive. Please restart the inspection.")}
               </p>
             </div>
-
             <button
-              onClick={() => {
-                resetProcess();
-                setCameraConnectionError(null);
-              }}
+              onClick={() => { resetProcess(); setCameraConnectionError(null); }}
               className="w-full min-h-12 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex justify-center items-center space-x-2 border border-red-700"
             >
-              <RefreshCw size={14} />
-              <span>{t("Restart Inspection")}</span>
+              <RefreshCw size={14} /><span>{t("Restart Inspection")}</span>
             </button>
           </div>
         </div>
@@ -3507,9 +3054,9 @@ function NotificationsTab() {
                 >
                   <div className="min-w-0 flex-1">
                     <span className={`inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded ${alert.level === 'L4' ? 'bg-red-100 text-red-700' :
-                        alert.level === 'L3' ? 'bg-red-50 text-red-600' :
-                          alert.level === 'L2' ? 'bg-orange-100 text-orange-700' :
-                            'bg-slate-100 text-slate-700'
+                      alert.level === 'L3' ? 'bg-red-50 text-red-600' :
+                        alert.level === 'L2' ? 'bg-orange-100 text-orange-700' :
+                          'bg-slate-100 text-slate-700'
                       }`}>
                       {alert.level} - {alert.type}
                     </span>
@@ -3595,3 +3142,4 @@ function NotificationsTab() {
     </div>
   );
 }
+

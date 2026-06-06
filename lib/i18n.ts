@@ -43,7 +43,7 @@ const UI_TRANSLATIONS: Record<string, string> = {
   "Admin: Contact the receiver to understand the delay.": "एडमिन: देरी को समझने के लिए रिसीवर से संपर्क करें।",
   "Admin: Contact the recovery team to determine the delay.": "एडमिन: देरी का पता लगाने के लिए रिकवरी टीम से संपर्क करें।",
   "Admin: Escalate to operations head if receiver is non-responsive.": "एडमिन: यदि रिसीवर उत्तरदायी नहीं है, तो ऑपरेशन्स प्रमुख को एस्केलेट करें।",
-  "Aegis System": "एजिस सिस्टम",
+  "Cubelelo ": "क्यूबेलैलो",
   "Again rotate the box 90 degrees to inspect the second section of seam tape before capturing.": "कैप्चर करने से पहले सीम टेप के दूसरे हिस्से का निरीक्षण करने के लिए फिर से बॉक्स को 90 डिग्री घुमाएं।",
   "ALERTS": "अलर्ट",
   "All Clear": "सब ठीक है",

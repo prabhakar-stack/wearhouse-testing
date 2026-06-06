@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { runExpectedTrackingJob } from '../lib/cron.ts';
 
 async function runOnce() {
-  console.log('🔄 Aegis System: Starting Manual Tracking Job Execution...');
+  console.log('🔄 Cubelelo: Starting Manual Tracking Job Execution...');
   try {
     const result = await runExpectedTrackingJob();
     console.log('✅ Manual Tracking Job Execution Success!');

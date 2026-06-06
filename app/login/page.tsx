@@ -142,7 +142,7 @@ export default function LoginPage() {
             <div className="w-9 h-9 bg-[#000000] border border-[#FF6700]/20 rounded shadow-md flex items-center justify-center hover:scale-105 transition-transform duration-300">
               <PackageSearch size={20} strokeWidth={2.5} className="text-[#FF6700]" />
             </div>
-            <span className="text-lg font-black tracking-[0.25em] uppercase text-[#313079]">{t("Aegis System")}</span>
+            <span className="text-lg font-black tracking-[0.25em] uppercase text-[#313079]">{t("Cubelelo")}</span>
           </div>
           <div className="flex items-center space-x-6">
             <LanguagePreference compact />
