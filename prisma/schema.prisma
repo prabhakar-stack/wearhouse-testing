@@ -119,7 +119,6 @@ model Evidence {
   claimReason     String?
   claimSubReason  String?
   createdAt       DateTime     @default(now())
-  status          String?
   manifest        Manifest?    @relation(fields: [manifestId], references: [id])
 }
 
