@@ -315,12 +315,13 @@ function chunkArray(items, size) {
  * Sync Removal Orders
  */
 async function syncRemovalOrders(rows) {
-  // console.log(`Syncing ${rows.length} Removal Orders...`);
-  let successCount = 0;
-
+  console.log(`Syncing ${rows.length} Removal Orders...`);
+  
+  // Deduplicate in memory first
+  const seen = new Set();
+  const uniqueRows = [];
   for (const rawRow of rows) {
     const mapped = mapRow(rawRow, REMOVAL_ORDER_FIELDS);
-
     if (!mapped.orderId) {
       console.log(
         `[WARN] Skipping Removal Order row without order-id:`,
@@ -328,34 +329,47 @@ async function syncRemovalOrders(rows) {
       );
       continue;
     }
-
-    try {
-      // ----------------------------------------------------
-      // [DATABASE LOAD POINT] Staging Table Insertion
-      // Target: AMZRemovalOrder (Staging/Raw Table)
-      // Operation: Upserting record using combined key orderId_sku
-      // ----------------------------------------------------
-      await prisma.aMZRemovalOrder.upsert({
-        where: { 
-          orderId_sku: { 
-            orderId: mapped.orderId, 
-            sku: mapped.sku 
-          } 
-        },
-        update: mapped,
-        create: mapped,
-      });
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to upsert Removal Order ${mapped.orderId}:`,
-        e.message,
-      );
+    const key = `${mapped.orderId}_${mapped.sku}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueRows.push(mapped);
     }
   }
-  // console.log(
-  //   `Successfully synced ${successCount}/${rows.length} Removal Orders.`,
-  // );
+
+  let successCount = 0;
+  const chunks = chunkArray(uniqueRows, 15);
+  for (const chunk of chunks) {
+    await Promise.all(
+      chunk.map(async (mapped) => {
+        try {
+          // ----------------------------------------------------
+          // [DATABASE LOAD POINT] Staging Table Insertion
+          // Target: AMZRemovalOrder (Staging/Raw Table)
+          // Operation: Upserting record using combined key orderId_sku
+          // ----------------------------------------------------
+          await prisma.aMZRemovalOrder.upsert({
+            where: { 
+              orderId_sku: { 
+                orderId: mapped.orderId, 
+                sku: mapped.sku 
+              } 
+            },
+            update: mapped,
+            create: mapped,
+          });
+          successCount++;
+        } catch (e) {
+          console.error(
+            `[ERROR] Failed to upsert Removal Order ${mapped.orderId}:`,
+            e.message,
+          );
+        }
+      })
+    );
+  }
+  console.log(
+    `Successfully synced ${successCount}/${rows.length} Removal Orders.`,
+  );
   return successCount;
 }
 
@@ -363,12 +377,13 @@ async function syncRemovalOrders(rows) {
  * Sync Removal Shipments
  */
 async function syncRemovalShipments(rows) {
-  // console.log(`Syncing ${rows.length} Removal Shipments...`);
-  let successCount = 0;
-
+  console.log(`Syncing ${rows.length} Removal Shipments...`);
+  
+  // Deduplicate in memory first
+  const seen = new Set();
+  const uniqueRows = [];
   for (const rawRow of rows) {
     const mapped = mapRow(rawRow, REMOVAL_SHIPMENT_FIELDS);
-
     if (!mapped.orderId && !mapped.sku) {
       console.log(
         `[WARN] Skipping Removal Shipment row without order-id and sku:`,
@@ -376,50 +391,63 @@ async function syncRemovalShipments(rows) {
       );
       continue;
     }
-
-    try {
-      // Avoid duplicates: check if a record with the same key fields already exists
-      const existing = await prisma.aMZRemovalShipment.findFirst({
-        where: {
-          orderId: mapped.orderId,
-          sku: mapped.sku,
-          trackingNumber: mapped.trackingNumber,
-          shipmentDate: mapped.shipmentDate,
-          shippedQuantity: mapped.shippedQuantity,
-        },
-      });
-
-      if (!existing) {
-        // ----------------------------------------------------
-        // [DATABASE LOAD POINT] Staging Table Insertion
-        // Target: AMZRemovalShipment (Staging/Raw Table)
-        // Operation: Creating new record since no duplicate was found
-        // ----------------------------------------------------
-        await prisma.aMZRemovalShipment.create({
-          data: mapped,
-        });
-      } else {
-        // ----------------------------------------------------
-        // [DATABASE LOAD POINT] Staging Table Update
-        // Target: AMZRemovalShipment (Staging/Raw Table)
-        // Operation: Updating existing record with matching key fields
-        // ----------------------------------------------------
-        await prisma.aMZRemovalShipment.update({
-          where: { id: existing.id },
-          data: mapped,
-        });
-      }
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to sync Removal Shipment order=${mapped.orderId} sku=${mapped.sku}:`,
-        e.message,
-      );
+    const key = `${mapped.orderId}_${mapped.sku}_${mapped.trackingNumber}_${mapped.shipmentDate?.getTime()}_${mapped.shippedQuantity}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueRows.push(mapped);
     }
   }
-  // console.log(
-  //   `Successfully synced ${successCount}/${rows.length} Removal Shipments.`,
-  // );
+
+  let successCount = 0;
+  const chunks = chunkArray(uniqueRows, 15);
+  for (const chunk of chunks) {
+    await Promise.all(
+      chunk.map(async (mapped) => {
+        try {
+          // Avoid duplicates: check if a record with the same key fields already exists
+          const existing = await prisma.aMZRemovalShipment.findFirst({
+            where: {
+              orderId: mapped.orderId,
+              sku: mapped.sku,
+              trackingNumber: mapped.trackingNumber,
+              shipmentDate: mapped.shipmentDate,
+              shippedQuantity: mapped.shippedQuantity,
+            },
+          });
+
+          if (!existing) {
+            // ----------------------------------------------------
+            // [DATABASE LOAD POINT] Staging Table Insertion
+            // Target: AMZRemovalShipment (Staging/Raw Table)
+            // Operation: Creating new record since no duplicate was found
+            // ----------------------------------------------------
+            await prisma.aMZRemovalShipment.create({
+              data: mapped,
+            });
+          } else {
+            // ----------------------------------------------------
+            // [DATABASE LOAD POINT] Staging Table Update
+            // Target: AMZRemovalShipment (Staging/Raw Table)
+            // Operation: Updating existing record with matching key fields
+            // ----------------------------------------------------
+            await prisma.aMZRemovalShipment.update({
+              where: { id: existing.id },
+              data: mapped,
+            });
+          }
+          successCount++;
+        } catch (e) {
+          console.error(
+            `[ERROR] Failed to sync Removal Shipment order=${mapped.orderId} sku=${mapped.sku}:`,
+            e.message,
+          );
+        }
+      })
+    );
+  }
+  console.log(
+    `Successfully synced ${successCount}/${rows.length} Removal Shipments.`,
+  );
   return successCount;
 }
 
@@ -427,12 +455,13 @@ async function syncRemovalShipments(rows) {
  * Sync Reimbursements
  */
 async function syncReimbursements(rows) {
-  // console.log(`Syncing ${rows.length} Reimbursements...`);
-  let successCount = 0;
-
+  console.log(`Syncing ${rows.length} Reimbursements...`);
+  
+  // Deduplicate in memory first
+  const seen = new Set();
+  const uniqueRows = [];
   for (const rawRow of rows) {
     const mapped = mapRow(rawRow, REIMBURSEMENT_FIELDS);
-
     if (!mapped.reimbursementId) {
       console.log(
         `[WARN] Skipping Reimbursement row without reimbursement-id:`,
@@ -440,29 +469,41 @@ async function syncReimbursements(rows) {
       );
       continue;
     }
-
-    try {
-      // ----------------------------------------------------
-      // [DATABASE LOAD POINT] Staging Table Insertion
-      // Target: AMZReimbursement (Staging/Raw Table)
-      // Operation: Upserting record using reimbursementId key
-      // ----------------------------------------------------
-      await prisma.aMZReimbursement.upsert({
-        where: { reimbursementId: mapped.reimbursementId },
-        update: mapped,
-        create: mapped,
-      });
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to upsert Reimbursement ${mapped.reimbursementId}:`,
-        e.message,
-      );
+    if (!seen.has(mapped.reimbursementId)) {
+      seen.add(mapped.reimbursementId);
+      uniqueRows.push(mapped);
     }
   }
-  // console.log(
-  //   `Successfully synced ${successCount}/${rows.length} Reimbursements.`,
-  // );
+
+  let successCount = 0;
+  const chunks = chunkArray(uniqueRows, 15);
+  for (const chunk of chunks) {
+    await Promise.all(
+      chunk.map(async (mapped) => {
+        try {
+          // ----------------------------------------------------
+          // [DATABASE LOAD POINT] Staging Table Insertion
+          // Target: AMZReimbursement (Staging/Raw Table)
+          // Operation: Upserting record using reimbursementId key
+          // ----------------------------------------------------
+          await prisma.aMZReimbursement.upsert({
+            where: { reimbursementId: mapped.reimbursementId },
+            update: mapped,
+            create: mapped,
+          });
+          successCount++;
+        } catch (e) {
+          console.error(
+            `[ERROR] Failed to upsert Reimbursement ${mapped.reimbursementId}:`,
+            e.message,
+          );
+        }
+      })
+    );
+  }
+  console.log(
+    `Successfully synced ${successCount}/${rows.length} Reimbursements.`,
+  );
   return successCount;
 }
 
@@ -470,12 +511,13 @@ async function syncReimbursements(rows) {
  * Sync Customer Returns
  */
 async function syncCustomerReturns(rows) {
-  // console.log(`Syncing ${rows.length} Customer Returns...`);
-  let successCount = 0;
-
+  console.log(`Syncing ${rows.length} Customer Returns...`);
+  
+  // Deduplicate in memory first
+  const seen = new Set();
+  const uniqueRows = [];
   for (const rawRow of rows) {
     const mapped = mapRow(rawRow, CUSTOMER_RETURN_FIELDS);
-
     if (!mapped.lpn) {
       console.log(
         `[WARN] Skipping Customer Return row without license-plate-number (lpn):`,
@@ -483,29 +525,41 @@ async function syncCustomerReturns(rows) {
       );
       continue;
     }
-
-    try {
-      // ----------------------------------------------------
-      // [DATABASE LOAD POINT] Staging Table Insertion
-      // Target: AMZCustomerReturn (Staging/Raw Table)
-      // Operation: Upserting record using LPN (License Plate Number)
-      // ----------------------------------------------------
-      await prisma.aMZCustomerReturn.upsert({
-        where: { lpn: mapped.lpn },
-        update: mapped,
-        create: mapped,
-      });
-      successCount++;
-    } catch (e) {
-      console.error(
-        `[ERROR] Failed to upsert Customer Return ${mapped.lpn}:`,
-        e.message,
-      );
+    if (!seen.has(mapped.lpn)) {
+      seen.add(mapped.lpn);
+      uniqueRows.push(mapped);
     }
   }
-  // console.log(
-  //   `Successfully synced ${successCount}/${rows.length} Customer Returns.`,
-  // );
+
+  let successCount = 0;
+  const chunks = chunkArray(uniqueRows, 15);
+  for (const chunk of chunks) {
+    await Promise.all(
+      chunk.map(async (mapped) => {
+        try {
+          // ----------------------------------------------------
+          // [DATABASE LOAD POINT] Staging Table Insertion
+          // Target: AMZCustomerReturn (Staging/Raw Table)
+          // Operation: Upserting record using LPN (License Plate Number)
+          // ----------------------------------------------------
+          await prisma.aMZCustomerReturn.upsert({
+            where: { lpn: mapped.lpn },
+            update: mapped,
+            create: mapped,
+          });
+          successCount++;
+        } catch (e) {
+          console.error(
+            `[ERROR] Failed to upsert Customer Return ${mapped.lpn}:`,
+            e.message,
+          );
+        }
+      })
+    );
+  }
+  console.log(
+    `Successfully synced ${successCount}/${rows.length} Customer Returns.`,
+  );
   return successCount;
 }
 
@@ -518,8 +572,8 @@ async function main() {
   console.log("\n[STAGE 1] Fetching and Staging Removal Orders...");
   const removalOrdersTSV = await fetchReportData(
     REMOVAL_ORDERS_REPORT_TYPE,
-    "removal_orders_0_30",
-    30,
+    "removal_orders_0_7",
+    7,
     0,
   );
   const removalOrderRows = parseTSV(removalOrdersTSV);
@@ -533,8 +587,8 @@ async function main() {
   console.log("\n[STAGE 2] Fetching and Staging Removal Shipments...");
   const removalShipmentsTSV = await fetchReportData(
     REMOVAL_SHIPMENTS_REPORT_TYPE,
-    "removal_shipments_0_30",
-    30,
+    "removal_shipments_0_7",
+    7,
     0,
   );
   const removalShipmentRows = parseTSV(removalShipmentsTSV);
@@ -549,8 +603,8 @@ async function main() {
   console.log("\n[STAGE 3] Fetching and Staging Reimbursements...");
   const reimbursementsTSV = await fetchReportData(
     REIMBURSEMENTS_REPORT_TYPE,
-    "reimbursements_0_30",
-    30,
+    "reimbursements_0_7",
+    7,
     0,
   );
   const reimbursementRows = parseTSV(reimbursementsTSV);
@@ -564,8 +618,8 @@ async function main() {
   console.log("\n[STAGE 4] Fetching and Staging Customer Returns...");
   const customerReturnsTSV = await fetchReportData(
     RETURNS_REPORT_TYPE,
-    "customer_returns_0_30",
-    30,
+    "customer_returns_0_7",
+    7,
     0,
   );
   const customerReturnRows = parseTSV(customerReturnsTSV);
