@@ -84,7 +84,8 @@ export function resolveManifestStatus(
     }
   }
 
-  if (dateStatus === "EXPECTED" && !normalized) {
+  // If the resolved dateStatus is EXPECTED, prioritize it and return EXPECTED directly
+  if (dateStatus === "EXPECTED") {
     return "EXPECTED";
   }
 
