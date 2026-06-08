@@ -163,6 +163,7 @@ model ItemStatus {
   manifestId         String?
   manifest           Manifest? @relation(fields: [manifestId], references: [id])
   createdAt          DateTime  @default(now())
+  isRefurbished      Boolean   @default(false)
 }
 
 model MissingItem {
