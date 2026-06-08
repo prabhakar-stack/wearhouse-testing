@@ -163,7 +163,7 @@ model ItemStatus {
   manifestId         String?
   manifest           Manifest? @relation(fields: [manifestId], references: [id])
   createdAt          DateTime  @default(now())
-  isRefurbished      Boolean   @default(false)
+  isRefurbished      Boolean   @default(false) @map("is_refurbished")
 }
 
 model MissingItem {
@@ -398,7 +398,7 @@ model SampleRecovery {
   sku           String
   damageType    String  @map("damage_type")
   status        String  @default("recovery")
-  isRefurbished Boolean @default(false)
+  isRefurbished Boolean @default(false) @map("is_refurbished")
 
   @@map("sample_recovery")
 }
