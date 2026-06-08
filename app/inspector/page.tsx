@@ -394,127 +394,6 @@ function StepVisualGuide({
     );
   };
 
-  const renderOrderSlip = () => {
-    return (
-      <svg viewBox="0 0 200 110" className="w-48 h-24 text-[#313079]/30">
-        <rect
-          x="55"
-          y="15"
-          width="90"
-          height="85"
-          rx="3"
-          fill="#475569"
-          stroke="#334155"
-          strokeWidth="1.5"
-        />
-        <rect x="85" y="10" width="30" height="12" rx="2" fill="#1e293b" />
-        <circle cx="100" cy="16" r="2" fill="#94a3b8" />
-        <rect x="62" y="22" width="76" height="72" rx="1" fill="#f8fafc" />
-        <rect x="70" y="30" width="40" height="4" fill="#FF6700" rx="0.5" />
-        <g opacity="0.8">
-          <rect
-            x="70"
-            y="42"
-            width="6"
-            height="6"
-            rx="1"
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="1"
-          />
-          <line
-            x1="80"
-            y1="45"
-            x2="120"
-            y2="45"
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M71,45 L73,47 L75,43"
-            stroke="#10b981"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-
-          <rect
-            x="70"
-            y="54"
-            width="6"
-            height="6"
-            rx="1"
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="1"
-          />
-          <line
-            x1="80"
-            y1="57"
-            x2="110"
-            y2="57"
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M71,57 L73,59 L75,55"
-            stroke="#10b981"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-
-          <rect
-            x="70"
-            y="66"
-            width="6"
-            height="6"
-            rx="1"
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="1"
-          />
-          <line
-            x1="80"
-            y1="69"
-            x2="125"
-            y2="69"
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M71,69 L73,71 L75,67"
-            stroke="#10b981"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </g>
-        <circle
-          cx="120"
-          cy="36"
-          r="10"
-          fill="#10b981"
-          className="animate-pulse"
-        />
-        <path
-          d="M116,36 L119,39 L124,33"
-          stroke="#ffffff"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        />
-      </svg>
-    );
-  };
-
   const renderBoxContentsPlaceholder = () => {
     return (
       <svg viewBox="0 0 200 110" className="w-48 h-24 text-[#313079]/30">
@@ -1541,10 +1420,10 @@ function InspectTab({
           recStream.getVideoTracks().forEach((track) => {
             track.onended = () => { checkCameraStreams(); };
           });
-          
+
           recCanvas.width = recVideo.videoWidth || 1920;
           recCanvas.height = recVideo.videoHeight || 1080;
-          
+
           await enumerateAvailableCameras();
         }
       } catch (err) {
@@ -1591,14 +1470,19 @@ function InspectTab({
       try {
         if (!mediaRecorderRef.current && recStreamRef.current) {
           const canvasStream = (recCanvas as any).captureStream(30);
-          const mr = new MediaRecorder(canvasStream, { mimeType: "video/webm" });
+
+          // ✅ FIX: Re-added videoBitsPerSecond to prevent Next.js from crashing with huge files
+          const mr = new MediaRecorder(canvasStream, {
+            mimeType: "video/webm",
+            videoBitsPerSecond: 250000
+          });
+
           mediaRecorderRef.current = mr;
           chunksRef.current = [];
           mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
-            // ⚠️ Read all values from refs — onstop is a stale closure (registered at camera-init time)
-            // so direct state reads (orderId, manifestId, etc.) would return the values from mount ("" / 0).
+            // ⚠️ Read all values from refs — onstop is a stale closure
             const activeOrderId = orderIdRef.current;
             const activeUserId = userIdRef.current || "";
             const activeUserRole = (typeof localStorage !== "undefined" ? localStorage.getItem("userRole") : null) || "INSPECTOR";
@@ -1772,15 +1656,19 @@ function InspectTab({
     let animFrameId: number = 0;
     const video = recVideoRef.current;
     const canvas = recCanvasRef.current;
-    
+
     if (isRecording && video && canvas && recStreamRef.current) {
       canvas.width = video.videoWidth || 1920;
       canvas.height = video.videoHeight || 1080;
       const ctx = canvas.getContext("2d");
-      
+
       if (ctx) {
         const draw = () => {
-          if (video.paused || video.ended) return;
+          // ✅ FIX: Do not permanently return if the video temporarily pauses or lags!
+          if (video.paused || video.ended) {
+            animFrameId = requestAnimationFrame(draw);
+            return;
+          }
           ctx.save();
           ctx.translate(canvas.width / 2, canvas.height / 2);
           ctx.rotate(Math.PI); // Rotate 180 degrees (shouldRotate)
@@ -1791,7 +1679,7 @@ function InspectTab({
         draw();
       }
     }
-    
+
     return () => {
       if (animFrameId) cancelAnimationFrame(animFrameId);
     };
@@ -1805,21 +1693,15 @@ function InspectTab({
     setTimeout(() => setIsSwitchingCameras(false), 1200);
   };
 
+  // ✅ FIX: Removed the "devicechange" listener to prevent the infinite WebRTC crash loop
   useEffect(() => {
     if (!isCameraActive) { setCameraConnectionError(null); return; }
     checkCameraStreams();
     const interval = setInterval(() => { checkCameraStreams(); }, 1000);
-    const handleDeviceChange = async () => {
-      await enumerateAvailableCameras();
-      forceCameraReinit();
-      checkCameraStreams();
-    };
-    navigator.mediaDevices?.addEventListener("devicechange", handleDeviceChange);
     return () => {
       clearInterval(interval);
-      navigator.mediaDevices?.removeEventListener("devicechange", handleDeviceChange);
     };
-  }, [isCameraActive, checkCameraStreams, enumerateAvailableCameras, forceCameraReinit]);
+  }, [isCameraActive, checkCameraStreams]);
 
   useEffect(() => {
     if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return;
@@ -2481,12 +2363,12 @@ function InspectTab({
                 <div className="bg-white border border-[#313079]/10 rounded-xl p-4 w-full max-w-sm text-left mb-8 space-y-2">
                   <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{t("Inspection Stats")}</p>
                   <div className="flex justify-between text-xs font-bold text-[#313079]">
-                     <span>{t("Scanned Items:")}</span>
-                     <span>{itemsProcessed} / {expectedItems}</span>
+                    <span>{t("Scanned Items:")}</span>
+                    <span>{itemsProcessed} / {expectedItems}</span>
                   </div>
                   <div className="flex justify-between text-xs font-bold text-[#313079]">
-                     <span>{t("Missing Items:")}</span>
-                     <span className="text-red-600 font-black">{expectedItems - itemsProcessed}</span>
+                    <span>{t("Missing Items:")}</span>
+                    <span className="text-red-600 font-black">{expectedItems - itemsProcessed}</span>
                   </div>
                 </div>
                 <div className="flex space-x-4 w-full max-w-sm">
@@ -2586,18 +2468,6 @@ function InspectTab({
                       <p className="text-3xl font-black text-[#313079] leading-tight uppercase tracking-wide">
                         {instructionText}
                       </p>
-
-                      {/* Phase Specific Additions */}
-                      {/* {phase === "BOX_EVIDENCE" && activeStepObj.id === 7 && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-left">
-                          <p className="text-xs font-bold text-orange-700 leading-normal">
-                            {boxStep6Part === 1
-                              ? t("Rotate the box 90 degrees to check the first section of continuous seam tape.")
-                              : t("Again rotate the box 90 degrees to inspect the second section of seam tape before capturing.")
-                            }
-                          </p>
-                        </div>
-                      )} */}
 
                       {phase === "ITEM_INSPECTION" && activeStepObj.id === 1 && (
                         <div className="space-y-4 pt-2">
@@ -3180,4 +3050,3 @@ function NotificationsTab() {
     </div>
   );
 }
-
