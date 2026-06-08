@@ -116,7 +116,12 @@ function parseTrackingData(trackingData: any, trackingNumber: string) {
   };
 }
 
-async function getShiprocketBearerToken() {
+export async function getShiprocketBearerToken(forceRefresh = false) {
+  if (forceRefresh) {
+    cachedToken = null;
+    cachedTokenSource = null;
+  }
+
   if (cachedToken) {
     return cachedToken;
   }
@@ -290,7 +295,7 @@ export async function fetchShiprocketTrackingSnapshot(
     throw new Error("Missing Shiprocket tracking identifiers.");
   }
 
-  const token = await getShiprocketBearerToken();
+  let token = await getShiprocketBearerToken();
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
@@ -300,8 +305,22 @@ export async function fetchShiprocketTrackingSnapshot(
         candidate,
         lookup.courierName,
       );
-    } catch (error) {
-      lastError = error as Error;
+    } catch (error: any) {
+      if (error?.message?.includes("401") || error?.message?.includes("Unauthorized")) {
+        try {
+          console.log("[Shiprocket Tracking] Token might be expired (401), attempting token refresh...");
+          token = await getShiprocketBearerToken(true);
+          return await requestTrackingSnapshot(
+            token,
+            candidate,
+            lookup.courierName,
+          );
+        } catch (retryError) {
+          lastError = retryError as Error;
+        }
+      } else {
+        lastError = error as Error;
+      }
     }
   }
 

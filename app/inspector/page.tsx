@@ -1209,13 +1209,70 @@ function InspectTab({
 
   // ── Camera selection state ──────────────────────────────────────────────────
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraPermissionState, setCameraPermissionState] = useState<"prompt" | "granted" | "denied">("prompt");
   const [recCameraId, setRecCameraId] = useState<string>("");
   const [imgCameraId, setImgCameraId] = useState<string>("");
+  
+  // Hydrate camera IDs from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRecCameraId(localStorage.getItem("recording_camera_id") || "");
+      setImgCameraId(localStorage.getItem("capture_camera_id") || "");
+    }
+  }, []);
+
+  const handleRecCameraChange = (id: string) => {
+    setRecCameraId(id);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("recording_camera_id", id);
+    }
+  };
+
+  const handleImgCameraChange = (id: string) => {
+    setImgCameraId(id);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("capture_camera_id", id);
+    }
+  };
+
   const recCameraIdRef = useRef(recCameraId);
   const imgCameraIdRef = useRef(imgCameraId);
   useEffect(() => { recCameraIdRef.current = recCameraId; }, [recCameraId]);
   useEffect(() => { imgCameraIdRef.current = imgCameraId; }, [imgCameraId]);
-  const [dualCameraMode, setDualCameraMode] = useState(false);
+  
+  const [dualCameraMode, setDualCameraMode] = useState(true);
+  useEffect(() => {
+    if (recCameraId && imgCameraId) {
+      setDualCameraMode(recCameraId !== imgCameraId);
+    }
+  }, [recCameraId, imgCameraId]);
+
+  const [recStreamLive, setRecStreamLive] = useState(false);
+  const [capStreamLive, setCapStreamLive] = useState(false);
+  const [showConfigPanel, setShowConfigPanel] = useState(true);
+  const [bootError, setBootError] = useState<string | null>(null);
+
+  const isCameraReady = !!recCameraId && !!imgCameraId && (recCameraId !== imgCameraId) && recStreamLive && capStreamLive;
+
+  let hardwareStatus = "";
+  if (!recCameraId || !imgCameraId) {
+    hardwareStatus = "Please select both cameras to configure.";
+  } else if (recCameraId === imgCameraId) {
+    hardwareStatus = "Recording and Capture cameras must be different.";
+  } else if (!recStreamLive && !capStreamLive) {
+    hardwareStatus = "Check Hardware: Both camera streams are offline.";
+  } else if (!recStreamLive) {
+    hardwareStatus = "Check Hardware: Recording camera stream is offline.";
+  } else if (!capStreamLive) {
+    hardwareStatus = "Check Hardware: Capture camera stream is offline.";
+  }
+
+  // Force back to configuration panel if cameras disconnect during Awaiting Order phase
+  useEffect(() => {
+    if (!isCameraReady && phase === "START") {
+      setShowConfigPanel(true);
+    }
+  }, [isCameraReady, phase]);
   const [isSwitchingCameras, setIsSwitchingCameras] = useState(false);
   const [showCameraSelector, setShowCameraSelector] = useState(false);
 
@@ -1339,18 +1396,64 @@ function InspectTab({
     }
   }, []);
 
-  useEffect(() => {
-    enumerateAvailableCameras();
+  const requestCameraPermission = useCallback(async () => {
+    try {
+      setCameraPermissionState("prompt");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraPermissionState("granted");
+      await enumerateAvailableCameras();
+    } catch (err: any) {
+      console.warn("Camera permission request failed:", err);
+      setCameraPermissionState("denied");
+    }
   }, [enumerateAvailableCameras]);
+
+  useEffect(() => {
+    if (!isCameraActive) return;
+
+    const checkPermission = async () => {
+      if (navigator.permissions && typeof navigator.permissions.query === "function") {
+        try {
+          const status = await navigator.permissions.query({ name: "camera" as any });
+          if (status.state === "granted") {
+            setCameraPermissionState("granted");
+            enumerateAvailableCameras();
+          } else if (status.state === "prompt") {
+            requestCameraPermission();
+          } else {
+            setCameraPermissionState("denied");
+          }
+
+          status.onchange = () => {
+            if (status.state === "granted") {
+              setCameraPermissionState("granted");
+              enumerateAvailableCameras();
+            } else if (status.state === "denied") {
+              setCameraPermissionState("denied");
+            }
+          };
+        } catch (e) {
+          requestCameraPermission();
+        }
+      } else {
+        requestCameraPermission();
+      }
+    };
+
+    checkPermission();
+  }, [isCameraActive, enumerateAvailableCameras, requestCameraPermission]);
 
   const startCameraStream = (
     deviceId: string,
     videoEl: HTMLVideoElement,
     constraints?: MediaTrackConstraints,
-  ): Promise<MediaStream> =>
-    navigator.mediaDevices
+  ): Promise<MediaStream> => {
+    console.log(`[Watchdog] [startCameraStream] BEFORE getUserMedia. Device ID: "${deviceId || 'default'}", Constraints:`, constraints);
+    return navigator.mediaDevices
       .getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId }, ...constraints } : constraints ?? { facingMode: "environment" } })
       .then((stream) => {
+        console.log(`[Watchdog] [startCameraStream] AFTER getUserMedia SUCCESS. Device ID: "${deviceId || 'default'}". Tracks:`, stream.getVideoTracks().map(t => ({ id: t.id, label: t.label, readyState: t.readyState })));
         videoEl.srcObject = stream;
         return new Promise<MediaStream>((resolve) => {
           videoEl.onloadedmetadata = () => {
@@ -1358,13 +1461,21 @@ function InspectTab({
             resolve(stream);
           };
         });
+      })
+      .catch((err) => {
+        console.error(`[Watchdog] [startCameraStream] AFTER getUserMedia ERROR. Device ID: "${deviceId || 'default'}". Error:`, err);
+        throw err;
       });
+  };
 
   const checkCameraStreams = useCallback(() => {
     if (!isCameraActive) {
       setCameraConnectionError(null);
+      setRecStreamLive(false);
+      setCapStreamLive(false);
       return;
     }
+
     const isStreamActive = (stream: MediaStream | null, expectedDeviceId?: string) => {
       if (!stream) return false;
       const tracks = stream.getVideoTracks();
@@ -1381,7 +1492,10 @@ function InspectTab({
     };
 
     const isRecActive = isStreamActive(recStreamRef.current, recCameraId);
-    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current, imgCameraId) : isRecActive;
+    const isCapActive = isStreamActive(capStreamRef.current, imgCameraId);
+
+    setRecStreamLive(isRecActive);
+    setCapStreamLive(isCapActive);
 
     if (dualCameraMode) {
       if (!isRecActive && !isCapActive) setCameraConnectionError("BOTH_DISCONNECTED");
@@ -1394,8 +1508,17 @@ function InspectTab({
     }
   }, [isCameraActive, dualCameraMode, recCameraId, imgCameraId]);
 
+  // Keep camera streams updated reactively
   useEffect(() => {
     if (!isCameraActive) return;
+    const interval = setInterval(() => {
+      checkCameraStreams();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isCameraActive, checkCameraStreams]);
+
+  useEffect(() => {
+    if (!isCameraActive || cameraPermissionState !== "granted") return;
     if (availableCameras.length === 0 && recCameraId === "") return;
     let cancelled = false;
 
@@ -1406,51 +1529,78 @@ function InspectTab({
       const capCanvas = capCanvasRef.current;
       if (!recVideo || !recCanvas) return;
 
+      // 3. Hard-Stop Safety: Explicitly stop any running stream and set to null before starting
+      console.log("[Watchdog] [Hard-Stop Safety] Explicitly stopping and resetting all active camera streams...");
       try {
-        const hasEndedTrack = recStreamRef.current && recStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
-        const hasWrongDevice = recStreamRef.current && recCameraId !== "" && recStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== recCameraId);
-        if (!recStreamRef.current || hasEndedTrack || hasWrongDevice) {
-          const recStream = await startCameraStream(
-            recCameraId,
-            recVideo,
-            { width: { ideal: 1920 }, height: { ideal: 1080 } },
-          );
-          if (cancelled) { recStream.getTracks().forEach((t) => t.stop()); return; }
-          recStreamRef.current = recStream;
-          recStream.getVideoTracks().forEach((track) => {
-            track.onended = () => { checkCameraStreams(); };
-          });
-
-          recCanvas.width = recVideo.videoWidth || 1920;
-          recCanvas.height = recVideo.videoHeight || 1080;
-
-          await enumerateAvailableCameras();
+        if (recStreamRef.current) {
+          console.log("[Watchdog] Stopping existing Recording stream tracks...");
+          recStreamRef.current.getTracks().forEach((t) => t.stop());
+          recStreamRef.current = null;
         }
-      } catch (err) {
-        console.error("Recording camera setup failed:", err);
+        if (capStreamRef.current) {
+          console.log("[Watchdog] Stopping existing Capture stream tracks...");
+          capStreamRef.current.getTracks().forEach((t) => t.stop());
+          capStreamRef.current = null;
+        }
+        imageCaptureRef.current = null;
+        setRecStreamLive(false);
+        setCapStreamLive(false);
+        console.log("[Watchdog] Hard-Stop Safety reset complete.");
+      } catch (cleanupErr) {
+        console.error("[Watchdog] Error during cleanup reset phase:", cleanupErr);
       }
 
+      // 4. Wrap the entire camera boot sequence in a single try...catch
       try {
+        // 1. Sequential Boot: Boot Recording camera first (ideal 1280x720 to reduce CPU/GPU load)
+        console.log(`[Watchdog] Booting Recording Camera: "${recCameraId}"`);
+        const recStream = await startCameraStream(
+          recCameraId,
+          recVideo,
+          { width: { ideal: 1280 }, height: { ideal: 720 } },
+        );
+        if (cancelled) { 
+          console.log("[Watchdog] Initialization cancelled during Recording Camera boot. Stopping tracks.");
+          recStream.getTracks().forEach((t) => t.stop()); 
+          return; 
+        }
+        recStreamRef.current = recStream;
+        recStream.getVideoTracks().forEach((track) => {
+          track.onended = () => { checkCameraStreams(); };
+        });
+
+        recCanvas.width = recVideo.videoWidth || 1280;
+        recCanvas.height = recVideo.videoHeight || 720;
+        console.log("[Watchdog] Recording Camera booted successfully.");
+
+        // Safety Stagger Delay of 500ms before starting the Capture camera
+        console.log("[Watchdog] Waiting 500ms safety stagger delay before starting Capture Camera...");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // 1. Sequential Boot: Boot Capture camera second (or clone Recording stream) (ideal 1080p instead of 4K to save resources)
         if (dualCameraMode && capVideo && capCanvas && imgCameraId) {
-          const hasEndedTrack = capStreamRef.current && capStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
-          const hasWrongDevice = capStreamRef.current && imgCameraId !== "" && capStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== imgCameraId);
-          if (!capStreamRef.current || hasEndedTrack || hasWrongDevice) {
-            const capStream = await startCameraStream(
-              imgCameraId,
-              capVideo,
-              { width: { ideal: 4096 }, height: { ideal: 2160 } },
-            );
-            if (cancelled) { capStream.getTracks().forEach((t) => t.stop()); return; }
-            capStreamRef.current = capStream;
-            capStream.getVideoTracks().forEach((track) => {
-              track.onended = () => { checkCameraStreams(); };
-            });
-            const track = capStream.getVideoTracks()[0];
-            if (track && typeof (window as any).ImageCapture !== "undefined") {
-              imageCaptureRef.current = new (window as any).ImageCapture(track);
-            }
+          console.log(`[Watchdog] Booting Capture Camera: "${imgCameraId}"`);
+          const capStream = await startCameraStream(
+            imgCameraId,
+            capVideo,
+            { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          );
+          if (cancelled) { 
+            console.log("[Watchdog] Initialization cancelled during Capture Camera boot. Stopping tracks.");
+            capStream.getTracks().forEach((t) => t.stop()); 
+            return; 
           }
+          capStreamRef.current = capStream;
+          capStream.getVideoTracks().forEach((track) => {
+            track.onended = () => { checkCameraStreams(); };
+          });
+          const track = capStream.getVideoTracks()[0];
+          if (track && typeof (window as any).ImageCapture !== "undefined") {
+            imageCaptureRef.current = new (window as any).ImageCapture(track);
+          }
+          console.log("[Watchdog] Capture Camera booted successfully.");
         } else if (!dualCameraMode && capVideo && capCanvas) {
+          console.log("[Watchdog] Cloning Recording stream for Capture view (Single Camera Mode)...");
           if (recStreamRef.current) {
             recVideo.onloadedmetadata = null;
             capVideo.srcObject = recStreamRef.current;
@@ -1462,20 +1612,30 @@ function InspectTab({
               imageCaptureRef.current = new (window as any).ImageCapture(track);
             }
           }
+          console.log("[Watchdog] Capture View setup complete (cloned stream).");
         }
-      } catch (err) {
-        console.error("Capture camera setup failed:", err);
+
+        checkCameraStreams();
+        setBootError(null);
+        console.log("[Watchdog] Sequential camera boot completed successfully.");
+      } catch (err: any) {
+        console.error("[Watchdog] CAMERA BOOT SEQUENCE FAILED:", err);
+        setBootError(err.message || String(err));
       }
 
       try {
         if (!mediaRecorderRef.current && recStreamRef.current) {
-          const canvasStream = (recCanvas as any).captureStream(30);
+          // ✅ Record directly from the raw camera MediaStream — eliminates the canvas draw loop
+          // and offloads encoding to hardware-accelerated browser codecs, preventing OOM crashes.
+          const recordingStream = recStreamRef.current;
 
-          // ✅ FIX: Re-added videoBitsPerSecond to prevent Next.js from crashing with huge files
-          const mr = new MediaRecorder(canvasStream, {
-            mimeType: "video/webm",
-            videoBitsPerSecond: 250000
-          });
+          // Pick the best supported codec at a low bitrate to stay within laptop memory limits
+          let options = { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: 200000 };
+          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: "video/webm", videoBitsPerSecond: 200000 };
+          }
+
+          const mr = new MediaRecorder(recordingStream, options);
 
           mediaRecorderRef.current = mr;
           chunksRef.current = [];
@@ -1651,39 +1811,10 @@ function InspectTab({
     }
   }, [phase]);
 
-  // ── Draw recording video feed onto canvas ONLY when recording is active ───────
-  useEffect(() => {
-    let animFrameId: number = 0;
-    const video = recVideoRef.current;
-    const canvas = recCanvasRef.current;
-
-    if (isRecording && video && canvas && recStreamRef.current) {
-      canvas.width = video.videoWidth || 1920;
-      canvas.height = video.videoHeight || 1080;
-      const ctx = canvas.getContext("2d");
-
-      if (ctx) {
-        const draw = () => {
-          // ✅ FIX: Do not permanently return if the video temporarily pauses or lags!
-          if (video.paused || video.ended) {
-            animFrameId = requestAnimationFrame(draw);
-            return;
-          }
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate(Math.PI); // Rotate 180 degrees (shouldRotate)
-          ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
-          ctx.restore();
-          animFrameId = requestAnimationFrame(draw);
-        };
-        draw();
-      }
-    }
-
-    return () => {
-      if (animFrameId) cancelAnimationFrame(animFrameId);
-    };
-  }, [isRecording]);
+  // ── Canvas draw loop removed: MediaRecorder now records directly from the camera stream ──
+  // The canvas + draw loop + captureStream pipeline was causing OOM STATUS_BREAKPOINT crashes
+  // because it ran a 60Hz rAF loop + GPU canvas compositing + VP8 software encoding simultaneously.
+  // Direct stream recording lets the browser use hardware-accelerated codecs instead.
 
   const swapCameras = async () => {
     if (!dualCameraMode || isSwitchingCameras) return;
@@ -1853,30 +1984,8 @@ function InspectTab({
       return;
     }
 
-    const isStreamActive = (stream: MediaStream | null) => {
-      if (!stream) return false;
-      const tracks = stream.getVideoTracks();
-      if (tracks.length === 0) return false;
-      return tracks.some((track) => track.readyState === "live" && track.enabled);
-    };
-
-    const isRecActive = isStreamActive(recStreamRef.current);
-    const isCapActive = dualCameraMode ? isStreamActive(capStreamRef.current) : false;
-
-    if (!isRecActive && !isCapActive) {
-      setStartError(t("Warning: Both cameras are inactive. Please connect two different cameras and allow access."));
-      return;
-    }
-    if (!isRecActive) {
-      setStartError(t("Warning: Recording camera is inactive."));
-      return;
-    }
-    if (!isCapActive || !dualCameraMode) {
-      setStartError(t("Warning: Capture camera is inactive or not configured. Two different cameras must be active."));
-      return;
-    }
-    if (recCameraId === imgCameraId) {
-      setStartError(t("Warning: The same camera cannot be utilized for both recording and capture. Please configure different cameras."));
+    if (!isCameraReady) {
+      setStartError(t("Warning: Cameras are not ready. Please configure cameras correctly first."));
       return;
     }
 
@@ -2120,7 +2229,30 @@ function InspectTab({
       {/* ═══════════════════════════════════════════════════════════════════
            LEFT PANEL — Cameras
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="w-1/2 bg-black flex flex-col border-r border-slate-800 shadow-2xl">
+      <div className="w-1/2 bg-black flex flex-col border-r border-slate-800 shadow-2xl relative">
+        {cameraPermissionState === "denied" && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 p-8 text-center space-y-6 animate-in fade-in duration-200">
+            <div className="bg-red-500/10 p-4 rounded-full text-red-500 border border-red-500/20 shadow-inner">
+              <AlertOctagon size={48} />
+            </div>
+            <div className="space-y-2 max-w-sm">
+              <h3 className="text-lg font-black uppercase tracking-wider text-white">Camera Permission Blocked</h3>
+              <p className="text-white/60 font-bold text-xs uppercase tracking-wide leading-relaxed">
+                This website requires access to your camera to record video and take pictures of the box contents and products.
+              </p>
+              <p className="text-amber-500 text-[10px] font-black uppercase tracking-wider">
+                Please click the camera/permission icon in your browser's address bar, select "Allow", then click retry.
+              </p>
+            </div>
+            <button
+              onClick={requestCameraPermission}
+              className="px-6 py-2.5 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex items-center space-x-2 border border-[#FF6700]/20"
+            >
+              <RefreshCw size={12} />
+              <span>Retry Permission</span>
+            </button>
+          </div>
+        )}
         <div className="h-1/2 flex shrink-0 border-b border-white/10 relative">
           <div className="relative w-full overflow-hidden bg-black">
             <video
@@ -2145,36 +2277,11 @@ function InspectTab({
 
             {availableCameras.length > 0 && (
               <button
-                onClick={() => setShowCameraSelector((v) => !v)}
+                onClick={() => setShowConfigPanel((v) => !v)}
                 className="absolute bottom-2 left-2 z-10 text-[8px] font-bold uppercase tracking-widest text-white/70 hover:text-white transition-colors border border-white/10 hover:border-white/20 bg-black/50 px-2 py-1 rounded"
               >
-                {showCameraSelector ? "Hide" : "Configure"} Cameras
+                {showConfigPanel ? "Hide Config" : "Configure Cameras"}
               </button>
-            )}
-
-            {showCameraSelector && availableCameras.length >= 2 && (
-              <div className="absolute left-2 bottom-10 z-20 w-64 bg-slate-950/95 border border-white/10 rounded-lg p-3 space-y-2 shadow-xl backdrop-blur animate-in fade-in duration-200">
-                <div className="flex items-center space-x-2">
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">REC</span>
-                  <select value={recCameraId} onChange={(e) => setRecCameraId(e.target.value)} className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-1 focus:outline-none focus:border-[#FF6700]">
-                    {availableCameras.map((c) => (
-                      <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === imgCameraId}>
-                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-white/40 w-12">IMG</span>
-                  <select value={imgCameraId} onChange={(e) => setImgCameraId(e.target.value)} className="flex-1 bg-black border border-white/10 text-white text-[9px] rounded px-1.5 py-1 focus:outline-none focus:border-[#FF6700]">
-                    {availableCameras.map((c) => (
-                      <option key={c.deviceId} value={c.deviceId} disabled={c.deviceId === recCameraId}>
-                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             )}
             <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
               <VideoIcon size={9} />
@@ -2311,40 +2418,114 @@ function InspectTab({
         </div>
 
         {phase === "START" && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300 bg-[#FF6700]/5">
-            <div className="bg-[#FF6700]/10 p-4 rounded-full mb-6">
-              <ScanEye size={48} className="text-[#FF6700]" />
-            </div>
-            <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
-              Scan Order ID
-            </h2>
-            <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
-              To Begin Continuous Evidence
-            </p>
-            <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
-              <input
-                type="text"
-                placeholder={t("ENTER ORDER ID...")}
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                autoFocus
-                className="w-full min-h-12 bg-white border-2 border-[#313079]/20 text-[#313079] px-4 py-3 text-center text-lg font-mono focus:outline-none focus:border-[#FF6700] uppercase placeholder-[#313079]/30 rounded-lg shadow-inner transition-colors"
-              />
-              <button
-                type="submit"
-                disabled={!orderId.trim()}
-                className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
-              >
-                <span>Initialize</span>
-                <ArrowRight size={18} />
-              </button>
-              {startError && (
-                <div className="w-full text-red-600 text-xs font-black uppercase tracking-wider text-center bg-red-50 border-2 border-red-200 p-3 rounded-lg shadow-sm animate-in fade-in duration-200 mt-2">
-                  {startError}
+          showConfigPanel ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300 bg-slate-950 text-white">
+              <div className="bg-[#FF6700]/10 p-4 rounded-full mb-6">
+                <Camera size={48} className="text-[#FF6700]" />
+              </div>
+              <h2 className="text-xl font-black uppercase tracking-widest text-white mb-1 text-center">
+                Camera Configuration
+              </h2>
+              <p className="text-white/60 font-bold tracking-wider mb-8 uppercase text-xs">
+                Configure Recording & Capture Feeds
+              </p>
+
+              <div className="w-full max-w-sm space-y-4">
+                <div className="flex flex-col space-y-1.5 text-left">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/50">Recording Camera</label>
+                  <select 
+                    value={recCameraId} 
+                    onChange={(e) => handleRecCameraChange(e.target.value)} 
+                    className="w-full bg-black border border-white/10 text-white text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
+                  >
+                    <option value="">-- Select Recording Camera --</option>
+                    {availableCameras.map((c) => (
+                      <option key={c.deviceId} value={c.deviceId}>
+                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              )}
-            </form>
-          </div>
+
+                <div className="flex flex-col space-y-1.5 text-left">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/50">Capture Camera</label>
+                  <select 
+                    value={imgCameraId} 
+                    onChange={(e) => handleImgCameraChange(e.target.value)} 
+                    className="w-full bg-black border border-white/10 text-white text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
+                  >
+                    <option value="">-- Select Capture Camera --</option>
+                    {availableCameras.map((c) => (
+                      <option key={c.deviceId} value={c.deviceId}>
+                        {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Check Hardware Status Bar */}
+                {!isCameraReady && (
+                  <div className="w-full bg-red-600/90 text-white text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-500">
+                    {hardwareStatus || "Check Hardware: Setup incomplete"}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!isCameraReady}
+                  onClick={() => setShowConfigPanel(false)}
+                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-white/10 disabled:text-white/30 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
+                >
+                  <span>Proceed to Inspection</span>
+                  <ArrowRight size={18} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300 bg-[#FF6700]/5">
+              <div className="bg-[#FF6700]/10 p-4 rounded-full mb-6">
+                <ScanEye size={48} className="text-[#FF6700]" />
+              </div>
+              <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
+                Scan Order ID
+              </h2>
+              <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
+                To Begin Continuous Evidence
+              </p>
+              <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
+                <input
+                  type="text"
+                  placeholder={t("ENTER ORDER ID...")}
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  autoFocus
+                  className="w-full min-h-12 bg-white border-2 border-[#313079]/20 text-[#313079] px-4 py-3 text-center text-lg font-mono focus:outline-none focus:border-[#FF6700] uppercase placeholder-[#313079]/30 rounded-lg shadow-inner transition-colors"
+                />
+                
+                {/* Hide Initialize button and show Check Hardware status bar if cameras fail */}
+                {!isCameraReady ? (
+                  <div className="w-full bg-red-600/90 text-white text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-500">
+                    {hardwareStatus || "Check Hardware: Setup incomplete"}
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!orderId.trim() || !isCameraReady}
+                    className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
+                  >
+                    <span>Initialize</span>
+                    <ArrowRight size={18} />
+                  </button>
+                )}
+
+                {startError && (
+                  <div className="w-full text-red-600 text-xs font-black uppercase tracking-wider text-center bg-red-50 border-2 border-red-200 p-3 rounded-lg shadow-sm animate-in fade-in duration-200 mt-2">
+                    {startError}
+                  </div>
+                )}
+              </form>
+            </div>
+          )
         )}
 
         {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (() => {

@@ -14,6 +14,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Count total IN_INSPECTION manifests in the table for troubleshooting
+    const totalInInspection = await prisma.manifest.count({
+      where: {
+        status: 'IN_INSPECTION',
+      },
+    });
+
     // Fetch manifests that are IN_INSPECTION (taken over by this inspector)
     const ledger = await prisma.manifest.findMany({
       where: {
@@ -37,28 +44,44 @@ export async function GET(req: NextRequest) {
       orderBy: { receivedAt: 'desc' }
     });
 
+    // console.log(`[Ledger Audit] Total IN_INSPECTION manifests: ${totalInInspection}, Returned manifests for user ${user.email}: ${ledger.length}`);
+
+    // Batch fetch all removal shipments to solve the N+1 query problem and prevent DB connection exhaustion/timeouts
+    const allOrderIds = ledger.flatMap(item => (item.orders || []).map(o => o.platformOrderId).filter((id): id is string => !!id));
+    const allTrackingNumbers = ledger.flatMap(item => (item.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t));
+
+    const shipments = await prisma.aMZRemovalShipment.findMany({
+      where: {
+        OR: [
+          { orderId: { in: allOrderIds } },
+          { trackingNumber: { in: allTrackingNumbers } }
+        ]
+      },
+      select: {
+        id: true,
+        orderId: true,
+        trackingNumber: true,
+        shippedQuantity: true
+      }
+    });
+
     // Transform into the format the UI expects
-    // Since ReturnItem is decoupled, we will get the expected items count by looking at the AMZRemovalShipment expected quantities.
-    const formattedLedger = await Promise.all(ledger.map(async (item) => {
+    const formattedLedger = ledger.map((item) => {
       const firstOrder = item.orders?.[0];
       const marketplace = firstOrder?.marketplace || 'UNKNOWN';
       const orderId = firstOrder?.platformOrderId || item.trackingId;
       const isInspecting = item.status === 'IN_INSPECTION' && item.inspectedBy === user.email;
 
-      const orderIds = (item.orders || []).map(o => o.platformOrderId);
-      const trackingNumbers = (item.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
+      const itemOrderIds = new Set((item.orders || []).map(o => o.platformOrderId).filter((id): id is string => !!id));
+      const itemTrackingNumbers = new Set((item.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t));
 
-      const shipments = await prisma.aMZRemovalShipment.findMany({
-        where: {
-          OR: [
-            { orderId: { in: orderIds } },
-            { trackingNumber: { in: trackingNumbers } }
-          ]
-        },
-        select: { shippedQuantity: true }
-      });
+      // Filter batch-fetched shipments in memory for this ledger item
+      const matchedShipments = shipments.filter(s => 
+        (s.orderId && itemOrderIds.has(s.orderId)) ||
+        (s.trackingNumber && itemTrackingNumbers.has(s.trackingNumber))
+      );
 
-      const itemsExpected = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
+      const itemsExpected = matchedShipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
       return {
         id: item.id,
@@ -70,7 +93,7 @@ export async function GET(req: NextRequest) {
         itemsExpected: itemsExpected,
         itemsInspected: 0,
       };
-    }));
+    });
 
     return NextResponse.json({ ledger: formattedLedger });
   } catch (error: any) {

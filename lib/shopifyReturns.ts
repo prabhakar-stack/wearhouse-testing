@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import { prisma } from "./prisma.ts";
-import { fetchShiprocketTrackingSnapshot } from "./shiprocketTracking.ts";
+import { fetchShiprocketTrackingSnapshot, getShiprocketBearerToken } from "./shiprocketTracking.ts";
 
 const TRACKING_REFRESH_MS = 60 * 60 * 1000;
 
@@ -200,21 +200,37 @@ async function fetchShiprocketReturns() {
     process.env.SHIPROCKET_RETURNS_URL ||
     `${SHIPROCKET_BASE_URL}/v1/external/orders/processing/return`;
 
-  const token = process.env.SHIPROCKET_TOKEN;
   const tokenHeader = process.env.SHIPROCKET_TOKEN_HEADER || "Authorization";
   const tokenPrefix = process.env.SHIPROCKET_TOKEN_PREFIX || "Bearer ";
 
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers[tokenHeader] = `${tokenPrefix}${token}`;
-  }
+  const fetchRecords = async (token: string) => {
+    const headers: Record<string, string> = {
+      [tokenHeader]: `${tokenPrefix}${token}`,
+    };
+    return fetchPagedRecords({
+      url,
+      headers,
+      pageParam: process.env.SHIPROCKET_PAGE_PARAM || "page",
+    });
+  };
 
-  // Fetch the paged records first
-  const records = await fetchPagedRecords({
-    url,
-    headers: Object.keys(headers).length > 0 ? headers : undefined,
-    pageParam: process.env.SHIPROCKET_PAGE_PARAM || "page",
-  });
+  let records: JsonRecord[];
+  try {
+    const token = await getShiprocketBearerToken();
+    records = await fetchRecords(token);
+  } catch (error: any) {
+    if (error?.message?.includes("401") || error?.message?.includes("Unauthorized")) {
+      try {
+        console.log("[Shopify Returns] Token might be expired (401), attempting token refresh...");
+        const token = await getShiprocketBearerToken(true);
+        records = await fetchRecords(token);
+      } catch (retryError: any) {
+        throw retryError;
+      }
+    } else {
+      throw error;
+    }
+  }
 
   // Persist raw payload for audit / debugging (project‑root location)
   const outPath = path.join(process.cwd(), "shiprocket_returns.json");
