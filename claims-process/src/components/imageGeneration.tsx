@@ -982,7 +982,7 @@ export default function ImageGenerationWorkspace({ orderId, claims, onClose }: I
       // 2. Sync to Google Drive if rawFolderLink is provided
       let googleDriveSyncMessage = "";
       if (rawFolderLink) {
-        const finalFilename = `composition_${activeLpn}.jpg`;
+        const finalFilename = `step9composition${activeLpn}.jpg`;
         console.log(`[Google Drive Sync Audit] Syncing combined composition image. Filename: ${finalFilename}, Folder: ${rawFolderLink}`);
         
         const uploadRes = await fetch("/api/drive/upload", {
