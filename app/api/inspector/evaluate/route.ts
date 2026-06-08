@@ -386,6 +386,9 @@ export async function POST(req: Request) {
       });
 
       console.log(`[Inspector Evaluate] Manifest ${manifest.trackingId} finished → ${targetStatus}. Scanned: ${scannedEntries.length}, Missing: ${missingCount}.`);
+    }, {
+      maxWait: 15000,
+      timeout: 60000,
     });
 
     return NextResponse.json({ success: true, message: 'Inspection completed successfully' });
