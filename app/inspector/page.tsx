@@ -1464,13 +1464,10 @@ function InspectTab({
     enumerateAvailableCameras();
   }, [enumerateAvailableCameras]);
 
-  const startStreamOnCanvas = (
+  const startCameraStream = (
     deviceId: string,
     videoEl: HTMLVideoElement,
-    canvasEl: HTMLCanvasElement,
-    rafRef: React.MutableRefObject<number>,
     constraints?: MediaTrackConstraints,
-    shouldRotate: boolean = true,
   ): Promise<MediaStream> =>
     navigator.mediaDevices
       .getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId }, ...constraints } : constraints ?? { facingMode: "environment" } })
@@ -1478,23 +1475,7 @@ function InspectTab({
         videoEl.srcObject = stream;
         return new Promise<MediaStream>((resolve) => {
           videoEl.onloadedmetadata = () => {
-            videoEl.play();
-            canvasEl.width = videoEl.videoWidth || 1280;
-            canvasEl.height = videoEl.videoHeight || 720;
-            const ctx = canvasEl.getContext("2d");
-            if (!ctx) { resolve(stream); return; }
-            const drawFrame = () => {
-              if (videoEl.paused || videoEl.ended) return;
-              ctx.save();
-              ctx.translate(canvasEl.width / 2, canvasEl.height / 2);
-              if (shouldRotate) {
-                ctx.rotate(Math.PI);
-              }
-              ctx.drawImage(videoEl, -canvasEl.width / 2, -canvasEl.height / 2, canvasEl.width, canvasEl.height);
-              ctx.restore();
-              rafRef.current = requestAnimationFrame(drawFrame);
-            };
-            drawFrame();
+            videoEl.play().catch(console.error);
             resolve(stream);
           };
         });
@@ -1550,19 +1531,20 @@ function InspectTab({
         const hasEndedTrack = recStreamRef.current && recStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
         const hasWrongDevice = recStreamRef.current && recCameraId !== "" && recStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== recCameraId);
         if (!recStreamRef.current || hasEndedTrack || hasWrongDevice) {
-          const recStream = await startStreamOnCanvas(
+          const recStream = await startCameraStream(
             recCameraId,
             recVideo,
-            recCanvas,
-            reqAnimRecRef,
             { width: { ideal: 1920 }, height: { ideal: 1080 } },
-            true,
           );
           if (cancelled) { recStream.getTracks().forEach((t) => t.stop()); return; }
           recStreamRef.current = recStream;
           recStream.getVideoTracks().forEach((track) => {
             track.onended = () => { checkCameraStreams(); };
           });
+          
+          recCanvas.width = recVideo.videoWidth || 1920;
+          recCanvas.height = recVideo.videoHeight || 1080;
+          
           await enumerateAvailableCameras();
         }
       } catch (err) {
@@ -1574,13 +1556,10 @@ function InspectTab({
           const hasEndedTrack = capStreamRef.current && capStreamRef.current.getVideoTracks().some(t => t.readyState === "ended");
           const hasWrongDevice = capStreamRef.current && imgCameraId !== "" && capStreamRef.current.getVideoTracks().some(t => t.getSettings().deviceId !== imgCameraId);
           if (!capStreamRef.current || hasEndedTrack || hasWrongDevice) {
-            const capStream = await startStreamOnCanvas(
+            const capStream = await startCameraStream(
               imgCameraId,
               capVideo,
-              capCanvas,
-              reqAnimCapRef,
               { width: { ideal: 4096 }, height: { ideal: 2160 } },
-              false,
             );
             if (cancelled) { capStream.getTracks().forEach((t) => t.stop()); return; }
             capStreamRef.current = capStream;
@@ -1599,18 +1578,6 @@ function InspectTab({
             capCanvas.width = recCanvas.width;
             capCanvas.height = recCanvas.height;
             await capVideo.play().catch(() => { });
-            const ctx = capCanvas.getContext("2d");
-            if (ctx) {
-              const drawCap = () => {
-                if (capVideo.paused || capVideo.ended) return;
-                ctx.save();
-                ctx.translate(capCanvas.width / 2, capCanvas.height / 2);
-                ctx.drawImage(capVideo, -capCanvas.width / 2, -capCanvas.height / 2, capCanvas.width, capCanvas.height);
-                ctx.restore();
-                reqAnimCapRef.current = requestAnimationFrame(drawCap);
-              };
-              drawCap();
-            }
             const track = recStreamRef.current.getVideoTracks()[0];
             if (track && typeof (window as any).ImageCapture !== "undefined") {
               imageCaptureRef.current = new (window as any).ImageCapture(track);
@@ -1800,6 +1767,36 @@ function InspectTab({
     }
   }, [phase]);
 
+  // ── Draw recording video feed onto canvas ONLY when recording is active ───────
+  useEffect(() => {
+    let animFrameId: number = 0;
+    const video = recVideoRef.current;
+    const canvas = recCanvasRef.current;
+    
+    if (isRecording && video && canvas && recStreamRef.current) {
+      canvas.width = video.videoWidth || 1920;
+      canvas.height = video.videoHeight || 1080;
+      const ctx = canvas.getContext("2d");
+      
+      if (ctx) {
+        const draw = () => {
+          if (video.paused || video.ended) return;
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(Math.PI); // Rotate 180 degrees (shouldRotate)
+          ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+          ctx.restore();
+          animFrameId = requestAnimationFrame(draw);
+        };
+        draw();
+      }
+    }
+    
+    return () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+    };
+  }, [isRecording]);
+
   const swapCameras = async () => {
     if (!dualCameraMode || isSwitchingCameras) return;
     setIsSwitchingCameras(true);
@@ -1914,9 +1911,17 @@ function InspectTab({
         } catch { rawBlob = null; }
       }
       if (!rawBlob) {
-        const srcCanvas = capCanvasRef.current;
-        if (!srcCanvas) return;
-        rawBlob = await new Promise<Blob | null>((res) => srcCanvas.toBlob(res, "image/jpeg", 0.92));
+        const video = capVideoRef.current;
+        const canvas = capCanvasRef.current;
+        if (video && canvas) {
+          canvas.width = video.videoWidth || 1280;
+          canvas.height = video.videoHeight || 720;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            rawBlob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+          }
+        }
       }
       if (!rawBlob) return;
 
@@ -2236,8 +2241,15 @@ function InspectTab({
       <div className="w-1/2 bg-black flex flex-col border-r border-slate-800 shadow-2xl">
         <div className="h-1/2 flex shrink-0 border-b border-white/10 relative">
           <div className="relative w-full overflow-hidden bg-black">
-            <video ref={recVideoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
-            <canvas ref={recCanvasRef} className="absolute inset-0 w-full h-full object-cover bg-black" />
+            <video
+              ref={recVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 w-full h-full object-cover bg-black"
+              style={{ transform: "rotate(180deg)" }}
+            />
+            <canvas ref={recCanvasRef} className="hidden" />
 
             <div className={`absolute top-2 left-2 backdrop-blur text-white px-2 py-1 text-[9px] font-black uppercase tracking-widest flex items-center space-x-1.5 rounded shadow-lg z-10 transition-colors duration-300 ${isRecording ? "bg-red-600/90" : "bg-slate-700/95"}`}>
               <div className={`w-2 h-2 rounded-full ${isRecording ? "bg-white animate-pulse" : "bg-slate-400"}`} />
@@ -2340,8 +2352,14 @@ function InspectTab({
 
         {/* ── IMAGE CAPTURE CAMERA w/ PREVIEW OVERLAY ── */}
         <div className="flex-1 relative overflow-hidden bg-black">
-          <video ref={capVideoRef} autoPlay playsInline muted className="opacity-0 absolute pointer-events-none" style={{ width: "1px", height: "1px" }} />
-          <canvas ref={capCanvasRef} className={`absolute inset-0 w-full h-full object-cover bg-black transition-opacity ${previewDataUrl ? "opacity-0" : "opacity-100"}`} />
+          <video
+            ref={capVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`absolute inset-0 w-full h-full object-cover bg-black transition-opacity ${previewDataUrl ? "opacity-0" : "opacity-100"}`}
+          />
+          <canvas ref={capCanvasRef} className="hidden" />
           <canvas ref={hiddenCanvasRef} className="hidden" />
 
           {/* Captured Image Preview Overlay */}
