@@ -39,7 +39,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
         lpn text PRIMARY KEY,
         sku text NOT NULL,
         damage_type text NOT NULL,
-        "isRefurbished" boolean DEFAULT false,
+        is_refurbished boolean DEFAULT false,
         status text DEFAULT 'pending'
       );
     `);
@@ -218,8 +218,8 @@ async function setupDatabaseSchema(db: pg.Pool) {
               mapped_damage_type := COALESCE(NEW."recoveryType", 'box_damage');
             END IF;
 
-             INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
-             VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
+            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
+            VALUES (NEW.lpn, found_sku, mapped_damage_type, false, 'inspected')
             ON CONFLICT (lpn) DO UPDATE SET
               sku = EXCLUDED.sku,
               damage_type = EXCLUDED.damage_type,
@@ -364,7 +364,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
     } else {
       console.log('⚠️ Evidence table not found during syncClaimsAllTable. Retaining fallback claims_all structural table.');
     }
-
   } catch (err: any) {
     console.error('❌ syncClaimsAllTable error:', err.message);
   }
@@ -469,7 +468,7 @@ function getDbPool() {
 }
 
 // Helper to convert snake_case or mixed_case object to camelCase
-function toCamelCase(obj: any): any {
+function toCamelCase(obj: any) {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(toCamelCase);
 
@@ -660,7 +659,7 @@ async function startServer() {
 
             // gracefull insertions handling edge cases (ON CONFLICT)
             await client.query(`
-              INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
+              INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
               VALUES ($1, $2, $3, false, 'inspected')
               ON CONFLICT (lpn) DO UPDATE SET
                 sku = EXCLUDED.sku,
@@ -954,7 +953,7 @@ async function startServer() {
 
           // Upsert directly into sample_recovery
           await pool.query(`
-            INSERT INTO "sample_recovery" (lpn, sku, damage_type, "isRefurbished", status)
+            INSERT INTO "sample_recovery" (lpn, sku, damage_type, is_refurbished, status)
             VALUES ($1, $2, $3, false, 'recovery')
             ON CONFLICT (lpn) 
             DO UPDATE SET 
@@ -1054,7 +1053,7 @@ async function startServer() {
       if (pool) {
         await pool.query(`
           UPDATE "sample_recovery"
-          SET "isRefurbished" = $2, status = $3
+          SET is_refurbished = $2, status = $3
           WHERE LOWER(lpn) = LOWER($1)
         `, [lpn, is_refurbished, recordStatus]);
 
@@ -1864,7 +1863,7 @@ async function startServer() {
             i.lpn, 
             COALESCE(r.sku, 'UNKNOWN') as sku, 
             i.status as item_status, 
-            COALESCE(s."isRefurbished", false) as is_refurbished,
+            COALESCE(s.is_refurbished, false) as is_refurbished,
             COALESCE(s.damage_type, 'Repackaging Check') as damage_type
           FROM "ItemStatus" i
           LEFT JOIN "ReturnItem" r ON i.lpn = r.lpn
@@ -2113,9 +2112,13 @@ async function startServer() {
         try {
           await db.query(`UPDATE "claims_all" SET "driveLink" = $1 WHERE lpn = $2`, [localUrl, lpn]);
         } catch (e) {}
+        // COMPLIANCE RULE: Under no circumstances should the system write over, mutate, or change the existing lpnDriveLink field inside the Evidence table in Supabase.
+        // Bypassing/commenting out the Evidence lpnDriveLink update to freeze the evidence state.
+        /*
         try {
           await db.query(`UPDATE "Evidence" SET "lpnDriveLink" = $1 WHERE lpn = $2`, [localUrl, lpn]);
         } catch (e) {}
+        */
       } else {
         const item = mockClaims.find((c: any) => c.lpn === lpn);
         if (item) {
@@ -2217,9 +2220,23 @@ async function startServer() {
 
   async function getGoogleAccessToken(clientOverride?: { clientId: string; clientSecret: string; refreshToken: string }): Promise<string> {
     const isOverride = !!clientOverride;
-    const clientId = clientOverride?.clientId || process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = clientOverride?.clientSecret || process.env.GOOGLE_CLIENT_SECRET;
-    const refreshToken = clientOverride?.refreshToken || process.env.GOOGLE_REFRESH_TOKEN;
+    
+    // Priority 1 (Primary): Fetch directly from GOOGLE_DRIVE_ environment variables
+    const envClientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const envClientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    const envRefreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+
+    const hasPriorityEnv = !!(envClientId && envClientSecret && envRefreshToken);
+
+    const clientId = hasPriorityEnv 
+      ? envClientId! 
+      : (clientOverride?.clientId || process.env.GOOGLE_DRIVE_CLIENT_ID);
+    const clientSecret = hasPriorityEnv 
+      ? envClientSecret! 
+      : (clientOverride?.clientSecret || process.env.GOOGLE_DRIVE_CLIENT_SECRET);
+    const refreshToken = hasPriorityEnv 
+      ? envRefreshToken! 
+      : (clientOverride?.refreshToken || process.env.GOOGLE_DRIVE_REFRESH_TOKEN);
 
     if (!clientId || !clientSecret || !refreshToken) {
       throw new Error("Missing Google OAuth credentials (Client ID, Client Secret, or Refresh Token). Please configure your permanent Refresh credentials in UI settings or set them in the server's .env.");
@@ -2268,6 +2285,19 @@ async function startServer() {
   }
 
   async function resolveGoogleToken(req: any): Promise<string> {
+    // Priority 1 (Primary): Fetch directly from GOOGLE_DRIVE_ environment variables
+    const envClientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const envClientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    const envRefreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+
+    if (envClientId && envClientSecret && envRefreshToken) {
+      return getGoogleAccessToken({
+        clientId: envClientId,
+        clientSecret: envClientSecret,
+        refreshToken: envRefreshToken
+      });
+    }
+
     // A. Check if the request contains override credentials in queries, body, or headers
     const clientId = (req.query.clientId as string) || (req.body && req.body.clientId) || req.headers["x-google-client-id"];
     const clientSecret = (req.query.clientSecret as string) || (req.body && req.body.clientSecret) || req.headers["x-google-client-secret"];
@@ -2285,7 +2315,7 @@ async function startServer() {
     }
 
     // C. Fallback to server-side dynamic Refresh Token environment variables if set
-    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+    if (process.env.GOOGLE_DRIVE_CLIENT_ID && process.env.GOOGLE_DRIVE_CLIENT_SECRET && process.env.GOOGLE_DRIVE_REFRESH_TOKEN) {
       return getGoogleAccessToken();
     }
 

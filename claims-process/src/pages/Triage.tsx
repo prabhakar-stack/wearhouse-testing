@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Claim } from '../types';
+import ImageGenerationWorkspace from '../components/imageGeneration';
 
 interface GroupedClaim extends Claim {
   uniqueKey: string;
@@ -185,6 +186,7 @@ Evidence: ${claim.driveLink || 'N/A'}
       return false;
     }
 
+    // Check if any issue matches the filters
     const validIssues = c.issues.filter((issue: any) => {
       const typeLower = (issue.type || "").toLowerCase();
       if (typeLower === 'good' || typeLower === 'sellable') {
@@ -198,6 +200,7 @@ Evidence: ${claim.driveLink || 'N/A'}
     if (filter === 'All') return true;
     if (filter === 'Filed') return !!c.reimbursementId && c.status !== 'Resolved';
     
+    // Check if any valid issue matches the tab filter
     return validIssues.some((issue: any) => {
       if (filter === 'Missing') return c.deliveryStatus?.toLowerCase() !== 'delivered' && c.slaDaysElapsed>=1;
       if (filter === 'Damaged') return (issue.type === 'Damaged');
@@ -281,24 +284,24 @@ Evidence: ${claim.driveLink || 'N/A'}
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">{t("Triage Queue")}</h2>
-        <p className="text-slate-500 text-xs lg:text-sm">{t("Manage and escalate pending inventory claims.")}</p>
+        <h2 className="text-xl lg:text-2xl font-bold tracking-tight">Triage Queue</h2>
+        <p className="text-slate-500 text-xs lg:text-sm">Manage and escalate pending inventory claims.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto no-scrollbar w-full lg:max-w-3xl">
-          {(['All', 'Missing', 'Damaged', 'RejectedDelivery', 'Filed'] as const).map((tVal) => (
+          {(['All', 'Missing', 'Damaged', 'RejectedDelivery', 'Filed'] as const).map((t) => (
             <button
-              key={tVal}
-              onClick={() => setFilter(tVal)}
+              key={t}
+              onClick={() => setFilter(t)}
               className={cn(
                 "px-4 lg:px-6 py-2 text-[10px] lg:text-xs font-extrabold rounded-lg transition-all whitespace-nowrap",
-                filter === tVal 
+                filter === t 
                   ? "bg-black text-white shadow-md shadow-black/20" 
                   : "text-slate-400 hover:text-[#313079] hover:bg-white"
               )}
             >
-              {tVal === 'RejectedDelivery' ? t('Rejected Delivery') : tVal === 'Filed' ? t('Filed Claims') : t(tVal)}
+              {t === 'RejectedDelivery' ? 'Rejected Delivery' : t === 'Filed' ? 'Filed Claims' : t}
             </button>
           ))}
         </div>
@@ -325,12 +328,12 @@ Evidence: ${claim.driveLink || 'N/A'}
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 text-[10px] font-extrabold uppercase tracking-widest leading-none">
-                <th className="px-4 py-4">{t("C1: Company & Order")}</th>
-                <th className="px-4 py-4">{t("C2: Inventory Details")}</th>
-                <th className="px-4 py-4">{t("C3: Reason Analysis")}</th>
-                <th className="px-4 py-4">{t("C4: Drive Link")}</th>
-                <th className="px-4 py-4">{t("C5: SLA / Status")}</th>
-                <th className="px-4 py-4 text-right">{t("C6: Reimbursement")}</th>
+                <th className="px-4 py-4">C1: Company & Order</th>
+                <th className="px-4 py-4">C2: Inventory Details</th>
+                <th className="px-4 py-4">C3: Reason Analysis</th>
+                <th className="px-4 py-4">C4: Drive Link</th>
+                <th className="px-4 py-4">C5: SLA / Status</th>
+                <th className="px-4 py-4 text-right">C6: Reimbursement</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
