@@ -92,7 +92,7 @@ const evidenceMap = Object.fromEntries(
         id: manifest.id,
         trackingId: manifest.trackingId,
         status: manifest.status,
-        courierName: manifest.courierName,
+        courierName: "Bluedart",
         expectedDate: manifest.expectedDate,
         receivedAt: manifest.receivedAt,
         receivedBy: manifest.receivedBy,
@@ -128,7 +128,7 @@ function buildClaimSummary(manifest: any): string {
   lines.push(`=== CLAIM DATA ===`);
   lines.push(`Tracking ID: ${manifest.trackingId}`);
   lines.push(`Status: ${manifest.status}`);
-  lines.push(`Courier: ${manifest.courierName || 'Unknown'}`);
+  lines.push(`Courier: Bluedart`);
   lines.push(`Received By: ${manifest.receivedBy || 'N/A'}`);
   lines.push(`Received At: ${manifest.receivedAt ? new Date(manifest.receivedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : 'N/A'}`);
   lines.push(`Inspected By: ${manifest.inspectedBy || 'N/A'}`);

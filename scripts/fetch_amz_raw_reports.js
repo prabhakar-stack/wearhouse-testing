@@ -317,7 +317,18 @@ function chunkArray(items, size) {
 async function syncRemovalOrders(rows) {
   console.log(`Syncing ${rows.length} Removal Orders...`);
   
-  // Deduplicate in memory first
+  // 1. Fetch all existing removal orders from the database before the script ran
+  const existingOrders = await prisma.aMZRemovalOrder.findMany({
+    select: {
+      orderId: true,
+      sku: true,
+    }
+  });
+  const existingKeys = new Set(
+    existingOrders.map(o => `${o.orderId}_${o.sku}`)
+  );
+
+  // 2. Deduplicate in memory and filter out rows already in the database
   const seen = new Set();
   const uniqueRows = [];
   for (const rawRow of rows) {
@@ -330,6 +341,12 @@ async function syncRemovalOrders(rows) {
       continue;
     }
     const key = `${mapped.orderId}_${mapped.sku}`;
+    
+    // Skip if it already existed in the database before the run
+    if (existingKeys.has(key)) {
+      continue;
+    }
+
     if (!seen.has(key)) {
       seen.add(key);
       uniqueRows.push(mapped);
@@ -379,9 +396,21 @@ async function syncRemovalOrders(rows) {
 async function syncRemovalShipments(rows) {
   console.log(`Syncing ${rows.length} Removal Shipments...`);
   
-  // Deduplicate in memory first
-  const seen = new Set();
-  const uniqueRows = [];
+  // 1. Fetch all existing shipments from the database to identify what is already in the table before the script ran
+  const existingShipments = await prisma.aMZRemovalShipment.findMany({
+    select: {
+      orderId: true,
+      sku: true,
+      trackingNumber: true,
+      shipmentDate: true,
+    }
+  });
+  const existingKeys = new Set(
+    existingShipments.map(s => `${s.orderId}_${s.sku}_${s.trackingNumber}_${s.shipmentDate?.getTime()}`)
+  );
+
+  // 2. Group new rows by composite unique key and sum quantities, ignoring rows that are already in the DB
+  const groupedRows = new Map();
   for (const rawRow of rows) {
     const mapped = mapRow(rawRow, REMOVAL_SHIPMENT_FIELDS);
     if (!mapped.orderId && !mapped.sku) {
@@ -391,12 +420,21 @@ async function syncRemovalShipments(rows) {
       );
       continue;
     }
-    const key = `${mapped.orderId}_${mapped.sku}_${mapped.trackingNumber}_${mapped.shipmentDate?.getTime()}_${mapped.shippedQuantity}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      uniqueRows.push(mapped);
+    const key = `${mapped.orderId}_${mapped.sku}_${mapped.trackingNumber}_${mapped.shipmentDate?.getTime()}`;
+    
+    // If this shipment was already in the database before the script ran, skip it entirely
+    if (existingKeys.has(key)) {
+      continue;
+    }
+
+    if (groupedRows.has(key)) {
+      const existing = groupedRows.get(key);
+      existing.shippedQuantity = (existing.shippedQuantity || 0) + (mapped.shippedQuantity || 0);
+    } else {
+      groupedRows.set(key, mapped);
     }
   }
+  const uniqueRows = Array.from(groupedRows.values());
 
   let successCount = 0;
   const chunks = chunkArray(uniqueRows, 15);
@@ -404,37 +442,31 @@ async function syncRemovalShipments(rows) {
     await Promise.all(
       chunk.map(async (mapped) => {
         try {
-          // Avoid duplicates: check if a record with the same key fields already exists
-          const existing = await prisma.aMZRemovalShipment.findFirst({
+          // ----------------------------------------------------
+          // [DATABASE LOAD POINT] Staging Table Upsert
+          // Target: AMZRemovalShipment (Staging/Raw Table)
+          // Operation: Upsert on composite key (orderId, sku, trackingNumber, shipmentDate)
+          // Safe to run multiple times — idempotent, no duplicates.
+          // ----------------------------------------------------
+          await prisma.aMZRemovalShipment.upsert({
             where: {
-              orderId: mapped.orderId,
-              sku: mapped.sku,
-              trackingNumber: mapped.trackingNumber,
-              shipmentDate: mapped.shipmentDate,
-              shippedQuantity: mapped.shippedQuantity,
+              orderId_sku_tracking_date: {
+                orderId: mapped.orderId ?? "",
+                sku: mapped.sku,
+                trackingNumber: mapped.trackingNumber ?? "",
+                shipmentDate: mapped.shipmentDate ?? new Date(0),
+              },
             },
+            update: {
+              requestDate: mapped.requestDate,
+              fnsku: mapped.fnsku,
+              disposition: mapped.disposition,
+              shippedQuantity: mapped.shippedQuantity,
+              carrier: mapped.carrier,
+              shipmentStatus: mapped.shipmentStatus,
+            },
+            create: mapped,
           });
-
-          if (!existing) {
-            // ----------------------------------------------------
-            // [DATABASE LOAD POINT] Staging Table Insertion
-            // Target: AMZRemovalShipment (Staging/Raw Table)
-            // Operation: Creating new record since no duplicate was found
-            // ----------------------------------------------------
-            await prisma.aMZRemovalShipment.create({
-              data: mapped,
-            });
-          } else {
-            // ----------------------------------------------------
-            // [DATABASE LOAD POINT] Staging Table Update
-            // Target: AMZRemovalShipment (Staging/Raw Table)
-            // Operation: Updating existing record with matching key fields
-            // ----------------------------------------------------
-            await prisma.aMZRemovalShipment.update({
-              where: { id: existing.id },
-              data: mapped,
-            });
-          }
           successCount++;
         } catch (e) {
           console.error(
@@ -572,7 +604,7 @@ async function main() {
   console.log("\n[STAGE 1] Fetching and Staging Removal Orders...");
   const removalOrdersTSV = await fetchReportData(
     REMOVAL_ORDERS_REPORT_TYPE,
-    "removal_orders_0_7",
+    "removal_orders",
     7,
     0,
   );
@@ -587,15 +619,15 @@ async function main() {
   console.log("\n[STAGE 2] Fetching and Staging Removal Shipments...");
   const removalShipmentsTSV = await fetchReportData(
     REMOVAL_SHIPMENTS_REPORT_TYPE,
-    "removal_shipments_0_7",
+    "removal_shipments",
     7,
     0,
   );
-  const removalShipmentRows = parseTSV(removalShipmentsTSV);
+  const removalOrderRows2 = parseTSV(removalShipmentsTSV); // wait, let's keep it as removalShipmentRows
   
   console.log("[STAGE 2.1] Loading raw data into AMZRemovalShipment staging table...");
   const syncedRemovalShipments =
-    await syncRemovalShipments(removalShipmentRows);
+    await syncRemovalShipments(parseTSV(removalShipmentsTSV));
 
   // =========================================================================
   // STAGE 3: REIMBURSEMENTS RAW FETCH & STAGING
@@ -603,7 +635,7 @@ async function main() {
   console.log("\n[STAGE 3] Fetching and Staging Reimbursements...");
   const reimbursementsTSV = await fetchReportData(
     REIMBURSEMENTS_REPORT_TYPE,
-    "reimbursements_0_7",
+    "reimbursements",
     7,
     0,
   );
@@ -618,7 +650,7 @@ async function main() {
   console.log("\n[STAGE 4] Fetching and Staging Customer Returns...");
   const customerReturnsTSV = await fetchReportData(
     RETURNS_REPORT_TYPE,
-    "customer_returns_0_7",
+    "customer_returns",
     7,
     0,
   );

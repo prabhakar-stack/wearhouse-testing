@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.ts";
 
 async function checkDb() {
-  const ids = ["52103826316"];
+  const ids = ["1211215389425"];
   console.log("=== Checking Database Records ===");
   
   for (const trackingNumber of ids) {

@@ -21,6 +21,17 @@ claims-process/bot_state/
 tracking-data.json
 
 # Ignore build outputs if necessary
-claims-process/dist/
 node_modules/
 note.md
+
+# Ignore scratch and test scripts
+scratch/
+prisma/checkUser.js
+prisma/checkUser.ts
+scripts/check_db_orders.js
+scripts/check_manifest_db.ts
+scripts/run_tracking_job.ts
+scripts/scripts/test_query.js
+scripts/scripts/test_query_order.js
+scripts/fetch_amz_custom_range.js
+scripts/stage_local_tsvs.js

@@ -22,7 +22,7 @@ model User {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   alertsResolvedByUser Alert[] @relation("AlertResolver")
-  alertsTargeted   Alert[]     @relation("AlertTarget")
+  targetedAlerts   Alert[]     @relation("AlertTargetUsers")
 }
 
 model AlertLog {
@@ -41,7 +41,6 @@ model Manifest {
   trackingId          String             @unique
   status              PackageState
   marketplace         Marketplace        @default(AMAZON)
-  orderId             String?
   removalOrderId      String?
   expectedDate        DateTime?
   receivedAt          DateTime?
@@ -50,7 +49,6 @@ model Manifest {
   inspectorHandoverAt DateTime?
   claimId             String?
   createdAt           DateTime           @default(now())
-  courierName         String?
   alerts              Alert[]
   evidences           Evidence[]
   orders              Order[]
@@ -77,15 +75,11 @@ model Order {
 model ShipmentTracking {
   trackingNumber    String    @id
   manifestId        String?
-  courierName       String?
-  courierSlug       String?
   latestStatus      String?
   latestLocation    String?
   scheduledDelivery DateTime?
   checkpointCount   Int       @default(0)
   checkpoints       Json?
-  rawText           String?
-  fetchedAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   manifest          Manifest? @relation(fields: [manifestId], references: [id])
 
@@ -129,7 +123,6 @@ model Alert {
   title           String
   description     String
   manifestId      String?
-  targetUserId    String?
   resolved        Boolean    @default(false)
   resolvedById    String?
   resolvedAt      DateTime?
@@ -141,7 +134,7 @@ model Alert {
   emailThreadKey  String?
   manifest        Manifest?  @relation(fields: [manifestId], references: [id])
   resolvedBy      User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
-  targetUser      User?      @relation("AlertTarget", fields: [targetUserId], references: [id])
+  targetUsers     User[]     @relation("AlertTargetUsers")
 }
 
 model CronJobState {
@@ -215,6 +208,9 @@ model AMZRemovalShipment {
   processedAt     DateTime?
   shipmentStatus  String?   @map("shipment-status")
 
+  // Composite unique key prevents duplicate rows on re-sync.
+  // orderId + sku + trackingNumber + shipmentDate uniquely identifies one shipment line.
+  @@unique([orderId, sku, trackingNumber, shipmentDate], name: "orderId_sku_tracking_date")
   @@map("AMZ_removal_shipments")
 }
 

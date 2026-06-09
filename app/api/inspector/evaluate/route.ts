@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveTargetUserIds } from '@/lib/alertTargeting';
 
 const ALLOWED_CONDITIONS = new Set([
   'GOOD_SELLABLE',
@@ -344,6 +345,7 @@ export async function POST(req: Request) {
 
       // Raise Level L3 Alert for missing items if shortages exist
       if (missingCount > 0) {
+        const targetUserIds = await resolveTargetUserIds(['L3']);
         await tx.alert.create({
           data: {
             level: 'L3',
@@ -351,6 +353,9 @@ export async function POST(req: Request) {
             title: `Missing Items Detected`,
             description: `Inspection of tracking ID ${manifest.trackingId} found missing items. Expected: ${itemsExpected || totalExpectedQty}, Scanned: ${itemsScanned || scannedEntries.length}, Missing Shortages: ${missingCount}.`,
             manifestId: manifest.id,
+            targetUsers: {
+              connect: targetUserIds.map(id => ({ id }))
+            }
           }
         });
       }

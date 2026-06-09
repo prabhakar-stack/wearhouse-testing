@@ -1004,7 +1004,7 @@ function ClaimsTab() {
               return (
                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 font-mono text-[11px] text-slate-800 font-medium">{c.trackingId}</td>
-                  <td className="px-6 py-4 font-mono text-[11px]">{c.orderId}</td>
+                  <td className="px-6 py-4 font-mono text-[11px]">{c.removalOrderId}</td>
                   <td className="px-6 py-4 text-xs font-bold text-red-500">{cond}</td>
                   <td className="px-6 py-4">
                     {ev ? (
@@ -1383,9 +1383,9 @@ function AlertsTab() {
                         {alert.resolved && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">RESOLVED</span>}
                       </div>
                       <p className="text-sm font-bold text-slate-800 mt-0.5 truncate">{alert.title}</p>
-                      {alert.targetUser && (
+                      {alert.targetUsers && alert.targetUsers.length > 0 && (
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          → {alert.targetUser.name || alert.targetUser.email} <span className="opacity-60">({alert.targetUser.role})</span>
+                          → {alert.targetUsers.map((u: any) => `${u.name || u.email} (${u.role})`).join(', ')}
                         </p>
                       )}
                     </div>

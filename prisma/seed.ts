@@ -70,7 +70,6 @@ async function main() {
       trackingId: multiTrackingId,
       status: 'EXPECTED',
       marketplace: 'AMAZON',
-      courierName: 'Delhivery',
       expectedDate: new Date(),
     }
   });

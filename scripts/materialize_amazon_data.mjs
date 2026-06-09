@@ -58,13 +58,14 @@ async function materializeManifests() {
       where:  { orderId: platformOrderId, trackingNumber },
       select: { shipmentDate: true },
     });
-    const expectedDate = shipment?.shipmentDate ?? null;
+    const baseDate = shipment?.shipmentDate ?? requestDate ?? new Date();
+    const expectedDate = shipment?.shipmentDate ? shipment.shipmentDate : new Date(new Date(baseDate).getTime() + 5 * 24 * 60 * 60 * 1000);
 
     try {
       const manifest = await prisma.manifest.upsert({
         where:  { trackingId: trackingNumber },
-        update: { orderId: platformOrderId, removalOrderId: platformOrderId, marketplace: "AMAZON", expectedDate },
-        create: { trackingId: trackingNumber, orderId: platformOrderId, removalOrderId: platformOrderId, marketplace: "AMAZON", status: "IN_TRANSIT", expectedDate },
+        update: { removalOrderId: platformOrderId, marketplace: "AMAZON", expectedDate },
+        create: { trackingId: trackingNumber, removalOrderId: platformOrderId, marketplace: "AMAZON", status: "IN_TRANSIT", expectedDate },
       });
 
       // Link Order → Manifest

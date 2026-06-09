@@ -39,25 +39,32 @@ async function main(batchSize = 100) {
       const totalAmount = rawOrder?.removalFee || 0.0;
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
-      // Upsert manifest
-      const manifest = await prisma.manifest.upsert({
-        where: { trackingId: trackingNumber },
-        update: {
-          status: 'EXPECTED',
-          marketplace: 'AMAZON',
-          courierName: shipments[0]?.carrier || 'Amazon Logistics',
-          removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
-          expectedDate: requestDate,
-        },
-        create: {
-          trackingId: trackingNumber,
-          status: 'EXPECTED',
-          marketplace: 'AMAZON',
-          courierName: shipments[0]?.carrier || 'Amazon Logistics',
-          removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
-          expectedDate: requestDate,
-        }
+      const expectedDate = new Date(new Date(requestDate).getTime() + 5 * 24 * 60 * 60 * 1000);
+
+      const existingManifest = await prisma.manifest.findUnique({
+        where: { trackingId: trackingNumber }
       });
+
+      let manifest;
+      if (existingManifest) {
+        manifest = await prisma.manifest.update({
+          where: { trackingId: trackingNumber },
+          data: {
+            marketplace: 'AMAZON',
+            removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
+          }
+        });
+      } else {
+        manifest = await prisma.manifest.create({
+          data: {
+            trackingId: trackingNumber,
+            status: 'IN_TRANSIT',
+            marketplace: 'AMAZON',
+            removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
+            expectedDate: null,
+          }
+        });
+      }
 
       // Upsert order
       if (!orderId.startsWith('__no_order__')) {

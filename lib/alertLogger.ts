@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma } from "./prisma.ts";
 
 export async function archiveAndScoreAlerts(
   alertIds: string[],
@@ -10,7 +10,7 @@ export async function archiveAndScoreAlerts(
 
   const alerts = await prisma.alert.findMany({
     where: { id: { in: alertIds } },
-    include: { manifest: true },
+    include: { manifest: true, targetUsers: { select: { id: true } } },
   });
 
   if (alerts.length === 0) return;
@@ -20,7 +20,7 @@ export async function archiveAndScoreAlerts(
 
   for (const alert of alerts) {
     const trackingId = alert.manifest?.trackingId || "UNKNOWN";
-    const targetUserIds = alert.targetUserId ? [alert.targetUserId] : [];
+    const targetUserIds = alert.targetUsers.map((u) => u.id);
 
     logEntries.push({
       trackingId,
@@ -32,8 +32,8 @@ export async function archiveAndScoreAlerts(
       createdAt: new Date(),
     });
 
-    if (alert.targetUserId) {
-      userScoreIncrements[alert.targetUserId] = (userScoreIncrements[alert.targetUserId] || 0) + 1;
+    for (const userId of targetUserIds) {
+      userScoreIncrements[userId] = (userScoreIncrements[userId] || 0) + 1;
     }
   }
 

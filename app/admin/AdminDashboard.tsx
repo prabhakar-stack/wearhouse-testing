@@ -1350,9 +1350,9 @@ function AlertsTab({ userRole }: { userRole: string }) {
                         {alert.resolved && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">RESOLVED</span>}
                       </div>
                       <p className="text-sm font-bold text-slate-800 mt-0.5 truncate">{alert.title}</p>
-                      {alert.targetUser && (
+                      {alert.targetUsers && alert.targetUsers.length > 0 && (
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          → {alert.targetUser.name || alert.targetUser.email} <span className="opacity-60">({alert.targetUser.role})</span>
+                          → {alert.targetUsers.map((u: any) => `${u.name || u.email} (${u.role})`).join(', ')}
                         </p>
                       )}
                     </div>

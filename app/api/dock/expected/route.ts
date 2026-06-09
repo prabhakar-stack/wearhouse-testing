@@ -5,12 +5,11 @@ export async function GET(req: NextRequest) {
   try {
     const expected = await prisma.manifest.findMany({
       where: {
-        status: 'EXPECTED',
+        status: { in: ['EXPECTED', 'IN_TRANSIT'] },
       },
       select: {
         id: true,
         trackingId: true,
-        courierName: true,
         status: true,
         expectedDate: true,
         createdAt: true,
@@ -19,6 +18,7 @@ export async function GET(req: NextRequest) {
             marketplace: true,
             platformOrderId: true,
             trackingNumber: true,
+            requestDate: true,
           }
         },
         trackingSnapshots: {
@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
             latestLocation: true,
             scheduledDelivery: true,
             checkpointCount: true,
-            fetchedAt: true,
           }
         }
       },
@@ -43,6 +42,7 @@ export async function GET(req: NextRequest) {
           marketplace: o.marketplace,
           platformOrderId: o.platformOrderId,
           trackingNumber: o.trackingNumber,
+          requestDate: o.requestDate,
         }
       }));
 
@@ -52,13 +52,12 @@ export async function GET(req: NextRequest) {
         latestLocation: snapshot.latestLocation,
         scheduledDelivery: snapshot.scheduledDelivery,
         checkpointCount: snapshot.checkpointCount,
-        fetchedAt: snapshot.fetchedAt,
       }));
 
       return {
         id: m.id,
         trackingId: m.trackingId,
-        courierName: m.courierName,
+        courierName: "Bluedart",
         status: m.status,
         expectedDate: m.expectedDate,
         createdAt: m.createdAt,

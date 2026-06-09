@@ -104,12 +104,16 @@ export async function POST(req: NextRequest) {
       }
 
       // Update Manifest status, receive timestamp, receivedBy and customerOrderId
+      // qcCheckedAt is stamped here — it marks the moment the receiver completed
+      // their visual QC check. A null value means QC was never performed (used by
+      // Ghost Delivery T1 cron to distinguish "courier says delivered but not QC'd").
       await tx.manifest.update({
         where: { id: manifest.id },
         data: {
           status: isDamaged ? 'CLAIMS_STAGING' : 'AT_DOCK',
           receivedAt: new Date(),
           receivedBy: userEmail,
+          qcCheckedAt: new Date(),  // stamp QC completion time for both accept and reject
         }
       });
 
@@ -146,7 +150,9 @@ export async function POST(req: NextRequest) {
             title: `Intake Visual Rejection`,
             description: `Package intake rejected for Tracking ID ${manifest.trackingId} due to visual damage.`,
             manifestId: manifest.id,
-            targetUserId: userId || null,
+            targetUsers: userId ? {
+              connect: [{ id: userId }]
+            } : undefined
           }
         });
         console.log(`[Dock Receive Alert] Created L1 Alert for manifest: ${manifest.id}`);

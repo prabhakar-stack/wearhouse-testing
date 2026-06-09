@@ -40,25 +40,22 @@ async function main() {
     });
 
     const requestDate = rawOrder?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
+    const expectedDate = new Date(requestDate.getTime() + 5 * 24 * 60 * 60 * 1000);
     const totalAmount = rawOrder?.removalFee || 0.0;
 
     // Create manifest
     const manifest = await prisma.manifest.upsert({
       where: { trackingId: trackingNumber },
       update: {
-        status: 'EXPECTED',
         marketplace: 'AMAZON',
-        courierName: shipments[0]?.carrier || 'Amazon Logistics',
         removalOrderId: orderId,
-        expectedDate: requestDate,
       },
       create: {
         trackingId: trackingNumber,
-        status: 'EXPECTED',
+        status: 'IN_TRANSIT',
         marketplace: 'AMAZON',
-        courierName: shipments[0]?.carrier || 'Amazon Logistics',
         removalOrderId: orderId,
-        expectedDate: requestDate,
+        expectedDate: null,
       }
     });
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ALERT_RULE_BY_TYPE } from "@/lib/alertRules";
 
-import { resolveTargetUserId } from "@/lib/alertTargeting";
+import { resolveTargetUserIds } from "@/lib/alertTargeting";
 import { dispatchAlert } from "@/lib/alertDispatcher";
 import { calculateWarehouseWorkingHours } from "@/lib/timeUtils";
 
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       });
       if (existing) return null; // Already raised — skip
 
-      const targetUserId = await resolveTargetUserId(rule.targetRoles);
+      const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
 
       const alert = await prisma.alert.create({
         data: {
@@ -54,7 +54,9 @@ export async function GET(req: Request) {
           title: rule.title,
           description: rule.description.replace("{trackingId}", trackingId),
           manifestId,
-          targetUserId: targetUserId || undefined,
+          targetUsers: {
+            connect: targetUserIds.map(id => ({ id }))
+          }
         },
       });
 

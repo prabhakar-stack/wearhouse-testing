@@ -12,7 +12,7 @@ export async function dispatchAlert(alertId: string) {
     const alert = await prisma.alert.findUnique({
       where: { id: alertId },
       include: {
-        targetUser: { select: { email: true, name: true } },
+        targetUsers: { select: { email: true, name: true } },
         manifest: { select: { trackingId: true, id: true, lastEmailMessageId: true } },
       },
     });
@@ -49,8 +49,10 @@ export async function dispatchAlert(alertId: string) {
 
     let recipientEmails: string[] = [...targetEmailsFromDb, ...directEmails];
 
-    if (alert.targetUser?.email) {
-      recipientEmails.push(alert.targetUser.email);
+    if (alert.targetUsers && alert.targetUsers.length > 0) {
+      for (const u of alert.targetUsers) {
+        if (u.email) recipientEmails.push(u.email);
+      }
     }
 
     // Fallback to a test email address if no target users are configured/found

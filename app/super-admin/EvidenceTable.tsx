@@ -186,11 +186,6 @@ export default function EvidenceTable() {
                       <span className="font-mono text-xs font-bold text-slate-700">
                         {record.orderId || record.manifest?.trackingId || 'N/A'}
                       </span>
-                      {record.manifest?.courierName && (
-                        <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mt-1">
-                          {record.manifest.courierName}
-                        </span>
-                      )}
                     </td>
 
                     {/* Claim Reasons and context details */}

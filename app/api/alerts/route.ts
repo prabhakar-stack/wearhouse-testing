@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     // 2. Build visibility conditions exactly as sets
     // Related items: targeted to user, or received/inspected by them
     const relationConditions = [
-      { targetUserId: sessionUserId || undefined },
+      sessionUserId ? { targetUsers: { some: { id: sessionUserId } } } : {},
       { manifest: { receivedBy: emailLower } },
       { manifest: { inspectedBy: emailLower } }
     ];
@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
         manifest: {
           select: { trackingId: true, status: true, claimId: true, receivedBy: true, inspectedBy: true }
         },
-        targetUser: {
+        targetUsers: {
           select: { email: true, name: true, role: true }
         },
         resolvedBy: {
@@ -337,14 +337,15 @@ export async function PATCH(req: NextRequest) {
       const alertRecord = await prisma.alert.findUnique({
         where: { id },
         include: {
-          manifest: { select: { status: true, claimId: true, trackingId: true } }
+          manifest: { select: { status: true, claimId: true, trackingId: true } },
+          targetUsers: { select: { id: true } }
         }
       });
 
       if (!alertRecord) { blocked.push({ id, reason: 'Alert not found' }); continue; }
       if (alertRecord.resolved) { resolved.push({ id, skipped: true }); continue; }
 
-      // Enforce permission: can resolve if user is the targetUserId, or an admin/super-access, or the user's role or level is in the targetRoles
+      // Enforce permission: can resolve if user is in targetUsers, or an admin/super-access, or the user's role or level is in the targetRoles
       const rule = ALERT_RULE_BY_TYPE[alertRecord.type];
       const targetRoles = rule?.targetRoles || [];
       const isTargetRole = targetRoles.some(tRole => {
@@ -355,7 +356,7 @@ export async function PATCH(req: NextRequest) {
       const canResolveAlert =
         role === 'ADMIN' ||
         role === 'SUPER_ACCESS' ||
-        alertRecord.targetUserId === userId ||
+        alertRecord.targetUsers.some((u: any) => u.id === userId) ||
         isTargetRole;
 
       if (!canResolveAlert) {

@@ -31,30 +31,30 @@ async function syncRemovalShipmentsToOrders() {
       // Find or create Manifest linked to the trackingNumber mapping directly from Order-level fields
       let manifestId = null;
       if (trackingNumber) {
-        const courierName = group.find(s => s.carrier)?.carrier || null;
-        
-        // ----------------------------------------------------
-        // [DATABASE LOAD & SYNC PROCESS] Core Manifest Sync
-        // Target: Manifest (Operational Table)
-        // Operation: Upserting Manifest entry mapping fields from the Order data
-        // ----------------------------------------------------
-        const manifest = await prisma.manifest.upsert({
-          where: { trackingId: trackingNumber },
-          update: {
-            orderId: orderId,
-            removalOrderId: orderId,
-            marketplace: orderMarketplace, // manifest.marketplace = order.marketplace
-            courierName: courierName,
-          },
-          create: {
-            trackingId: trackingNumber,
-            status: "EXPECTED",
-            marketplace: orderMarketplace, // manifest.marketplace = order.marketplace
-            orderId: orderId,
-            removalOrderId: orderId,
-            courierName: courierName,
-          },
+        const existingManifest = await prisma.manifest.findUnique({
+          where: { trackingId: trackingNumber }
         });
+
+        let manifest;
+        if (existingManifest) {
+          manifest = await prisma.manifest.update({
+            where: { trackingId: trackingNumber },
+            data: {
+              removalOrderId: orderId,
+              marketplace: orderMarketplace,
+            }
+          });
+        } else {
+          manifest = await prisma.manifest.create({
+            data: {
+              trackingId: trackingNumber,
+              status: "IN_TRANSIT",
+              marketplace: orderMarketplace,
+              removalOrderId: orderId,
+              expectedDate: null,
+            }
+          });
+        }
         manifestId = manifest.id;
       }
 
@@ -91,23 +91,29 @@ async function syncRemovalShipmentsToOrders() {
     }
   }
 
-  // ----------------------------------------------------
-  // [DATABASE CLEANUP PROCESS] Core Order Cleanup
-  // Operation: Delete any Amazon orders that are NOT part of the active 25 removal shipment orders
-  // ----------------------------------------------------
+  // NOTE: We intentionally do NOT delete Amazon orders that aren't in the current
+  // 7-day window. The Amazon report only covers the last 7 days, so older orders
+  // are simply not in the active window — they are still valid historical records
+  // with downstream manifest, inspection, and alert data linked to them.
+  // Deleting them here would wipe real warehouse operational data every sync run.
+  //
+  // If you need to clean up truly stale/orphaned orders, do it manually or with a
+  // dedicated audit query scoped to orders with no manifest activity.
   const activeOrderIds = Object.keys(shipmentsByOrderId);
-  try {
-    const deleteResult = await prisma.order.deleteMany({
-      where: {
-        marketplace: "AMAZON",
-        platformOrderId: {
-          notIn: activeOrderIds,
-        },
+  const staleCandidates = await prisma.order.findMany({
+    where: {
+      marketplace: "AMAZON",
+      platformOrderId: { notIn: activeOrderIds },
+      manifest: {
+        status: { in: ["EXPECTED", "IN_TRANSIT"] },
+        expectedDate: { lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
       },
-    });
-    console.log(`Cleaned up ${deleteResult.count} old/stale Amazon orders from operational Order table.`);
-  } catch (e) {
-    console.error(`[ERROR] Failed to clean up old Amazon orders:`, e.message);
+    },
+    select: { platformOrderId: true },
+  });
+  if (staleCandidates.length > 0) {
+    console.log(`[INFO] ${staleCandidates.length} Amazon order(s) not in current 7-day report and still in EXPECTED/IN_TRANSIT state older than 90 days. Review manually if needed.`);
+    staleCandidates.forEach(o => console.log(`  - ${o.platformOrderId}`));
   }
 
   console.log(`Successfully synced ${successCount}/${Object.keys(shipmentsByOrderId).length} unique Orders from Removal Shipments.`);

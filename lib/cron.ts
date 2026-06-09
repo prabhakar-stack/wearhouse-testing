@@ -1,13 +1,13 @@
-import { prisma } from "@/lib/prisma";
+import { prisma } from "./prisma.ts";
 import { PackageState } from "@prisma/client";
-import { fetchTrackingSnapshot } from "@/lib/trackcourier";
+import { fetchTrackingSnapshot } from "./trackcourier.ts";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
-import { runShopifyReturnsJob } from "@/lib/shopifyReturns";
-import { ALERT_RULE_BY_TYPE } from "./alertRules";
-import { calculateWarehouseWorkingHours } from "./timeUtils";
-import { resolveTargetUserId } from "./alertTargeting";
-import { archiveAndScoreAlerts } from "./alertLogger";
-import { dispatchAlert } from "./alertDispatcher";
+import { runShopifyReturnsJob } from "./shopifyReturns.ts";
+import { ALERT_RULE_BY_TYPE } from "./alertRules.ts";
+import { calculateWarehouseWorkingHours } from "./timeUtils.ts";
+import { resolveTargetUserIds } from "./alertTargeting.ts";
+import { archiveAndScoreAlerts } from "./alertLogger.ts";
+import { dispatchAlert } from "./alertDispatcher.ts";
 
 
 // Helper to get carrier name from AMZRemovalShipment by tracking number
@@ -123,9 +123,10 @@ export async function runExpectedTrackingJob() {
       id: true,
       trackingId: true,
       removalOrderId: true,
-      courierName: true,
       status: true,
       expectedDate: true,
+      createdAt: true,
+      qcCheckedAt: true, // null = receiver has not QC'd the package yet
       orders: {
         select: {
           platformOrderId: true,
@@ -139,7 +140,6 @@ export async function runExpectedTrackingJob() {
           latestLocation: true,
           scheduledDelivery: true,
           checkpointCount: true,
-          fetchedAt: true,
         },
       },
     },
@@ -149,8 +149,9 @@ export async function runExpectedTrackingJob() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   for (const m of manifests) {
-    if (m.expectedDate) {
-      const expected = new Date(m.expectedDate);
+    let currentExpectedDate = m.expectedDate;
+    if (currentExpectedDate) {
+      const expected = new Date(currentExpectedDate);
       expected.setHours(0, 0, 0, 0);
       // Use enum PackageState for status updates
       let newStatus: PackageState | null = null;
@@ -184,11 +185,17 @@ export async function runExpectedTrackingJob() {
     error: string;
   }> = [];
 
+  // Build a lookup of manifestId → qcCheckedAt to use in Ghost Delivery T1 check.
+  // qcCheckedAt is null until the receiver completes their visual QC on the dock.
+  const qcCheckedAtByManifest: Record<string, Date | null> = {};
+  for (const m of manifests) {
+    qcCheckedAtByManifest[m.id] = (m as any).qcCheckedAt ?? null;
+  }
+
   // 1. Gather all tracking numbers sequentially mapped to their parent manifest metadata
   const trackingTasks: Array<{
     manifestId: string;
     trackingNumber: string;
-    courierName: string | null;
     expectedDate: Date | null;
     currentStatus: string;
     existingSnapshot: any | null;
@@ -212,7 +219,7 @@ export async function runExpectedTrackingJob() {
               ].filter((value): value is string => !!value),
             },
           },
-        ],
+        ].filter(Boolean),
       },
       select: {
         trackingNumber: true,
@@ -223,7 +230,7 @@ export async function runExpectedTrackingJob() {
       new Set(
         [
           manifest.trackingId,
-          ...(manifest.orders || []).map((order) => order.trackingNumber),
+          ...(manifest.orders || []).map((order: any) => order.trackingNumber),
           ...shipmentTrackingNumbers.map((shipment) => shipment.trackingNumber),
         ].filter((value): value is string => !!value),
       ),
@@ -236,7 +243,6 @@ export async function runExpectedTrackingJob() {
       trackingTasks.push({
         manifestId: manifest.id,
         trackingNumber,
-        courierName: manifest.courierName,
         expectedDate: manifest.expectedDate,
         currentStatus: manifest.status,
         existingSnapshot,
@@ -245,7 +251,7 @@ export async function runExpectedTrackingJob() {
   }
 
   const now = new Date();
-  
+
   // Fetch warehouse operational hours settings from system config
   const configRecord = await (prisma as any).systemConfig.findUnique({
     where: { key: "warehouse_hours" },
@@ -285,7 +291,7 @@ export async function runExpectedTrackingJob() {
     title: string;
     description: string;
     manifestId: string;
-    targetUserId?: string;
+    targetUserIds: string[];
   }> = [];
   const alertsToResolve: string[] = [];
 
@@ -309,11 +315,11 @@ export async function runExpectedTrackingJob() {
   let taskIndex = 0;
   for (const task of trackingTasks) {
     taskIndex++;
-    // Obtain carrier from shipment table (fallback to existing courierName)
+    // Obtain carrier from shipment table (fallback to Bluedart)
     const carrierFromShipment = await getCarrierByTracking(task.trackingNumber);
     console.log(`Fetched carrier for ${task.trackingNumber}: ${carrierFromShipment}`);
-    const courier = carrierFromShipment ?? task.courierName;
-    console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] Refreshing tracking ID: ${task.trackingNumber} (${courier || 'Unknown Courier'})...`);
+    const courier = carrierFromShipment ?? "Bluedart";
+    console.log(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] Refreshing tracking ID: ${task.trackingNumber} (${courier})...`);
     try {
       // Run the Playwright tracking check
       const snapshot = await fetchTrackingSnapshot(
@@ -321,48 +327,35 @@ export async function runExpectedTrackingJob() {
         courier,
       );
 
-      // Resolve scheduled delivery from snapshot, with fallback to current date + 5 days if null or invalid (NaN)
-      let finalScheduledDelivery: Date | null = null;
+      // Resolve scheduled delivery from snapshot
+      let resolvedCarrierDelivery: Date | null = null;
       if (snapshot.scheduledDelivery) {
         const parsed = new Date(snapshot.scheduledDelivery);
         if (!Number.isNaN(parsed.getTime())) {
-          finalScheduledDelivery = parsed;
+          parsed.setHours(12, 0, 0, 0); // Force to noon local time to avoid timezone subtraction rolling it back
+          resolvedCarrierDelivery = parsed;
         }
       }
 
-      if (!finalScheduledDelivery) {
-        const fallback = new Date();
-        fallback.setDate(fallback.getDate() + 5); // Fallback: Current Date + 5 days
-        finalScheduledDelivery = fallback;
-      }
-
-      // A. First update the shipmentTracking table's scheduledDelivery column
+      // A. First update the shipmentTracking table's scheduledDelivery column (without fallback, can be null)
       const trackingRecord = await prisma.shipmentTracking.upsert({
         where: { trackingNumber: task.trackingNumber },
         update: {
           manifestId: task.manifestId,
-          courierName: task.courierName,
-          courierSlug: snapshot.courierSlug,
           latestStatus: snapshot.latestStatus,
           latestLocation: snapshot.latestLocation,
-          scheduledDelivery: finalScheduledDelivery,
+          scheduledDelivery: resolvedCarrierDelivery,
           checkpointCount: snapshot.checkpointCount,
           checkpoints: snapshot.checkpoints,
-          rawText: snapshot.rawText,
-          fetchedAt: new Date(snapshot.fetchedAt),
         },
         create: {
           trackingNumber: task.trackingNumber,
           manifestId: task.manifestId,
-          courierName: task.courierName,
-          courierSlug: snapshot.courierSlug,
           latestStatus: snapshot.latestStatus,
           latestLocation: snapshot.latestLocation,
-          scheduledDelivery: finalScheduledDelivery,
+          scheduledDelivery: resolvedCarrierDelivery,
           checkpointCount: snapshot.checkpointCount,
           checkpoints: snapshot.checkpoints,
-          rawText: snapshot.rawText,
-          fetchedAt: new Date(snapshot.fetchedAt),
         },
       });
 
@@ -374,17 +367,25 @@ export async function runExpectedTrackingJob() {
         });
       }
 
-      // B. Retrieve the saved scheduledDelivery from the DB and update the Manifest's expectedDate
-      let updatedExpectedDate = task.expectedDate;
-      if (trackingRecord.scheduledDelivery) {
-        const scheduled = new Date(trackingRecord.scheduledDelivery);
-        if (!Number.isNaN(scheduled.getTime())) {
-          await prisma.manifest.update({
-            where: { id: task.manifestId },
-            data: { expectedDate: scheduled },
-          });
-          updatedExpectedDate = scheduled;
-        } // else: invalid scheduledDelivery, keep existing expectedDate
+      // B. Retrieve and update Manifest's expectedDate (source of truth)
+      let updatedExpectedDate = task.expectedDate; // Current expectedDate from manifest
+      if (resolvedCarrierDelivery) {
+        // If carrier tracking returned a valid date, we use it to update the manifest
+        await prisma.manifest.update({
+          where: { id: task.manifestId },
+          data: { expectedDate: resolvedCarrierDelivery },
+        });
+        updatedExpectedDate = resolvedCarrierDelivery;
+      } else if (!updatedExpectedDate) {
+        // If tracking returned NA/null AND manifest's current expectedDate is null, update to current date + 5 days
+        const fallback = new Date();
+        fallback.setDate(fallback.getDate() + 5);
+        fallback.setHours(12, 0, 0, 0); // Force to noon local time
+        await prisma.manifest.update({
+          where: { id: task.manifestId },
+          data: { expectedDate: fallback },
+        });
+        updatedExpectedDate = fallback;
       }
 
       // C. Resolve and update status
@@ -394,7 +395,7 @@ export async function runExpectedTrackingJob() {
         updatedExpectedDate,
       );
 
-      console.log(`[Status Debug] Manifest: ${task.manifestId} | Current: ${task.currentStatus} | Resolved: ${nextStatus} (ETA: ${updatedExpectedDate?.toISOString().slice(0,10)})`);
+      console.log(`[Status Debug] Manifest: ${task.manifestId} | Current: ${task.currentStatus} | Resolved: ${nextStatus} (ETA: ${updatedExpectedDate?.toISOString().slice(0, 10)})`);
 
       if (nextStatus && task.currentStatus !== nextStatus) {
         await prisma.manifest.update({
@@ -404,13 +405,13 @@ export async function runExpectedTrackingJob() {
       }
 
       // D. Event-driven alert check for Ghost Delivery
+      // Trigger if courier says "delivered" but receiver has NOT yet completed QC
+      // (qcCheckedAt === null means the receiver never scanned/accepted this package).
       const isDelivered = /delivered|completed|received|proof of delivery/i.test(
         snapshot.latestStatus || "",
       );
-      if (
-        isDelivered &&
-        (task.currentStatus === "EXPECTED" || task.currentStatus === "IN_TRANSIT")
-      ) {
+      const receiverHasNotQCd = qcCheckedAtByManifest[task.manifestId] === null;
+      if (isDelivered && receiverHasNotQCd) {
         const deliveryDate = parseDeliveryDate(snapshot);
         const hoursSinceDelivery = calculateWarehouseWorkingHours(
           deliveryDate,
@@ -456,13 +457,13 @@ export async function runExpectedTrackingJob() {
                   shouldCreate = false;
                 }
               }
-              
+
               if (activeAlertsToArchive.length > 0) {
                 await archiveAndScoreAlerts(activeAlertsToArchive, "ESCALATED");
               }
 
               if (shouldCreate) {
-                const targetUserId = await resolveTargetUserId(rule.targetRoles);
+                const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
                 alertsToCreate.push({
                   level: rule.level as any,
                   type: rule.type,
@@ -472,7 +473,7 @@ export async function runExpectedTrackingJob() {
                     task.trackingNumber,
                   ),
                   manifestId: task.manifestId,
-                  targetUserId: targetUserId || undefined,
+                  targetUserIds,
                 });
               }
             }
@@ -510,24 +511,26 @@ export async function runExpectedTrackingJob() {
   }
 
   if (alertsToCreate.length > 0) {
-    await prisma.alert.createMany({
-      data: alertsToCreate,
-    });
-    console.log(`[Tracking Sync] Bulk-inserted ${alertsToCreate.length} new ghost delivery alerts.`);
-    
-    // Retrieve newly created alerts to dispatch notifications asynchronously
-    prisma.alert.findMany({
-      where: {
-        manifestId: { in: alertsToCreate.map(a => a.manifestId).filter(Boolean) as string[] },
-        type: { in: alertsToCreate.map(a => a.type) },
-        resolved: false
-      },
-      select: { id: true }
-    }).then(newlyCreated => {
-      for (const a of newlyCreated) {
-        dispatchAlert(a.id).catch(err => console.error('[Alert Dispatcher Error]', err));
+    for (const a of alertsToCreate) {
+      try {
+        const alert = await prisma.alert.create({
+          data: {
+            level: a.level,
+            type: a.type,
+            title: a.title,
+            description: a.description,
+            manifestId: a.manifestId,
+            targetUsers: {
+              connect: a.targetUserIds.map(id => ({ id }))
+            }
+          }
+        });
+        dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher Error]', err));
+      } catch (err: any) {
+        console.error('[Tracking Sync] Failed to create alert:', err.message || err);
       }
-    }).catch(err => console.error('[Alert Query Error]', err));
+    }
+    console.log(`[Tracking Sync] Created ${alertsToCreate.length} new ghost delivery alerts.`);
   }
 
 
@@ -555,7 +558,7 @@ export async function runEscalationsJob() {
       const config = JSON.parse(configRecord.value);
       if (config.startTime) startTimeStr = config.startTime;
       if (config.endTime) endTimeStr = config.endTime;
-    } catch(e) {}
+    } catch (e) { }
   }
 
   const results = {
@@ -572,7 +575,7 @@ export async function runEscalationsJob() {
     title: string;
     description: string;
     manifestId?: string;
-    targetUserId?: string;
+    targetUserIds?: string[];
   }) => {
     const existing = await prisma.alert.findFirst({
       where: {
@@ -583,7 +586,15 @@ export async function runEscalationsJob() {
     });
     if (existing) return null;
 
-    const alert = await prisma.alert.create({ data });
+    const { targetUserIds, ...rest } = data;
+    const alert = await prisma.alert.create({
+      data: {
+        ...rest,
+        targetUsers: targetUserIds && targetUserIds.length > 0 ? {
+          connect: targetUserIds.map(id => ({ id }))
+        } : undefined
+      }
+    });
     if (alert) {
       dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher Error]', err));
     }
@@ -618,7 +629,7 @@ export async function runEscalationsJob() {
 
   for (const manifest of atDockManifests) {
     if (!manifest.receivedAt) continue;
-    
+
     let targetAlertType: string | null = null;
 
     if (manifest.receivedAt < startOfYesterday && currentHourIST >= 10) {
@@ -637,7 +648,7 @@ export async function runEscalationsJob() {
       const rule = ALERT_RULE_BY_TYPE[targetAlertType];
       if (rule) {
         const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
-        
+
         if (!exactAlertExists) {
           const TIER_PRIORITY: Record<string, number> = {
             RECV_INSP_HANDSHAKE_10AM: 1,
@@ -645,10 +656,10 @@ export async function runEscalationsJob() {
             RECV_INSP_HANDSHAKE_3PM: 3,
             RECV_INSP_HANDSHAKE_NEXT_DAY: 4
           };
-          
+
           const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
           let shouldCreate = true;
-          
+
           const activeAlertsToArchive: string[] = [];
           for (const activeAlert of manifest.alerts) {
             const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
@@ -664,7 +675,7 @@ export async function runEscalationsJob() {
           }
 
           if (shouldCreate) {
-            const targetUserId = await resolveTargetUserId(rule.targetRoles);
+            const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
             const alert = await prisma.alert.create({
               data: {
                 level: rule.level as any,
@@ -672,7 +683,9 @@ export async function runEscalationsJob() {
                 title: rule.title,
                 description: rule.description.replace("{trackingId}", manifest.trackingId),
                 manifestId: manifest.id,
-                targetUserId: targetUserId || undefined,
+                targetUsers: {
+                  connect: targetUserIds.map(id => ({ id }))
+                }
               }
             });
             if (alert) {
@@ -720,7 +733,7 @@ export async function runEscalationsJob() {
       const rule = ALERT_RULE_BY_TYPE[targetAlertType];
       if (rule) {
         const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
-        
+
         if (!exactAlertExists) {
           const TIER_PRIORITY: Record<string, number> = {
             INSPECTION_PENDING_6H: 1,
@@ -728,10 +741,10 @@ export async function runEscalationsJob() {
             INSPECTION_PENDING_18H: 3,
             INSPECTION_PENDING_24H: 4
           };
-          
+
           const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
           let shouldCreate = true;
-          
+
           const activeAlertsToArchive: string[] = [];
           for (const activeAlert of manifest.alerts) {
             const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
@@ -747,13 +760,13 @@ export async function runEscalationsJob() {
           }
 
           if (shouldCreate) {
-            let finalTargetId: string | null = null;
+            let finalTargetIds: string[] = [];
             if (manifest.inspectedBy) {
               const inspectorUser = await prisma.user.findUnique({ where: { email: manifest.inspectedBy } });
-              if (inspectorUser) finalTargetId = inspectorUser.id;
+              if (inspectorUser) finalTargetIds.push(inspectorUser.id);
             }
-            if (!finalTargetId) {
-              finalTargetId = await resolveTargetUserId(rule.targetRoles);
+            if (finalTargetIds.length === 0) {
+              finalTargetIds = await resolveTargetUserIds(rule.targetRoles);
             }
 
             const alert = await prisma.alert.create({
@@ -763,7 +776,9 @@ export async function runEscalationsJob() {
                 title: rule.title,
                 description: rule.description.replace("{trackingId}", manifest.trackingId),
                 manifestId: manifest.id,
-                targetUserId: finalTargetId || undefined,
+                targetUsers: {
+                  connect: finalTargetIds.map(id => ({ id }))
+                }
               }
             });
             if (alert) {
@@ -780,7 +795,7 @@ export async function runEscalationsJob() {
 
   // ── GROUP 7: INSPECTION QC FAILED (CLAIMS STAGING) ──
   const claimsManifests = await prisma.manifest.findMany({
-    where: { 
+    where: {
       status: "CLAIMS_STAGING",
       claimId: null,
       inspectedAt: { not: null }
@@ -810,17 +825,17 @@ export async function runEscalationsJob() {
       const rule = ALERT_RULE_BY_TYPE[targetAlertType];
       if (rule) {
         const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
-        
+
         if (!exactAlertExists) {
           const TIER_PRIORITY: Record<string, number> = {
             INSPECTION_QC_FAILED_6H: 1,
             INSPECTION_QC_FAILED_12H: 2,
             INSPECTION_QC_FAILED_24H: 3,
           };
-          
+
           const targetPriority = TIER_PRIORITY[targetAlertType] ?? 0;
           let shouldCreate = true;
-          
+
           const activeAlertsToArchive: string[] = [];
           for (const activeAlert of manifest.alerts) {
             const activePriority = TIER_PRIORITY[activeAlert.type] ?? 0;
@@ -836,7 +851,7 @@ export async function runEscalationsJob() {
           }
 
           if (shouldCreate) {
-            const targetUserId = await resolveTargetUserId(rule.targetRoles);
+            const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
             const alert = await prisma.alert.create({
               data: {
                 level: rule.level as any,
@@ -844,7 +859,9 @@ export async function runEscalationsJob() {
                 title: rule.title,
                 description: rule.description.replace("{trackingId}", manifest.trackingId),
                 manifestId: manifest.id,
-                targetUserId: targetUserId || undefined,
+                targetUsers: {
+                  connect: targetUserIds.map(id => ({ id }))
+                }
               }
             });
             if (alert) {
@@ -884,7 +901,7 @@ export async function runEscalationsJob() {
 
     let targetAlertType: "INSP_RECOVERY_HANDSHAKE_18H" | "INSP_RECOVERY_HANDSHAKE_12H" | null = null;
     let targetAlertLevel: "L2" | "L1" | null = null;
-    let targetUserId: string | null = null;
+    let targetUserIds: string[] = [];
 
     if (hoursPending >= 18) {
       targetAlertType = "INSP_RECOVERY_HANDSHAKE_18H";
@@ -895,7 +912,7 @@ export async function runEscalationsJob() {
       // L1 targets the inspector
       if (item.manifest.inspectedBy) {
         const inspectorUser = await prisma.user.findFirst({ where: { email: item.manifest.inspectedBy } });
-        if (inspectorUser) targetUserId = inspectorUser.id;
+        if (inspectorUser) targetUserIds.push(inspectorUser.id);
       }
     }
 
@@ -912,6 +929,10 @@ export async function runEscalationsJob() {
         });
 
         if (!existingAlert) {
+          if (targetUserIds.length === 0) {
+            targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+          }
+
           const alert = await prisma.alert.create({
             data: {
               level: targetAlertLevel,
@@ -919,7 +940,9 @@ export async function runEscalationsJob() {
               title: rule.title,
               description: rule.description.replace("{trackingId}", item.manifest.trackingId),
               manifestId: item.manifest.id,
-              targetUserId: targetUserId || undefined,
+              targetUsers: {
+                connect: targetUserIds.map(id => ({ id }))
+              }
             }
           });
           if (alert) {
@@ -937,7 +960,7 @@ export async function runEscalationsJob() {
 
   const ghostDeliveries = await prisma.manifest.findMany({
     where: {
-      status: "EXPECTED",
+      status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
       trackingSnapshots: {
         some: {
           scheduledDelivery: { lt: hours48Ago, not: null },
@@ -958,6 +981,7 @@ export async function runEscalationsJob() {
       title: `Ghost Delivery — Courier Says Delivered`,
       description: `Package ${ghost.trackingId} expected ${etaDate ? etaDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Unknown"} has not been scanned at the warehouse after 48+ hours. Possible missing delivery.`,
       manifestId: ghost.id,
+      targetUserIds: await resolveTargetUserIds(["L4"]),
     });
     if (alert) results.l4Alerts++;
   }
@@ -982,6 +1006,7 @@ export async function runEscalationsJob() {
         title: `Missing Items Detected in Inspection`,
         description: `Inspection of tracking ID ${ev.manifest.trackingId} found missing items.`,
         manifestId: ev.manifestId!,
+        targetUserIds: await resolveTargetUserIds(["L3"]),
       });
     }
   }

@@ -17,7 +17,9 @@
     "postbuild": "prisma db push",
     "sync:shopify-returns": "ts-node --esm scripts/run_shopify_returns_sync.ts",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
-    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js"
+    "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js",
+    "sync:amazon-custom": "node scripts/fetch_amz_custom_range.js",
+    "sync:amazon-local": "node scripts/stage_local_tsvs.js"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

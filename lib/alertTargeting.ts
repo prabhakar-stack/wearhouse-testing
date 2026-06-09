@@ -2,13 +2,12 @@ import { prisma } from './prisma.ts';
 import { Role, AlertLevel } from '@prisma/client';
 
 /**
- * Resolves a target user ID from a list of target role, level, or email identifiers.
- * 1. Checks if identifiers are email addresses (contains '@')
- * 2. Checks if identifiers match an AlertLevel (L1, L2, L3, L4)
- * 3. Checks if identifiers match a direct Role (ADMIN, INSPECTOR, etc.)
+ * Resolves all target user IDs from a list of target role, level, or email identifiers.
  */
-export async function resolveTargetUserId(targetRoles?: string[]): Promise<string | null> {
-  if (!targetRoles || targetRoles.length === 0) return null;
+export async function resolveTargetUserIds(targetRoles?: string[]): Promise<string[]> {
+  if (!targetRoles || targetRoles.length === 0) return [];
+
+  const userIds: string[] = [];
 
   for (const target of targetRoles) {
     const cleanTarget = target.trim();
@@ -20,28 +19,37 @@ export async function resolveTargetUserId(targetRoles?: string[]): Promise<strin
         where: { email: { equals: cleanTarget, mode: 'insensitive' } },
         select: { id: true }
       });
-      if (user) return user.id;
+      if (user) userIds.push(user.id);
     }
 
     // 2. Check if it's an AlertLevel (L1, L2, L3, L4)
     if (['L1', 'L2', 'L3', 'L4'].includes(upperTarget)) {
-      const user = await (prisma as any).user.findFirst({
+      const users = await (prisma as any).user.findMany({
         where: { alertLevel: upperTarget as AlertLevel },
         select: { id: true }
       });
-      if (user) return user.id;
+      userIds.push(...users.map((u: { id: string }) => u.id));
     }
 
     // 3. Check if it's a direct role
-    const validRoles = ['SUPER_ACCESS', 'ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'RECOVERER', 'QC_AGENT'];
-    if (validRoles.includes(upperTarget)) {
-      const user = await (prisma as any).user.findFirst({
-        where: { role: upperTarget as Role },
+    let roleEnum: Role | null = null;
+    if (upperTarget === 'RECEIVER') roleEnum = 'RECEIVER';
+    else if (upperTarget === 'INSPECTOR') roleEnum = 'INSPECTOR';
+    else if (upperTarget === 'QC' || upperTarget === 'QC_AGENT') roleEnum = 'QC_AGENT';
+    else if (upperTarget === 'RECOVERY' || upperTarget === 'RECOVERER') roleEnum = 'RECOVERER';
+    else if (upperTarget === 'ADMIN') roleEnum = 'ADMIN';
+    else if (upperTarget === 'SUPER_ACCESS' || upperTarget === 'SUPER-ACCESS') roleEnum = 'SUPER_ACCESS';
+    else if (upperTarget === 'CLAIMS_SPECIALIST' || upperTarget === 'CLAIMS') roleEnum = 'CLAIMS_SPECIALIST';
+
+    if (roleEnum) {
+      const users = await (prisma as any).user.findMany({
+        where: { role: roleEnum },
         select: { id: true }
       });
-      if (user) return user.id;
+      userIds.push(...users.map((u: { id: string }) => u.id));
     }
   }
 
-  return null;
+  return [...new Set(userIds)];
 }
+

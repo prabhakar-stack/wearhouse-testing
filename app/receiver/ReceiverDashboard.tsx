@@ -566,13 +566,31 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
         <div className="space-y-3">
           {expected.map((item, idx) => {
             const trackingSnapshot = item.trackingData?.[0] || null;
-            const etaDate = trackingSnapshot?.scheduledDelivery
-              ? new Date(trackingSnapshot.scheduledDelivery)
-              : null;
+
+            // 1. Courier ETA: trackingSnapshot.scheduledDelivery
+            // 2. Database ETA: item.expectedDate
+            // 3. Fallback: order.requestDate + 5 days or manifest.createdAt + 5 days
+            const orderRequestDate = item.returnItems?.[0]?.order?.requestDate;
+            const fallbackBaseDate = orderRequestDate || item.createdAt || new Date();
+            const fallbackComputedDate = new Date(new Date(fallbackBaseDate).getTime() + 5 * 24 * 60 * 60 * 1000);
+
+            let etaDate = null;
+            if (trackingSnapshot?.scheduledDelivery) {
+              const d = new Date(trackingSnapshot.scheduledDelivery);
+              if (!isNaN(d.getTime())) etaDate = d;
+            }
+            if (!etaDate && item.expectedDate) {
+              const d = new Date(item.expectedDate);
+              if (!isNaN(d.getTime())) etaDate = d;
+            }
+            if (!etaDate) {
+              etaDate = fallbackComputedDate;
+            }
+
             const hoursOverdue = etaDate
               ? (Date.now() - etaDate.getTime()) / 3600000
               : null;
-            // Status: future ETA = ON TIME, past ETA within 7 days = OVERDUE, beyond 7 days or no ETA = show no ETA
+            // Status: future ETA = ON TIME, past ETA within 7 days = OVERDUE, beyond 7 days = OVERDUE
             const deliveryStatus =
               hoursOverdue === null ? "no_eta"
               : hoursOverdue <= 0 ? "on_time"
@@ -603,13 +621,16 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
                         {trackingSnapshot.latestLocation
                           ? ` · ${trackingSnapshot.latestLocation}`
                           : ""}
-                        {trackingSnapshot.scheduledDelivery
-                          ? ` · ETA ${new Date(trackingSnapshot.scheduledDelivery).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                        {etaDate
+                          ? ` · ETA ${new Date(etaDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
                           : ""}
                       </p>
                     ) : (
-                      <p className="text-[11px] text-[#313079]/50 mt-1 font-medium">
-                        {t("Tracking data will refresh hourly for distant ETAs.")}
+                      <p className="text-[11px] text-[#313079]/70 mt-1 font-medium">
+                        {t("Tracking pending")}
+                        {etaDate
+                          ? ` · ETA ${new Date(etaDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                          : ""}
                       </p>
                     )}
                   </div>

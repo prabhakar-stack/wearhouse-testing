@@ -8,7 +8,6 @@ export async function GET(req: Request) {
         manifest: {
           select: {
             trackingId: true,
-            courierName: true,
             marketplace: true,
           },
         },
