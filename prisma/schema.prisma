@@ -99,6 +99,7 @@ model Evidence {
   id              String       @id @default(uuid())
   lpn             String       @unique
   orderId         String?
+  trackingId      String?
   orderDriveLink  String?
   lpnDriveLink    String?
   type            EvidenceType
@@ -161,6 +162,7 @@ model MissingItem {
   orderId         String
   fnsku           String
   missingQuantity Int
+  trackingId      String?
   orderDriveLink  String?
   manifestId      String?
   createdAt       DateTime  @default(now())

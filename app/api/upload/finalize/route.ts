@@ -244,6 +244,7 @@ export async function POST(req: NextRequest) {
         where: { lpn: trackingId },
         update: {
           orderId: scopedOrderId || null,
+          trackingId: manifest.trackingId,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
@@ -255,6 +256,7 @@ export async function POST(req: NextRequest) {
         create: {
           lpn: trackingId,
           orderId: scopedOrderId || null,
+          trackingId: manifest.trackingId,
           orderDriveLink: folderLink || null,
           lpnDriveLink: null,
           type: 'RECEIVER_REJECTION',
@@ -391,6 +393,7 @@ export async function POST(req: NextRequest) {
               where: { lpn: normalizedLpnVal },
               update: {
                 orderId: scopedOrderId,
+                trackingId: manifest.trackingId,
                 orderDriveLink,
                 lpnDriveLink,
                 type: 'INSPECTOR_REJECTION',
@@ -402,6 +405,7 @@ export async function POST(req: NextRequest) {
               create: {
                 lpn: normalizedLpnVal,
                 orderId: scopedOrderId,
+                trackingId: manifest.trackingId,
                 orderDriveLink,
                 lpnDriveLink,
                 type: 'INSPECTOR_REJECTION',
@@ -430,6 +434,7 @@ export async function POST(req: NextRequest) {
             },
             update: {
               missingQuantity: missingQty,
+              trackingId: manifest.trackingId,
               orderDriveLink: folderLink || null,
               orderId: scopedOrderId!,
             },
@@ -437,6 +442,7 @@ export async function POST(req: NextRequest) {
               orderId: scopedOrderId!,
               fnsku: fnsku,
               missingQuantity: missingQty,
+              trackingId: manifest.trackingId,
               orderDriveLink: folderLink || null,
               manifestId: manifest.id,
             }
