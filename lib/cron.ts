@@ -127,12 +127,6 @@ export async function runExpectedTrackingJob() {
       expectedDate: true,
       createdAt: true,
       qcCheckedAt: true, // null = receiver has not QC'd the package yet
-      orders: {
-        select: {
-          platformOrderId: true,
-          trackingNumber: true,
-        },
-      },
       trackingSnapshots: {
         select: {
           trackingNumber: true,
@@ -202,35 +196,17 @@ export async function runExpectedTrackingJob() {
   }> = [];
 
   for (const manifest of manifests) {
+    // Shipment-centric: fetch shipments scoped to this manifest's trackingId only.
+    // Tracking numbers from manifest.orders are no longer needed — one manifest = one tracking.
     const shipmentTrackingNumbers = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          {
-            orderId: {
-              in: (manifest.orders ?? []).map((order: any) => order.platformOrderId),
-            },
-          },
-          {
-            trackingNumber: {
-              in: [
-                manifest.trackingId,
-                manifest.removalOrderId,
-                ...(manifest.orders ?? []).map((order: any) => order.trackingNumber),
-              ].filter((value): value is string => !!value),
-            },
-          },
-        ].filter(Boolean),
-      },
-      select: {
-        trackingNumber: true,
-      },
+      where: { trackingNumber: manifest.trackingId },
+      select: { trackingNumber: true },
     });
 
     const trackingNumbers = Array.from(
       new Set(
         [
           manifest.trackingId,
-          ...(manifest.orders || []).map((order: any) => order.trackingNumber),
           ...shipmentTrackingNumbers.map((shipment) => shipment.trackingNumber),
         ].filter((value): value is string => !!value),
       ),
@@ -1011,7 +987,102 @@ export async function runEscalationsJob() {
     }
   }
 
+
+  // ── GROUP 10: AMAZON NON-DISPATCH (Reimbursement Window Monitoring) ──────────
+  // Requirement: if requestDate is older than 5 days AND the shipment is NOT yet
+  // in IN_TRANSIT or beyond (i.e., Amazon has not dispatched the order), raise alert.
+  //
+  // Logic:
+  //   1. Find all Orders with requestDate older than 5 days
+  //   2. For each, check if any Manifest for that order has status != EXPECTED
+  //      (IN_TRANSIT, AT_DOCK, IN_INSPECTION, etc. = Amazon dispatched)
+  //   3. If ALL manifests are still EXPECTED — or no manifest at all — alert fires.
+  const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+
+  const oldOrders = await prisma.order.findMany({
+    where: {
+      requestDate: { lt: fiveDaysAgo },
+      marketplace: 'AMAZON',
+    },
+    select: { platformOrderId: true, requestDate: true },
+  });
+
+  for (const order of oldOrders) {
+    if (!order.requestDate) continue;
+
+    // Check if ANY manifest for this order has moved past EXPECTED
+    // (IN_TRANSIT, AT_DOCK, IN_INSPECTION, INSPECTED, CLAIMS_STAGING, RECOVERED_TO_INVENTORY)
+    const dispatchedManifest = await prisma.manifest.findFirst({
+      where: {
+        removalOrderId: order.platformOrderId,
+        status: { not: 'EXPECTED' },
+      },
+    });
+
+    // If at least one manifest is past EXPECTED, Amazon has dispatched — skip
+    if (dispatchedManifest) continue;
+
+    const daysSinceRequest = (now.getTime() - order.requestDate.getTime()) / (24 * 60 * 60 * 1000);
+    const adminUsers = await resolveTargetUserIds(['L2', 'L3']);
+    const requestDateStr = order.requestDate.toISOString().slice(0, 10);
+    const daysRounded = Math.floor(daysSinceRequest);
+    const windowLeft = Math.max(0, 15 - daysRounded);
+
+    if (daysSinceRequest >= 10) {
+      // ── 10D CRITICAL: reimbursement window closing in ~4–5 days ──────────
+      // Upgrade: if a 5D alert already exists for this order, auto-archive it
+      const existing5D = await prisma.alert.findFirst({
+        where: { type: 'ORDER_NOT_SHIPPED_5D', description: { contains: order.platformOrderId }, resolved: false },
+      });
+      if (existing5D) {
+        await archiveAndScoreAlerts([existing5D.id], 'ESCALATED');
+      }
+
+      const existing10D = await prisma.alert.findFirst({
+        where: { type: 'ORDER_NOT_SHIPPED_10D', description: { contains: order.platformOrderId }, resolved: false },
+      });
+      if (!existing10D) {
+        const alert = await prisma.alert.create({
+          data: {
+            level: 'L3',
+            type: 'ORDER_NOT_SHIPPED_10D',
+            title: `Amazon Order Not Dispatched — ${daysRounded} Days (CRITICAL WINDOW)`,
+            description: `Removal Order ${order.platformOrderId} was requested on ${requestDateStr} but Amazon has NOT dispatched this shipment after ${daysRounded} days. No manifest is IN_TRANSIT or beyond. Reimbursement window closes in ~${windowLeft} days. Immediate action required.`,
+            targetUsers: { connect: adminUsers.map(id => ({ id })) },
+          },
+        });
+        if (alert) {
+          dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+          results.l3Alerts++;
+        }
+      }
+
+    } else if (daysSinceRequest >= 5) {
+      // ── 5D WARNING: shipment not dispatched, approaching reimbursement window ──
+      const existing5D = await prisma.alert.findFirst({
+        where: { type: 'ORDER_NOT_SHIPPED_5D', description: { contains: order.platformOrderId }, resolved: false },
+      });
+      if (!existing5D) {
+        const alert = await prisma.alert.create({
+          data: {
+            level: 'L2',
+            type: 'ORDER_NOT_SHIPPED_5D',
+            title: `Amazon Order Not Dispatched — ${daysRounded} Days`,
+            description: `Removal Order ${order.platformOrderId} was requested on ${requestDateStr} but Amazon has NOT dispatched this shipment after ${daysRounded} days. No manifest is IN_TRANSIT or beyond. Reimbursement window closes in ~${windowLeft} days.`,
+            targetUsers: { connect: adminUsers.map(id => ({ id })) },
+          },
+        });
+        if (alert) {
+          dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+          results.l2Alerts++;
+        }
+      }
+    }
+  }
+
+
   // ── ARCHIVE PRUNING ──
+
   const oneYearAgo = new Date();
   oneYearAgo.setDate(oneYearAgo.getDate() - 365);
   await prisma.alertLog.deleteMany({

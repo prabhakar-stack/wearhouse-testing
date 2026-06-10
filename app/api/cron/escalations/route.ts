@@ -89,7 +89,7 @@ export async function GET(req: Request) {
       where: {
         manifest: {
           status: { in: ["EXPECTED", "IN_TRANSIT"] as any },
-          orders: { some: { requestDate: { not: null } } },
+          removalOrderId: { not: null }, // has an associated removal order
         },
       },
       include: {
@@ -97,25 +97,28 @@ export async function GET(req: Request) {
           select: {
             id: true,
             trackingId: true,
+            removalOrderId: true,
             status: true,
-            orders: {
-              select: { requestDate: true },
-              orderBy: { requestDate: "asc" },
-              take: 1,
-            },
           },
         },
       },
     });
 
-    // Deduplicate by manifest (a manifest may have multiple tracking numbers)
     const seenManifestIds = new Set<string>();
     for (const snap of overdueSnapshots) {
       if (!snap.manifest) continue;
-      const orderRequestDate = snap.manifest.orders?.[0]?.requestDate;
-      if (!orderRequestDate) continue;
       if (seenManifestIds.has(snap.manifest.id)) continue;
       seenManifestIds.add(snap.manifest.id);
+
+      // Derive requestDate from the Order table via manifest.removalOrderId
+      const orderRecord = snap.manifest.removalOrderId
+        ? await prisma.order.findUnique({
+            where: { platformOrderId: snap.manifest.removalOrderId },
+            select: { requestDate: true },
+          })
+        : null;
+      const orderRequestDate = orderRecord?.requestDate;
+      if (!orderRequestDate) continue;
 
       // Baseline ETA: Order return date + 5 calendar days
       const etaDate = new Date(new Date(orderRequestDate).getTime() + 5 * 24 * 60 * 60 * 1000);

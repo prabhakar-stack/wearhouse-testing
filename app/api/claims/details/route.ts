@@ -17,12 +17,10 @@ export async function GET(req: NextRequest) {
         ? { id: manifestId }
         : { trackingId: trackingId! },
       include: {
-        orders: true,
         evidences: {
           select: {
             id: true,
             lpn: true,
-
             orderDriveLink: true,
             lpnDriveLink: true,
             type: true,
@@ -38,20 +36,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
-    // Since ReturnItem is decoupled from Order, let's find the relevant return items.
-    // We can fetch ReturnItem rows matching orderId = order.platformOrderId for backwards compatibility,
-    // or by matching the SKUs/FNSKUs expected in these Orders from AMZRemovalShipment.
-    // Let's get the tracking numbers / order IDs first.
-    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
-    const trackingNumbers = (manifest.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
-
-    // Fetch the raw removal shipments to know which SKUs/FNSKUs were expected in this manifest/order
+    // Fetch removal shipments scoped to this tracking number only (shipment-centric)
     const removalShipments = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          { trackingNumber: { in: trackingNumbers } }
-        ]
-      }
+      where: { trackingNumber: manifest.trackingId }
     });
 
     const expectedSkus = Array.from(new Set(removalShipments.map(s => s.sku).filter((s): s is string => !!s)));

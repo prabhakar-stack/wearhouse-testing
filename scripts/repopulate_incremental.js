@@ -3,8 +3,18 @@ import { fileURLToPath } from 'url';
 
 const prisma = new PrismaClient();
 
+/**
+ * Incremental repopulation — Shipment-Centric (Tracking-First)
+ *
+ * Groups pending AMZRemovalShipment rows by trackingNumber, creating one
+ * Manifest per unique tracking ID. Order is written independently with no
+ * manifestId FK — it exists only for order-level metadata and alert triggers.
+ *
+ * Rows with no trackingNumber are skipped with a console warning (admin should
+ * be alerted via the ORDER_NO_TRACKING_ID alert rule in the cron escalation job).
+ */
 async function main(batchSize = 100) {
-  console.log('Starting incremental repopulation task...');
+  console.log('Starting incremental repopulation task (tracking-first)...');
 
   // Find shipments not yet processed
   const pending = await prisma.aMZRemovalShipment.findMany({
@@ -20,29 +30,52 @@ async function main(batchSize = 100) {
 
   console.log(`Found ${pending.length} pending shipment rows to process.`);
 
-  // Group by orderId
-  const groups = pending.reduce((acc, s) => {
-    const key = s.orderId || `__no_order__${s.id}`;
-    acc[key] = acc[key] || [];
-    acc[key].push(s);
-    return acc;
-  }, {});
+  // ── Group by trackingNumber (one manifest per physical shipment box) ─────────
+  // Rows without a tracking number are skipped — they cannot be received at dock.
+  const groups = {};
+  const skippedNoTracking = [];
 
-  let processedOrders = 0;
+  for (const s of pending) {
+    if (!s.trackingNumber) {
+      skippedNoTracking.push(s);
+      continue;
+    }
+    groups[s.trackingNumber] = groups[s.trackingNumber] || [];
+    groups[s.trackingNumber].push(s);
+  }
 
-  for (const [orderId, shipments] of Object.entries(groups)) {
+  if (skippedNoTracking.length > 0) {
+    console.warn(`[WARN] Skipped ${skippedNoTracking.length} shipment row(s) with no trackingNumber:`);
+    skippedNoTracking.forEach(s =>
+      console.warn(`  - id=${s.id} orderId=${s.orderId} sku=${s.sku} (no tracking number assigned by Amazon yet)`)
+    );
+  }
+
+  // ── Process each tracking-grouped shipment ───────────────────────────────────
+  let processedCount = 0;
+  const processedIds = []; // collect all shipment row IDs to mark as processed
+
+  for (const [trackingNumber, shipments] of Object.entries(groups)) {
     try {
-      const trackingNumber = shipments.find(s => s.trackingNumber)?.trackingNumber || `TRK-VIRT-${orderId}`;
+      const orderId = shipments[0]?.orderId || null;
 
-      const rawOrder = orderId.startsWith('__no_order__') ? null : await prisma.aMZRemovalOrder.findFirst({ where: { orderId } });
-      const requestDate = rawOrder?.requestDate || shipments.find(s => s.shipmentDate)?.shipmentDate || new Date();
+      // Fetch order metadata (request date, fee) from the removal order staging table
+      const rawOrder = orderId
+        ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId } })
+        : null;
+
+      const requestDate =
+        rawOrder?.requestDate ||
+        shipments.find(s => s.requestDate)?.requestDate ||
+        shipments.find(s => s.shipmentDate)?.shipmentDate ||
+        new Date();
+
       const totalAmount = rawOrder?.removalFee || 0.0;
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
-      const expectedDate = new Date(new Date(requestDate).getTime() + 5 * 24 * 60 * 60 * 1000);
-
+      // ── Create or update the Manifest for this tracking ID ────────────────────
       const existingManifest = await prisma.manifest.findUnique({
-        where: { trackingId: trackingNumber }
+        where: { trackingId: trackingNumber },
       });
 
       let manifest;
@@ -51,8 +84,9 @@ async function main(batchSize = 100) {
           where: { trackingId: trackingNumber },
           data: {
             marketplace: 'AMAZON',
-            removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
-          }
+            // Keep removalOrderId as metadata reference only (non-null when known)
+            ...(orderId ? { removalOrderId: orderId } : {}),
+          },
         });
       } else {
         manifest = await prisma.manifest.create({
@@ -60,14 +94,17 @@ async function main(batchSize = 100) {
             trackingId: trackingNumber,
             status: 'IN_TRANSIT',
             marketplace: 'AMAZON',
-            removalOrderId: orderId.startsWith('__no_order__') ? null : orderId,
+            removalOrderId: orderId || null,
             expectedDate: null,
-          }
+          },
         });
+        console.log(`[MANIFEST CREATED] trackingId=${trackingNumber} orderId=${orderId}`);
       }
 
-      // Upsert order
-      if (!orderId.startsWith('__no_order__')) {
+      // ── Upsert Order (independent — no manifestId FK) ─────────────────────────
+      // Order exists purely for order-level metadata: request date, quantity,
+      // reimbursement window alerting. It does NOT link back to any manifest.
+      if (orderId) {
         await prisma.order.upsert({
           where: { platformOrderId: orderId },
           update: {
@@ -76,8 +113,6 @@ async function main(batchSize = 100) {
             totalAmount,
             totalQuantity,
             fulfillmentChannel: 'AMAZON_REMOVAL',
-            manifestId: manifest.id,
-            trackingNumber,
           },
           create: {
             platformOrderId: orderId,
@@ -86,13 +121,13 @@ async function main(batchSize = 100) {
             totalAmount,
             totalQuantity,
             fulfillmentChannel: 'AMAZON_REMOVAL',
-            manifestId: manifest.id,
-            trackingNumber,
-          }
+          },
         });
       }
 
-      // Upsert virtual return items per shipment
+      // ── Upsert virtual ReturnItem records per SKU in this shipment ─────────────
+      // Virtual LPN is scoped to the tracking number (not the order), so items
+      // from different shipments of the same order don't collide.
       for (const shipment of shipments) {
         const qty = shipment.shippedQuantity || 1;
         const skuVal = shipment.sku || 'UNKNOWN_SKU';
@@ -100,16 +135,18 @@ async function main(batchSize = 100) {
         for (let i = 0; i < qty; i++) {
           const virtualLpn = `LPN-${trackingNumber}-${skuVal}-${i}`.toUpperCase();
 
+          // Try to match real customer return data by LPN or by (orderId, sku)
           const rawReturn = await prisma.aMZCustomerReturn.findFirst({
             where: {
               OR: [
                 { lpn: virtualLpn },
-                { orderId: orderId.startsWith('__no_order__') ? null : orderId, sku: skuVal }
-              ].filter(Boolean)
-            }
+                ...(orderId && skuVal ? [{ orderId, sku: skuVal }] : []),
+              ],
+            },
           });
 
-          const customerOrderId = rawReturn?.orderId || (orderId.startsWith('__no_order__') ? 'UNKNOWN_CUSTOMER_ORDER' : orderId);
+          const customerOrderId =
+            rawReturn?.orderId || orderId || 'UNKNOWN_CUSTOMER_ORDER';
 
           await prisma.returnItem.upsert({
             where: { lpn: virtualLpn },
@@ -121,7 +158,8 @@ async function main(batchSize = 100) {
               productName: rawReturn?.productName || `SKU: ${skuVal}`,
               reason: rawReturn?.reason || 'Removal Order Shipment',
               customerComments: rawReturn?.customerComments || null,
-              detailedDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
+              detailedDisposition:
+                rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
               returnDate: rawReturn?.returnDate || null,
               fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
             },
@@ -134,27 +172,48 @@ async function main(batchSize = 100) {
               productName: rawReturn?.productName || `SKU: ${skuVal}`,
               reason: rawReturn?.reason || 'Removal Order Shipment',
               customerComments: rawReturn?.customerComments || null,
-              detailedDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
+              detailedDisposition:
+                rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
               returnDate: rawReturn?.returnDate || null,
               fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
-            }
+            },
           });
         }
       }
 
-      // Mark shipments as processed for this batch
-      await prisma.aMZRemovalShipment.updateMany({
-        where: { id: { in: shipments.map(s => s.id) } },
-        data: { processedAt: new Date() }
-      });
-
-      processedOrders++;
+      // Collect IDs to mark as processed in a single batch call at the end
+      processedIds.push(...shipments.map(s => s.id));
+      processedCount++;
     } catch (err) {
-      console.error('[ERROR] Failed to process order group', orderId, err?.message || err);
+      console.error(
+        `[ERROR] Failed to process tracking group trackingNumber=${trackingNumber}:`,
+        err?.message || err
+      );
     }
   }
 
-  console.log(`Incremental repopulation completed for ${processedOrders} order groups.`);
+  // ── Mark all successfully processed shipment rows in one batch ───────────────
+  if (processedIds.length > 0) {
+    await prisma.aMZRemovalShipment.updateMany({
+      where: { id: { in: processedIds } },
+      data: { processedAt: new Date() },
+    });
+  }
+
+  // Also mark skipped (no-tracking) rows so they don't loop forever.
+  // They stay processedAt-stamped but no manifest is created — the admin alert
+  // (ORDER_NO_TRACKING_ID) will surface them in the dashboard.
+  if (skippedNoTracking.length > 0) {
+    await prisma.aMZRemovalShipment.updateMany({
+      where: { id: { in: skippedNoTracking.map(s => s.id) } },
+      data: { processedAt: new Date() },
+    });
+  }
+
+  console.log(
+    `Incremental repopulation completed: ${processedCount} tracking groups processed, ` +
+    `${skippedNoTracking.length} skipped (no tracking number).`
+  );
 }
 
 // Equivalent of require.main === module in ES Modules

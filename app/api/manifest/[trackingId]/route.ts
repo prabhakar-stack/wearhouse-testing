@@ -4,9 +4,10 @@ import { prisma } from '@/lib/prisma';
 export async function GET(req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
   try {
     const { trackingId } = await params;
-    
-    // Resolve one-to-one mapping using AMZRemovalShipment:
-    // trackingId can be either trackingNumber (AWB) or orderId (removal order platform ID)
+
+    // Resolve by trackingNumber in AMZRemovalShipment — the input can be either
+    // a tracking number (AWB) or an orderId (removal order platform ID).
+    // After the tracking-first migration, manifests are always keyed by trackingNumber.
     const shipmentMatch = await prisma.aMZRemovalShipment.findFirst({
       where: {
         OR: [
@@ -16,46 +17,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
       }
     });
 
-    const resolvedOrderId = shipmentMatch?.orderId || trackingId;
     const resolvedTrackingId = shipmentMatch?.trackingNumber || trackingId;
+    const resolvedOrderId = shipmentMatch?.orderId || null;
 
-    // Try to find manifest by resolved tracking ID
-    let manifest = await prisma.manifest.findFirst({
-      where: {
-        OR: [
-          { trackingId: resolvedTrackingId },
-          { trackingId: resolvedOrderId },
-          { removalOrderId: resolvedOrderId }
-        ]
-      },
-      include: {
-        orders: true
-      }
+    // Look up Manifest strictly by trackingId — no removalOrderId fallback.
+    // All manifests are now scoped to a single tracking number.
+    const manifest = await prisma.manifest.findUnique({
+      where: { trackingId: resolvedTrackingId }
     });
 
     if (!manifest) {
       return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
     }
 
-    // Query expected shipments using manifest orders and tracking numbers for robust lookup
-    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
-    const trackingNumbers = [
-      trackingId,
-      resolvedTrackingId,
-      resolvedOrderId,
-      ...(manifest.orders || []).map(o => o.trackingNumber)
-    ].filter((t): t is string => !!t);
-
+    // Fetch shipments scoped to this tracking number only.
+    // This is the core shipment-centric query: we only care about SKUs in this specific box.
     const shipments = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          { orderId: { in: orderIds } },
-          { trackingNumber: { in: trackingNumbers } }
-        ]
-      }
+      where: { trackingNumber: manifest.trackingId }
     });
 
-    // Compute expected quantity per fnsku from shipments
+    // Compute expected quantity per fnsku from this tracking's shipment rows
     const expectedTotals: Record<string, number> = {};
     for (const s of shipments) {
       if (s.fnsku) {
@@ -88,9 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
       };
     });
 
-
-
-    // Build product‑level items list for UI (sku, fnsku, shipped qty, name)
+    // Build product-level items list for UI (sku, fnsku, shipped qty, name)
     const items: Array<{ sku: string; fnsku: string | null; quantity: number; productName: string }> = [];
     let totalExpectedQuantity = 0;
     for (const s of shipments) {
@@ -112,26 +91,36 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
       id: ri.lpn
     }));
 
-    // Map orders to make sure they have up-to-date totalQuantity and totalAmount
-    const rawOrder = await prisma.aMZRemovalOrder.findFirst({
-      where: { orderId: resolvedOrderId }
-    });
+    // Fetch order metadata from operational Order table for display context.
+    // orderId comes from manifest.removalOrderId (metadata reference, not FK).
+    const effectiveOrderId = resolvedOrderId || manifest.removalOrderId;
+    const rawOrder = effectiveOrderId
+      ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId: effectiveOrderId } })
+      : null;
 
-    const formattedOrders = (manifest.orders || []).map(order => ({
-      ...order,
-      totalQuantity: order.totalQuantity || totalExpectedQuantity,
-      totalAmount: order.totalAmount || rawOrder?.removalFee || 0.0,
-      trackingNumber: order.trackingNumber || resolvedTrackingId || null
-    }));
+    // Fetch the operational Order record for this removal order
+    const operationalOrder = effectiveOrderId
+      ? await prisma.order.findUnique({ where: { platformOrderId: effectiveOrderId } })
+      : null;
+
+    // Build a synthetic order summary for the response (replaces the old manifest.orders array)
+    const orderSummary = operationalOrder
+      ? {
+          ...operationalOrder,
+          totalQuantity: operationalOrder.totalQuantity || totalExpectedQuantity,
+          totalAmount: operationalOrder.totalAmount || rawOrder?.removalFee || 0.0,
+          trackingNumber: manifest.trackingId, // tracking is the manifest's own trackingId
+        }
+      : null;
 
     const formattedManifest = {
       ...manifest,
-      orders: formattedOrders,
+      orders: orderSummary ? [orderSummary] : [],
       totalExpectedQuantity: Math.max(totalExpectedQuantity, 1),
       expectedFnskus: items,
       fnskuCounts,
-      matchedOrderId: resolvedOrderId,
-      returnItems: flattenedReturnItems
+      matchedOrderId: effectiveOrderId,
+      returnItems: flattenedReturnItems,
     };
 
     return NextResponse.json({ manifest: formattedManifest });

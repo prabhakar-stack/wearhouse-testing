@@ -5,118 +5,99 @@ import { main as repopulateMain } from "./repopulate_incremental.js";
 const prisma = new PrismaClient();
 
 async function syncRemovalShipmentsToOrders() {
-  console.log("Syncing Removal Shipments from Staging table (AMZ_removal_shipments) to operational Order & Manifest tables...");
+  console.log("Syncing Removal Shipments from Staging table (AMZ_removal_shipments) to operational Order & Manifest tables (tracking-first)...");
   const rawShipments = await prisma.aMZRemovalShipment.findMany();
-  
-  // Group shipments by orderId in memory
-  const shipmentsByOrderId = {};
+
+  // ── Group by trackingNumber — one Manifest per physical shipment box ──────────
+  // Rows without a tracking number are skipped (admin alert fires via cron).
+  const shipmentsByTrackingId = {};
+  const skippedNoTracking = [];
+
   for (const item of rawShipments) {
-    if (!item.orderId) continue;
-    if (!shipmentsByOrderId[item.orderId]) {
-      shipmentsByOrderId[item.orderId] = [];
+    if (!item.trackingNumber) {
+      skippedNoTracking.push(item);
+      continue;
     }
-    shipmentsByOrderId[item.orderId].push(item);
+    if (!shipmentsByTrackingId[item.trackingNumber]) {
+      shipmentsByTrackingId[item.trackingNumber] = [];
+    }
+    shipmentsByTrackingId[item.trackingNumber].push(item);
+  }
+
+  if (skippedNoTracking.length > 0) {
+    console.warn(`[WARN] ${skippedNoTracking.length} shipment row(s) have no trackingNumber — skipping manifest creation for these.`);
   }
 
   let successCount = 0;
 
-  for (const [orderId, group] of Object.entries(shipmentsByOrderId)) {
+  for (const [trackingNumber, group] of Object.entries(shipmentsByTrackingId)) {
     try {
-      const firstItem = group[0];
+      // orderId is now metadata on the manifest (not the grouping key)
+      const orderId = group[0]?.orderId || null;
       const totalQuantity = group.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
-      const trackingNumber = group.map(s => s.trackingNumber).filter(Boolean)[0] || null;
-
+      const firstItem = group[0];
       const orderMarketplace = "AMAZON";
 
-      // Find or create Manifest linked to the trackingNumber mapping directly from Order-level fields
-      let manifestId = null;
-      if (trackingNumber) {
-        const existingManifest = await prisma.manifest.findUnique({
-          where: { trackingId: trackingNumber }
-        });
+      // ── Create or update Manifest keyed by trackingNumber ─────────────────────
+      const existingManifest = await prisma.manifest.findUnique({
+        where: { trackingId: trackingNumber },
+      });
 
-        let manifest;
-        if (existingManifest) {
-          manifest = await prisma.manifest.update({
-            where: { trackingId: trackingNumber },
-            data: {
-              removalOrderId: orderId,
-              marketplace: orderMarketplace,
-            }
-          });
-        } else {
-          manifest = await prisma.manifest.create({
-            data: {
-              trackingId: trackingNumber,
-              status: "IN_TRANSIT",
-              marketplace: orderMarketplace,
-              removalOrderId: orderId,
-              expectedDate: null,
-            }
-          });
-        }
-        manifestId = manifest.id;
+      if (existingManifest) {
+        await prisma.manifest.update({
+          where: { trackingId: trackingNumber },
+          data: {
+            marketplace: orderMarketplace,
+            // Keep removalOrderId as metadata reference
+            ...(orderId ? { removalOrderId: orderId } : {}),
+          },
+        });
+      } else {
+        await prisma.manifest.create({
+          data: {
+            trackingId: trackingNumber,
+            status: "IN_TRANSIT",
+            marketplace: orderMarketplace,
+            removalOrderId: orderId || null,
+            expectedDate: null,
+          },
+        });
+        console.log(`[MANIFEST CREATED] trackingId=${trackingNumber} orderId=${orderId}`);
       }
 
-      // ----------------------------------------------------
-      // [DATABASE LOAD & SYNC PROCESS] Core Order Sync
-      // Target: Order (Operational Table)
-      // Operation: Upserting Order utilizing shipment groups
-      // ----------------------------------------------------
-      await prisma.order.upsert({
-        where: { platformOrderId: orderId },
-        update: {
-          marketplace: orderMarketplace,
-          requestDate: firstItem.requestDate,
-          totalAmount: null,
-          totalQuantity: totalQuantity,
-          trackingNumber: trackingNumber,
-          manifestId: manifestId,
-          fulfillmentChannel: "AMAZON_REMOVAL",
-        },
-        create: {
-          marketplace: orderMarketplace,
-          platformOrderId: orderId,
-          requestDate: firstItem.requestDate,
-          totalAmount: null,
-          totalQuantity: totalQuantity,
-          trackingNumber: trackingNumber,
-          manifestId: manifestId,
-          fulfillmentChannel: "AMAZON_REMOVAL",
-        },
-      });
+      // ── Upsert Order — independent, no manifestId FK ──────────────────────────
+      // Order is used only for order-level metadata and reimbursement window alerts.
+      if (orderId) {
+        await prisma.order.upsert({
+          where: { platformOrderId: orderId },
+          update: {
+            marketplace: orderMarketplace,
+            requestDate: firstItem.requestDate,
+            totalAmount: null,
+            totalQuantity: totalQuantity,
+            fulfillmentChannel: "AMAZON_REMOVAL",
+          },
+          create: {
+            marketplace: orderMarketplace,
+            platformOrderId: orderId,
+            requestDate: firstItem.requestDate,
+            totalAmount: null,
+            totalQuantity: totalQuantity,
+            fulfillmentChannel: "AMAZON_REMOVAL",
+          },
+        });
+      }
+
       successCount++;
     } catch (e) {
-      console.error(`[ERROR] Failed to sync operational Order & Manifest for Order ${orderId}:`, e.message);
+      console.error(`[ERROR] Failed to sync Manifest & Order for trackingNumber=${trackingNumber}:`, e.message);
     }
   }
 
-  // NOTE: We intentionally do NOT delete Amazon orders that aren't in the current
-  // 7-day window. The Amazon report only covers the last 7 days, so older orders
-  // are simply not in the active window — they are still valid historical records
-  // with downstream manifest, inspection, and alert data linked to them.
-  // Deleting them here would wipe real warehouse operational data every sync run.
-  //
-  // If you need to clean up truly stale/orphaned orders, do it manually or with a
-  // dedicated audit query scoped to orders with no manifest activity.
-  const activeOrderIds = Object.keys(shipmentsByOrderId);
-  const staleCandidates = await prisma.order.findMany({
-    where: {
-      marketplace: "AMAZON",
-      platformOrderId: { notIn: activeOrderIds },
-      manifest: {
-        status: { in: ["EXPECTED", "IN_TRANSIT"] },
-        expectedDate: { lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
-      },
-    },
-    select: { platformOrderId: true },
-  });
-  if (staleCandidates.length > 0) {
-    console.log(`[INFO] ${staleCandidates.length} Amazon order(s) not in current 7-day report and still in EXPECTED/IN_TRANSIT state older than 90 days. Review manually if needed.`);
-    staleCandidates.forEach(o => console.log(`  - ${o.platformOrderId}`));
+  console.log(`Successfully synced ${successCount}/${Object.keys(shipmentsByTrackingId).length} unique tracking IDs to Manifest & Order tables.`);
+  if (skippedNoTracking.length > 0) {
+    console.log(`[INFO] ${skippedNoTracking.length} shipment rows skipped (no tracking number). These will surface as ORDER_NO_TRACKING_ID alerts.`);
   }
-
-  console.log(`Successfully synced ${successCount}/${Object.keys(shipmentsByOrderId).length} unique Orders from Removal Shipments.`);
   return successCount;
 }
 

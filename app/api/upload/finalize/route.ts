@@ -31,24 +31,16 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Finalize Upload] Finalizing for Tracking ID: ${trackingId}`, body);
 
-    // 1. Resolve and Dynamically Upsert the Manifest record (evidence linkage only — NO status change)
+    // 1. Resolve the Manifest by trackingId, manifestId, or orderId (via removalOrderId metadata)
     let manifest = await prisma.manifest.findFirst({
       where: {
         OR: [
           { trackingId: trackingId },
           { id: manifestId || '' },
-          { orders: { some: { platformOrderId: trackingId } } },
-          { orders: { some: { platformOrderId: orderPlatformId || '' } } },
+          { removalOrderId: trackingId },
+          { removalOrderId: orderPlatformId || '' },
         ]
       },
-      include: {
-        orders: {
-          select: {
-            platformOrderId: true,
-            trackingNumber: true,
-          }
-        }
-      }
     });
 
     if (!manifest) {
@@ -212,41 +204,24 @@ export async function POST(req: NextRequest) {
     const evidenceRecordsCreated = [];
     const isRejection = type === 'RECEIVER_REJECTION';
 
-    const manifestOrderIds = manifest.orders.map(order => order.platformOrderId);
+    // Derive scopedOrderId from manifest.removalOrderId (metadata reference)
     const scopedOrderId =
       typeof orderPlatformId === 'string' && orderPlatformId.trim()
         ? orderPlatformId.trim()
-        : manifestOrderIds.includes(trackingId)
-          ? trackingId
-          : manifestOrderIds.length === 1
-            ? manifestOrderIds[0]
-            : null;
+        : manifest.removalOrderId || null;
 
     if (!isRejection && !scopedOrderId) {
       return NextResponse.json(
-        { error: 'Missing orderPlatformId for a multi-order inspection.' },
+        { error: 'Missing orderPlatformId for this manifest.' },
         { status: 400 },
       );
     }
 
-    if (!isRejection && scopedOrderId && !manifestOrderIds.includes(scopedOrderId)) {
-      return NextResponse.json(
-        { error: `Order ${scopedOrderId} does not belong to manifest ${manifest.trackingId}.` },
-        { status: 400 },
-      );
-    }
-
-    // Since ReturnItem is decoupled from Order, let's find the relevant return items.
-    // Fetch the raw removal shipments to know which SKUs/FNSKUs were expected in this manifest/orders
-    const trackingNumbers = (manifest.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
+    // Fetch removal shipments scoped to this tracking number only (shipment-centric).
+    const trackingNumbers = [manifest.trackingId].filter(Boolean);
 
     const removalShipments = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          { orderId: { in: manifestOrderIds } },
-          { trackingNumber: { in: trackingNumbers } }
-        ]
-      }
+      where: { trackingNumber: { in: trackingNumbers } }
     });
 
     const expectedSkus = Array.from(new Set(removalShipments.map(s => s.sku).filter((s): s is string => !!s)));
@@ -448,27 +423,29 @@ export async function POST(req: NextRequest) {
         if (missingQty > 0) {
           await prisma.missingItem.upsert({
             where: {
-              orderId_fnsku: {
-                orderId: scopedOrderId!,
+              manifestId_fnsku: {
+                manifestId: manifest.id,
                 fnsku: fnsku
               }
             },
             update: {
               missingQuantity: missingQty,
               orderDriveLink: folderLink || null,
+              orderId: scopedOrderId!,
             },
             create: {
               orderId: scopedOrderId!,
               fnsku: fnsku,
               missingQuantity: missingQty,
               orderDriveLink: folderLink || null,
+              manifestId: manifest.id,
             }
           });
         } else {
           await prisma.missingItem.deleteMany({
             where: {
-              orderId: scopedOrderId!,
-              fnsku: fnsku
+              manifestId: manifest.id,
+              fnsku: fnsku,
             }
           });
         }

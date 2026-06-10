@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const { trackingId, tapeIntact, boxCrushed, isTampered, otpProvided, evidenceUrl } = body;
 
     if (!trackingId) {
-      return NextResponse.json({ error: 'Tracking ID or Order ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Tracking ID is required' }, { status: 400 });
     }
 
     const userId = req.headers.get('x-user-id');
@@ -15,22 +15,17 @@ export async function POST(req: NextRequest) {
 
     const isDamaged = !tapeIntact || boxCrushed || isTampered;
 
-    // 1. First, search Manifest by tracking number (trackingId)
-    let manifest = await prisma.manifest.findUnique({
+    // 1. Look up Manifest by trackingId — primary lookup only.
+    //    Every manifest is now keyed by tracking number (tracking-first architecture).
+    //    The legacy fallback by removalOrderId is removed: if a manifest doesn't exist
+    //    for this trackingId it has not been staged yet and must be reported.
+    const manifest = await prisma.manifest.findUnique({
       where: { trackingId }
     });
 
-    // 2. If not found, try searching Manifest by removalOrderId (where user scanned the Order ID)
-    if (!manifest) {
-      manifest = await prisma.manifest.findFirst({
-        where: { removalOrderId: trackingId }
-      });
-    }
-
-    // 3. If still not found anywhere in manifest expected logs, block intake
     if (!manifest) {
       return NextResponse.json({
-        error: `This package/order (${trackingId}) is not in expected return logs. Please search in main database or contact administrator.`
+        error: `This package (${trackingId}) is not in expected return logs. Please search in main database or contact administrator.`
       }, { status: 404 });
     }
 
@@ -41,88 +36,82 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Fetch removal shipments and AMZ removal orders matching the manifest's removalOrderId to link them
+    // Fetch removal shipments scoped strictly to this tracking number.
+    // This is the shipment-centric lookup: only rows belonging to this physical box.
+    const removalShipments = await prisma.aMZRemovalShipment.findMany({
+      where: { trackingNumber: manifest.trackingId }
+    });
+
+    // Resolve orderId from the manifest metadata (set during staging sync)
     const removalOrderId = manifest.removalOrderId;
-    const removalShipments = removalOrderId ? await prisma.aMZRemovalShipment.findMany({
-      where: { orderId: removalOrderId }
-    }) : [];
 
-    const rawOrder = removalOrderId ? await prisma.aMZRemovalOrder.findFirst({
-      where: { orderId: removalOrderId }
-    }) : null;
+    // Fetch order-level metadata from the raw staging table for request-date context
+    const rawOrder = removalOrderId
+      ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId: removalOrderId } })
+      : null;
 
-    let targetOrderId = removalOrderId;
-
-    // Link shipments, order and generate return items if removalOrderId is active
+    // Upsert the operational Order (independent — no manifestId FK).
+    // This exists for order-level tracking (request date, reimbursement window alerts).
     if (removalOrderId) {
       const totalQuantity = removalShipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
-
-      // Create/upsert the operational Order
-      const opOrder = await prisma.order.upsert({
+      await prisma.order.upsert({
         where: { platformOrderId: removalOrderId },
         update: {
           marketplace: 'AMAZON',
-          manifestId: manifest.id,
-          totalQuantity: totalQuantity,
+          totalQuantity,
           ...(rawOrder ? {
             requestDate: rawOrder.requestDate || new Date(),
             totalAmount: rawOrder.removalFee || null,
-            fulfillmentChannel: 'AMAZON_REMOVAL'
-          } : {})
+            fulfillmentChannel: 'AMAZON_REMOVAL',
+          } : {}),
         },
         create: {
           platformOrderId: removalOrderId,
           marketplace: 'AMAZON',
-          manifestId: manifest.id,
-          totalQuantity: totalQuantity,
+          totalQuantity,
           requestDate: rawOrder?.requestDate || new Date(),
           totalAmount: rawOrder?.removalFee || null,
-          fulfillmentChannel: 'AMAZON_REMOVAL'
-        }
+          fulfillmentChannel: 'AMAZON_REMOVAL',
+        },
       });
-
-
-      // Dynamically generate ReturnItem records (LPN-level) is intentionally omitted here.
-      // Data is sourced directly from AMZ_customer_returns table at inspection time.
     }
 
     const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
     const userEmail = user?.email || 'receiver@cubelelo.com';
 
     await prisma.$transaction(async (tx) => {
-      // Find customer order id if possible
+      // Resolve customer order ID from the first shipment's SKU match
       let customerOrderId = null;
-      if (removalOrderId) {
+      if (removalOrderId && removalShipments.length > 0) {
         const firstShipment = removalShipments[0];
         const rawReturn = await tx.aMZCustomerReturn.findFirst({
           where: {
             orderId: removalOrderId,
-            sku: firstShipment?.sku
+            sku: firstShipment?.sku,
           }
         });
         customerOrderId = rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER';
       }
 
-      // Update Manifest status, receive timestamp, receivedBy and customerOrderId
-      // qcCheckedAt is stamped here — it marks the moment the receiver completed
-      // their visual QC check. A null value means QC was never performed (used by
-      // Ghost Delivery T1 cron to distinguish "courier says delivered but not QC'd").
+      // Update Manifest status, receive timestamp, receivedBy, and qcCheckedAt.
+      // qcCheckedAt stamps the moment the receiver completed their visual QC check.
+      // A null value means QC was never performed (used by Ghost Delivery T1 cron).
       await tx.manifest.update({
         where: { id: manifest.id },
         data: {
           status: isDamaged ? 'CLAIMS_STAGING' : 'AT_DOCK',
           receivedAt: new Date(),
           receivedBy: userEmail,
-          qcCheckedAt: new Date(),  // stamp QC completion time for both accept and reject
+          qcCheckedAt: new Date(),
         }
       });
 
-      // Create an Evidence if visually damaged/tampered (receiver rejection)
+      // Create Evidence if visually damaged/tampered (receiver rejection)
       if (isDamaged) {
         await tx.evidence.upsert({
           where: { lpn: manifest.trackingId },
           update: {
-            orderId: targetOrderId,
+            orderId: removalOrderId,
             type: 'RECEIVER_REJECTION',
             uploadedByEmail: userEmail,
             manifestId: manifest.id,
@@ -132,7 +121,7 @@ export async function POST(req: NextRequest) {
           },
           create: {
             lpn: manifest.trackingId,
-            orderId: targetOrderId,
+            orderId: removalOrderId,
             type: 'RECEIVER_REJECTION',
             uploadedByEmail: userEmail,
             manifestId: manifest.id,
@@ -142,7 +131,7 @@ export async function POST(req: NextRequest) {
           }
         });
 
-        // Trigger L1 Alert directly
+        // Trigger L1 Alert
         await tx.alert.create({
           data: {
             level: 'L1',
@@ -150,9 +139,7 @@ export async function POST(req: NextRequest) {
             title: `Intake Visual Rejection`,
             description: `Package intake rejected for Tracking ID ${manifest.trackingId} due to visual damage.`,
             manifestId: manifest.id,
-            targetUsers: userId ? {
-              connect: [{ id: userId }]
-            } : undefined
+            targetUsers: userId ? { connect: [{ id: userId }] } : undefined,
           }
         });
         console.log(`[Dock Receive Alert] Created L1 Alert for manifest: ${manifest.id}`);
@@ -162,19 +149,19 @@ export async function POST(req: NextRequest) {
       if (!isDamaged && userId) {
         await tx.user.update({
           where: { id: userId },
-          data: { itemsProcessed: { increment: 1 } }
+          data: { itemsProcessed: { increment: 1 } },
         }).catch(() => {
           console.warn(`[Dock Receive] Could not increment itemsProcessed for user ${userId}`);
         });
       }
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      message: isDamaged 
+    return NextResponse.json({
+      success: true,
+      message: isDamaged
         ? 'Package intake rejected due to visual damage. Dispute registered.'
         : 'Package intake recorded at dock successfully',
-      data: body
+      data: body,
     }, { status: 200 });
 
   } catch (error: any) {

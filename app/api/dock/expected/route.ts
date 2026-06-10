@@ -10,17 +10,10 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         trackingId: true,
+        removalOrderId: true,
         status: true,
         expectedDate: true,
         createdAt: true,
-        orders: {
-          select: {
-            marketplace: true,
-            platformOrderId: true,
-            trackingNumber: true,
-            requestDate: true,
-          }
-        },
         trackingSnapshots: {
           select: {
             trackingNumber: true,
@@ -37,14 +30,15 @@ export async function GET(req: NextRequest) {
     });
 
     const formattedExpected = expected.map(m => {
-      const returnItems = (m.orders || []).map(o => ({
+      // In the tracking-first model, order metadata comes from removalOrderId
+      const returnItems = m.removalOrderId ? [{
         order: {
-          marketplace: o.marketplace,
-          platformOrderId: o.platformOrderId,
-          trackingNumber: o.trackingNumber,
-          requestDate: o.requestDate,
+          marketplace: 'AMAZON',
+          platformOrderId: m.removalOrderId,
+          trackingNumber: m.trackingId,
+          requestDate: null, // Available via Order table if needed
         }
-      }));
+      }] : [];
 
       const trackingData = (m.trackingSnapshots || []).map(snapshot => ({
         trackingNumber: snapshot.trackingNumber,

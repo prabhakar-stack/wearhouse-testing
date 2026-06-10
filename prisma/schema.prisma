@@ -51,12 +51,12 @@ model Manifest {
   createdAt           DateTime           @default(now())
   alerts              Alert[]
   evidences           Evidence[]
-  orders              Order[]
   trackingSnapshots   ShipmentTracking[]
   qcCheckedAt         DateTime?
   lastEmailMessageId  String?
   inspectedAt         DateTime?
   itemStatuses        ItemStatus[]
+  missingItems        MissingItem[]
 }
 
 model Order {
@@ -67,9 +67,6 @@ model Order {
   totalQuantity      Int?
   fulfillmentChannel String?
   fulfillmentId      String?
-  manifestId         String?
-  trackingNumber     String?
-  manifest           Manifest?   @relation(fields: [manifestId], references: [id])
 }
 
 model ShipmentTracking {
@@ -160,14 +157,16 @@ model ItemStatus {
 }
 
 model MissingItem {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   orderId         String
   fnsku           String
   missingQuantity Int
   orderDriveLink  String?
-  createdAt       DateTime @default(now())
+  manifestId      String?
+  createdAt       DateTime  @default(now())
+  manifest        Manifest? @relation(fields: [manifestId], references: [id])
 
-  @@unique([orderId, fnsku])
+  @@unique([manifestId, fnsku])
 }
 
 model AMZRemovalOrder {
@@ -370,13 +369,14 @@ model ReturnItem {
 
 model ClaimsStatus {
   id           Int      @id @default(autoincrement())
-  orderId      String   @unique
-  trackingId   String?
+  orderId      String
+  trackingId   String
   claimId      String   @default("")
   status       String   @default("unclaimed")
   botLogReason String?  @map("bot_log_reason")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  @@unique([orderId, trackingId])
   @@map("claims_status")
 }
 

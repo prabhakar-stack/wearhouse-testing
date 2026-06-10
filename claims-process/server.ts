@@ -303,11 +303,19 @@ async function setupDatabaseSchema(db: pg.Pool) {
           ev.lpn AS lpn,
           ev."orderId" AS "orderId",
           
-          -- TERTIARY LOGISTICS ENRICHMENT VIA ORDERID JOIN (AMZ_removal_shipments)
-          -- Pull tracking ID tracking-number from AMZ_removal_shipments based on orderId
+          -- TERTIARY LOGISTICS ENRICHMENT: derive trackingId shipment-first.
+          -- Primary: read trackingId from Manifest (authoritative — scoped per shipment box).
+          -- Fallback: read tracking-number from AMZ_removal_shipments matching Evidence's manifestId
+          --           via Manifest, then Shopify tracking tables.
+          -- This replaces the old DISTINCT ON (orderId) join which was ambiguous for orders
+          -- with multiple tracking IDs — it would return an arbitrary tracking number.
           COALESCE(
-            ars."tracking-number",
             (SELECT m."trackingId" FROM "Manifest" m WHERE m.id = ev."manifestId" LIMIT 1),
+            (SELECT ars."tracking-number"
+             FROM "AMZ_removal_shipments" ars
+             INNER JOIN "Manifest" m ON m."trackingId" = ars."tracking-number"
+             WHERE m.id = ev."manifestId"
+             LIMIT 1),
             (SELECT srt."trackingNumber" FROM "shopify_return_tracking" srt WHERE srt."orderId" = ev."orderId" OR srt."trackingNumber" = (SELECT sr."trackingNumber" FROM "shiprocket_returns" sr WHERE sr.id = ev.lpn LIMIT 1) LIMIT 1),
             ''
           ) AS "trackingId",
@@ -350,11 +358,6 @@ async function setupDatabaseSchema(db: pg.Pool) {
 
         FROM "Evidence" ev
         LEFT JOIN "${returnsTable}" ar ON LOWER(ev.lpn) = LOWER(ar."license-plate-number")
-        LEFT JOIN (
-          SELECT DISTINCT ON (LOWER("order-id")) LOWER("order-id") AS "clean_order_id", "tracking-number"
-          FROM "AMZ_removal_shipments"
-          WHERE "tracking-number" IS NOT NULL AND "tracking-number" != ''
-        ) ars ON LOWER(ev."orderId") = ars."clean_order_id"
         LEFT JOIN "shiprocket_returns" srr ON LOWER(ev.lpn) = LOWER(srr.id)
         LEFT JOIN "return_prime_returns" rpr ON LOWER(ev.lpn) = LOWER(rpr.id);
       `;

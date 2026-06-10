@@ -774,6 +774,63 @@ export const ALERT_RULES: AlertRule[] = [
       'Initiate an SLA breach investigation for this inventory delay.',
     ],
   },
+
+  // ── 16. AMAZON ORDER NOT DISPATCHED (Reimbursement Window) ──────────────────
+
+  {
+    type: 'ORDER_NOT_SHIPPED_5D',
+    case: 'Amazon order not dispatched',
+    subCase: 'Removal order placed 5+ days ago but no Manifest is in IN_TRANSIT or beyond — Amazon has not dispatched the shipment',
+    level: 'L2',
+    title: 'Amazon Order Not Dispatched — 5 Days',
+    description: 'Removal Order {orderId} was requested on {requestDate} but Amazon has NOT dispatched this shipment after 5 days. No manifest is IN_TRANSIT or beyond. Reimbursement window closes in ~9 days.',
+    targetRoles: ['L2'],
+    channels: ['dashboard', 'email'],
+    thresholdHours: 120, // 5 days
+    sopSteps: [
+      'Log into Amazon Seller Central and check the removal order status.',
+      'If status is still "Pending" or "In Progress", contact Amazon Seller Support.',
+      'Request an expedited dispatch or a status update on the removal.',
+      'Log the follow-up in the reimbursement tracker sheet.',
+    ],
+  },
+  {
+    type: 'ORDER_NOT_SHIPPED_10D',
+    case: 'Amazon order not dispatched',
+    subCase: 'Removal order placed 10+ days ago — still no manifest in IN_TRANSIT or beyond. Critical reimbursement window.',
+    level: 'L3',
+    title: 'Amazon Order Not Dispatched — 10 Days (CRITICAL WINDOW)',
+    description: 'Removal Order {orderId} requested on {requestDate} still has no dispatched shipment (no manifest in IN_TRANSIT or beyond) after 10 days. Amazon reimbursement window closes in ~4–5 days. Immediate action required.',
+    targetRoles: ['L2', 'L3'],
+    channels: ['dashboard', 'email_existing_thread'],
+    thresholdHours: 240, // 10 days
+    sopSteps: [
+      'Immediately contact Amazon Seller Support via phone/chat for an escalation.',
+      'Request Amazon to either dispatch the removal or process an in-place reimbursement.',
+      'Document all communication timestamps.',
+      'If Amazon is unresponsive within 24 hours, escalate to L4.',
+      'File a pre-emptive claim if within 13 days of request date.',
+    ],
+  },
+
+  // ── 17. MISSING TRACKING NUMBER ─────────────────────────────────────────────
+
+  {
+    type: 'ORDER_NO_TRACKING_ID',
+    case: 'Missing tracking number',
+    subCase: 'AMZRemovalShipment row exists but trackingNumber is NULL or empty',
+    level: 'L2',
+    title: 'Shipment Row Has No Tracking Number',
+    description: 'Removal Order {orderId} has a shipment record in Amazon data but no tracking number is assigned. This may resolve automatically on next Amazon report sync. No manifest created for this shipment.',
+    targetRoles: ['L2'],
+    channels: ['dashboard'],
+    thresholdHours: null,
+    sopSteps: [
+      'Wait for the next Amazon report sync to see if a tracking number appears.',
+      'If still missing after next sync, check Seller Central removal order for courier assignment.',
+      'If no tracking number appears within 3 syncs, contact Amazon Seller Support.',
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

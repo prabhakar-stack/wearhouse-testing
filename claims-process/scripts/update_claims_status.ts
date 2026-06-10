@@ -114,25 +114,38 @@ export async function updateClaimsStatus(): Promise<void> {
         : { rejectUnauthorized: false }
     });
 
-    // 1. Initialize schemas (Table structurally enforces id, orderId, trackingId, claimId, status, bot_log_reason, created_at)
+    // 1. Initialize schema — composite unique on (orderId, trackingId) so that one
+    //    removal order with N tracking IDs creates N separate claim status rows.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "claims_status" (
         id SERIAL PRIMARY KEY,
-        "orderId" text UNIQUE NOT NULL,
-        "trackingId" text,
+        "orderId" text NOT NULL,
+        "trackingId" text NOT NULL,
         "claimId" text DEFAULT '',
         status text DEFAULT 'unclaimed',
         bot_log_reason text,
-        created_at timestamp with time zone DEFAULT now()
+        created_at timestamp with time zone DEFAULT now(),
+        UNIQUE ("orderId", "trackingId")
       );
     `);
 
-    // Ensure columns exist on already created table
+    // Ensure columns and composite constraint exist on already-created tables
     try {
       await pool.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "trackingId" text;`);
       await pool.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now();`);
+      // Add composite unique constraint if not already present (idempotent)
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'claims_status_orderId_trackingId_key'
+          ) THEN
+            ALTER TABLE "claims_status" ADD CONSTRAINT "claims_status_orderId_trackingId_key" UNIQUE ("orderId", "trackingId");
+          END IF;
+        END $$;
+      `);
     } catch (e: any) {
-      console.warn("[CRON] Column check on claims_status warning:", e.message);
+      console.warn("[CRON] Column/constraint check on claims_status warning:", e.message);
     }
 
     // Check if the "Evidence" table exists (case-insensitive search in schema)
@@ -176,28 +189,29 @@ export async function updateClaimsStatus(): Promise<void> {
     const hasClaimsAll = viewCheck.rows.length > 0 || tableCheck.rows.length > 0;
 
     if (hasClaimsAll) {
-      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_all"';
+      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_all" WHERE "trackingId" IS NOT NULL AND "trackingId" != \'\''
       if (hasEvidenceTable) {
         queryStr = `
-          SELECT DISTINCT "orderId", "trackingId" 
-          FROM "claims_all" 
-          WHERE "orderId" IN (
+          SELECT DISTINCT "orderId", "trackingId"
+          FROM "claims_all"
+          WHERE "trackingId" IS NOT NULL AND "trackingId" != ''
+          AND "orderId" IN (
             SELECT DISTINCT "orderId" FROM "${evidenceTableName}" WHERE "orderId" IS NOT NULL AND "orderId" != 'N/A'
           )
         `;
       }
       const allClaimsRes = await pool.query(queryStr);
       for (const row of allClaimsRes.rows) {
-        const oId = row.orderId || row.orderId;
-        const tId = row.trackingId || null;
-        if (oId && oId !== 'N/A' && oId.trim() !== '') {
-          // Initialize records in claims_status by default to 'unclaimed'
+        const oId = row.orderId;
+        const tId = row.trackingId;
+        // Both orderId and trackingId are required for the composite key
+        if (oId && oId !== 'N/A' && oId.trim() !== '' && tId && tId.trim() !== '') {
+          // Initialize records in claims_status to 'unclaimed' — composite ON CONFLICT
           await pool.query(`
             INSERT INTO "claims_status" ("orderId", "trackingId", status)
             VALUES ($1, $2, 'unclaimed')
-            ON CONFLICT ("orderId") DO UPDATE SET
-              "trackingId" = COALESCE("claims_status"."trackingId", EXCLUDED."trackingId")
-          `, [oId.trim(), tId ? tId.trim() : null]);
+            ON CONFLICT ("orderId", "trackingId") DO NOTHING
+          `, [oId.trim(), tId.trim()]);
         }
       }
     }
@@ -244,9 +258,14 @@ export async function updateClaimsStatus(): Promise<void> {
             targetPairs.push({ orderId: id, trackingId: null });
           }
 
-          // Batch-upsert / update each related orderId record simultaneously
+          // Batch-upsert each related (orderId, trackingId) pair — composite ON CONFLICT
           for (const pair of targetPairs) {
             if (!pair.orderId || pair.orderId.trim() === '' || pair.orderId === 'N/A') continue;
+            // trackingId is now required — skip pairs without one
+            if (!pair.trackingId || pair.trackingId.trim() === '') {
+              console.warn(`[CRON LOG SYNC] Skipping pair orderId=${pair.orderId}: no trackingId resolved.`);
+              continue;
+            }
 
             // Enforce that log status synchronization only applies if targetOrderId exists in Evidence
             if (hasEvidenceTable) {
@@ -260,11 +279,10 @@ export async function updateClaimsStatus(): Promise<void> {
             await pool.query(`
               INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status, bot_log_reason, created_at)
               VALUES ($1, $2, $3, $4, $5, $6)
-              ON CONFLICT ("orderId")
+              ON CONFLICT ("orderId", "trackingId")
               DO UPDATE SET
                 status = EXCLUDED.status,
                 "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", ''),
-                "trackingId" = COALESCE("claims_status"."trackingId", EXCLUDED."trackingId"),
                 bot_log_reason = EXCLUDED.bot_log_reason,
                 created_at = EXCLUDED.created_at
             `, [
@@ -275,7 +293,7 @@ export async function updateClaimsStatus(): Promise<void> {
               parseResult.botLogReason,
               createdAt
             ]);
-            console.log(`[CRON LOG SYNC] Synchronized logs for Order ID: ${pair.orderId} (Status: ${parseResult.status}, CreatedAt: ${createdAt})`);
+            console.log(`[CRON LOG SYNC] Synchronized logs for Order ID: ${pair.orderId} / Tracking: ${pair.trackingId} (Status: ${parseResult.status})`);
           }
         }
       }

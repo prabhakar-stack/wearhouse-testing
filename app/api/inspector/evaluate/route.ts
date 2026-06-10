@@ -95,9 +95,6 @@ export async function POST(req: Request) {
 
     const manifest = await prisma.manifest.findUnique({
       where: { id: manifestId },
-      include: {
-        orders: true
-      }
     });
 
     if (!manifest) {
@@ -120,42 +117,25 @@ export async function POST(req: Request) {
       );
     }
 
-    const manifestOrderIds = manifest.orders.map(order => order.platformOrderId);
+    // scopedOrderId comes from the manifest's removalOrderId metadata field.
+    // In the shipment-centric model, one manifest = one tracking ID = one physical box.
+    // The manifest already knows which removal order it belongs to.
     const scopedOrderId =
       typeof orderPlatformId === 'string' && orderPlatformId.trim()
         ? orderPlatformId.trim()
-        : manifestOrderIds.length === 1
-          ? manifestOrderIds[0]
-          : null;
+        : manifest.removalOrderId || null;
 
     if (!scopedOrderId) {
       return NextResponse.json(
-        { error: 'Missing orderPlatformId for a multi-order manifest.' },
+        { error: 'Cannot determine orderId for this manifest. Ensure removalOrderId is set.' },
         { status: 400 },
       );
     }
 
-    if (!manifestOrderIds.includes(scopedOrderId)) {
-      return NextResponse.json(
-        { error: `Order ${scopedOrderId} does not belong to this manifest.` },
-        { status: 400 },
-      );
-    }
-
-    // 1. Fetch expected removal shipments to determine expected quantities per FNSKU robustly
-    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
-    const trackingNumbers = [
-      manifest.trackingId,
-      ...(manifest.orders || []).map(o => o.trackingNumber)
-    ].filter((t): t is string => !!t);
-
+    // 1. Fetch expected removal shipments scoped to this tracking number only.
+    //    Shipment-centric: we only look at SKUs in this physical box, not the whole order.
     const shipments = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          { orderId: { in: orderIds } },
-          { trackingNumber: { in: trackingNumbers } }
-        ]
-      }
+      where: { trackingNumber: manifest.trackingId }
     });
 
     const expectedFnskuQuantities = new Map<string, number>();
@@ -317,27 +297,29 @@ export async function POST(req: Request) {
 
           await tx.missingItem.upsert({
             where: {
-              orderId_fnsku: {
-                orderId: scopedOrderId,
+              manifestId_fnsku: {
+                manifestId: manifest.id,
                 fnsku: fnsku
               }
             },
             update: {
               missingQuantity: missingQty,
               orderDriveLink: evidenceUrl || null,
+              orderId: scopedOrderId,
             },
             create: {
               orderId: scopedOrderId,
               fnsku: fnsku,
               missingQuantity: missingQty,
               orderDriveLink: evidenceUrl || null,
+              manifestId: manifest.id,
             }
           });
         } else {
           await tx.missingItem.deleteMany({
             where: {
-              orderId: scopedOrderId,
-              fnsku: fnsku
+              manifestId: manifest.id,
+              fnsku: fnsku,
             }
           });
         }

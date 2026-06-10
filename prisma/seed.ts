@@ -82,10 +82,9 @@ async function main() {
       requestDate: new Date(),
       totalAmount: 13894.00, // Sum of 499 + 399 + (4599*2) + (1899*2)
       fulfillmentChannel: 'FBA',
-      manifestId: manifestMulti.id,
-      trackingNumber: '52103257345',
     }
   });
+
 
   // Create 6 ReturnItems (LPNs)
   await prisma.returnItem.create({

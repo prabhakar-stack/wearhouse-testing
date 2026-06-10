@@ -27,13 +27,8 @@ export async function GET(req: Request) {
       select: {
         id: true,
         trackingId: true,
+        removalOrderId: true,
         receivedAt: true,
-        orders: {
-          select: {
-            marketplace: true,
-            platformOrderId: true
-          }
-        }
       },
       orderBy: {
         receivedAt: 'desc'
@@ -41,12 +36,12 @@ export async function GET(req: Request) {
     });
 
     const formattedLedger = ledger.map(m => {
-      const returnItems = (m.orders || []).map(o => ({
+      const returnItems = m.removalOrderId ? [{
         order: {
-          marketplace: o.marketplace,
-          platformOrderId: o.platformOrderId
+          marketplace: 'AMAZON',
+          platformOrderId: m.removalOrderId,
         }
-      }));
+      }] : [];
 
       return {
         id: m.id,

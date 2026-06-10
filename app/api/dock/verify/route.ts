@@ -23,9 +23,6 @@ export async function GET(req: NextRequest) {
           mode: 'insensitive'
         }
       },
-      include: {
-        orders: { select: { marketplace: true } }
-      }
     });
 
     if (manifest) {
@@ -39,7 +36,7 @@ export async function GET(req: NextRequest) {
           error: `This package cannot be received. It is already in stage "${manifest.status}".`
         }, { status: 400 });
       }
-      const marketplace = manifest.orders?.[0]?.marketplace || 'AMAZON';
+      const marketplace = manifest.marketplace || 'AMAZON';
       return NextResponse.json({ success: true, marketplace });
     }
 

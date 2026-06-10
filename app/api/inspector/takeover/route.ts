@@ -23,9 +23,6 @@ export async function POST(req: NextRequest) {
     // Find the manifest
     const manifest = await prisma.manifest.findUnique({
       where: { trackingId },
-      include: {
-        orders: true
-      }
     });
 
     if (!manifest) {
@@ -44,17 +41,10 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    // Since ReturnItem is decoupled, load expected return items from AMZRemovalShipment SKUs / FNSKUs matching the manifest/orders
-    const orderIds = (manifest.orders || []).map(o => o.platformOrderId);
-    const trackingNumbers = (manifest.orders || []).map(o => o.trackingNumber).filter((t): t is string => !!t);
-
+    // Load expected return items from AMZRemovalShipment scoped to this tracking number only.
+    // Shipment-centric: one manifest = one tracking number = one physical box.
     const shipments = await prisma.aMZRemovalShipment.findMany({
-      where: {
-        OR: [
-          { orderId: { in: orderIds } },
-          { trackingNumber: { in: trackingNumbers } }
-        ]
-      }
+      where: { trackingNumber: manifest.trackingId }
     });
 
     const totalExpectedQty = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
@@ -112,9 +102,6 @@ export async function POST(req: NextRequest) {
           inspectedBy: userEmail,
           inspectorHandoverAt: new Date()
         },
-        include: {
-          orders: true
-        }
       });
 
       return { manifest: updated };
