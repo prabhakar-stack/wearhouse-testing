@@ -114,26 +114,23 @@ export async function generateOrdersFromShipments() {
       }
     }
 
-    // Upsert the Order and link it to the Manifest
+    // Upsert the Order (metadata only — trackingNumber and manifestId live on Manifest now)
     await prisma.order.upsert({
       where: { platformOrderId: orderId },
       update: {
         requestDate: g.requestDate,
         totalQuantity: g.shippedQuantity || undefined,
-        trackingNumber: g.trackingNumber,
         fulfillmentId: orderId,
-        manifestId: manifest.id,
       },
       create: {
         platformOrderId: orderId,
         marketplace: "AMAZON",
         requestDate: g.requestDate,
         totalQuantity: g.shippedQuantity || undefined,
-        trackingNumber: g.trackingNumber,
         fulfillmentId: orderId,
-        manifestId: manifest.id,
       },
     });
+
 
     console.log(`[generateOrdersFromShipments] Processed Order ${orderId}`);
   }
