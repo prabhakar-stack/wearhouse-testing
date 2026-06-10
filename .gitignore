@@ -20,6 +20,9 @@ claims-process/bot_state/
 *.tsv
 tracking-data.json
 
+# TypeScript incremental build cache — auto-generated, never commit
+tsconfig.tsbuildinfo
+
 # Ignore build outputs if necessary
 node_modules/
 note.md
