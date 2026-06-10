@@ -8,6 +8,7 @@ import { calculateWarehouseWorkingHours } from "./timeUtils.ts";
 import { resolveTargetUserIds } from "./alertTargeting.ts";
 import { archiveAndScoreAlerts } from "./alertLogger.ts";
 import { dispatchAlert } from "./alertDispatcher.ts";
+import { randomUUID } from "crypto";
 
 
 // Helper to get carrier name from AMZRemovalShipment by tracking number
@@ -31,11 +32,126 @@ export type CronJobKey =
   | "expected-tracking"
   | "escalations";
 
+export async function generateOrdersFromShipments() {
+  console.log("[generateOrdersFromShipments] Fetching removal shipments...");
+  const shipments = await prisma.aMZRemovalShipment.findMany({
+    where: { orderId: { not: null } }
+  });
+
+  console.log(`[generateOrdersFromShipments] Found ${shipments.length} shipments. Grouping by order ID...`);
+
+  // Group in memory
+  const grouped: Record<string, {
+    orderId: string;
+    shippedQuantity: number;
+    requestDate: Date | null;
+    trackingNumber: string | null;
+  }> = {};
+  
+  for (const s of shipments) {
+    const orderId = s.orderId;
+    if (!orderId) continue;
+    if (!grouped[orderId]) {
+      grouped[orderId] = {
+        orderId,
+        shippedQuantity: 0,
+        requestDate: null,
+        trackingNumber: null,
+      };
+    }
+    
+    grouped[orderId].shippedQuantity += s.shippedQuantity ?? 0;
+    
+    if (s.requestDate) {
+      const sDate = new Date(s.requestDate);
+      if (!grouped[orderId].requestDate || sDate < (grouped[orderId].requestDate as Date)) {
+        grouped[orderId].requestDate = sDate;
+      }
+    }
+    
+    if (!grouped[orderId].trackingNumber && s.trackingNumber) {
+      grouped[orderId].trackingNumber = s.trackingNumber;
+    }
+  }
+
+  const groupedArray = Object.values(grouped);
+  console.log(`[generateOrdersFromShipments] Grouped into ${groupedArray.length} unique orders. Processing...`);
+
+  for (const g of groupedArray) {
+    const orderId = g.orderId;
+
+    // Check if manifest already exists for this removalOrderId
+    let manifest = await prisma.manifest.findFirst({
+      where: { removalOrderId: orderId }
+    });
+
+    if (!manifest) {
+      // Find a tracking ID, fallback to random UUID if none
+      const trackingId = g.trackingNumber || randomUUID();
+
+      // Check if trackingId is already used to avoid unique constraint violations
+      let existingManifestWithTracking = await prisma.manifest.findUnique({
+        where: { trackingId }
+      });
+
+      if (existingManifestWithTracking) {
+        manifest = existingManifestWithTracking;
+        // Optionally update it to link the removalOrderId
+        if (!manifest.removalOrderId) {
+          manifest = await prisma.manifest.update({
+            where: { id: manifest.id },
+            data: { removalOrderId: orderId }
+          });
+        }
+      } else {
+        manifest = await prisma.manifest.create({
+          data: {
+            trackingId,
+            status: PackageState.EXPECTED,
+            removalOrderId: orderId,
+          },
+        });
+      }
+    }
+
+    // Upsert the Order and link it to the Manifest
+    await prisma.order.upsert({
+      where: { platformOrderId: orderId },
+      update: {
+        requestDate: g.requestDate,
+        totalQuantity: g.shippedQuantity || undefined,
+        trackingNumber: g.trackingNumber,
+        fulfillmentId: orderId,
+        manifestId: manifest.id,
+      },
+      create: {
+        platformOrderId: orderId,
+        marketplace: "AMAZON",
+        requestDate: g.requestDate,
+        totalQuantity: g.shippedQuantity || undefined,
+        trackingNumber: g.trackingNumber,
+        fulfillmentId: orderId,
+        manifestId: manifest.id,
+      },
+    });
+
+    console.log(`[generateOrdersFromShipments] Processed Order ${orderId}`);
+  }
+  console.log("[generateOrdersFromShipments] All orders and manifests successfully populated.");
+}
+
 export async function runAmazonReturnsJob() {
+  console.log("[Amazon Returns Job] Step 1: Fetching and staging Amazon returns raw reports...");
   await runAmazonRawSync();
 
+  console.log("[Amazon Returns Job] Step 2: Populating core Order and Manifest tables from shipments...");
+  await generateOrdersFromShipments();
+
+  console.log("[Amazon Returns Job] Step 3: Running tracking update for expected packages...");
+  await runExpectedTrackingJob();
+
   return {
-    message: "Amazon raw report fetch and sync completed",
+    message: "Amazon returns pipeline (fetch, stage, generate orders/manifests, and track) completed successfully.",
   };
 }
 
