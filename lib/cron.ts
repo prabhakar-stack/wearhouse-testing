@@ -1194,6 +1194,350 @@ export async function runEscalationsJob() {
   }
 
 
+
+  // ── GROUP 1: DELIVERY ETA BREACH ──────────────────────────────────────────────
+  // Fire when a manifest (EXPECTED or IN_TRANSIT) has an ETA (from ShipmentTracking.scheduledDelivery,
+  // OR fallback: Order.requestDate + 5 days) that is overdue by 48/72/96 hours.
+  const etaBreachManifests = await prisma.manifest.findMany({
+    where: {
+      status: { in: ['EXPECTED', 'IN_TRANSIT'] },
+    },
+    include: {
+      trackingSnapshots: { select: { scheduledDelivery: true } },
+      alerts: { where: { resolved: false, type: { startsWith: 'DELIVERY_ETA_BREACH' } } },
+    },
+  });
+
+  for (const manifest of etaBreachManifests) {
+    // Prefer the carrier-provided ETA; fall back to Order.requestDate + 5 days
+    let eta: Date | null = manifest.trackingSnapshots[0]?.scheduledDelivery ?? null;
+    if (!eta && manifest.removalOrderId) {
+      const order = await prisma.order.findUnique({
+        where: { platformOrderId: manifest.removalOrderId },
+        select: { requestDate: true },
+      });
+      if (order?.requestDate) {
+        eta = new Date(order.requestDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+      }
+    }
+    if (!eta || eta > now) continue; // ETA not yet passed
+
+    const workingHoursOverdue = calculateWarehouseWorkingHours(eta, now, startTimeStr, endTimeStr, timezoneStr);
+
+    let targetAlertType: string | null = null;
+    if (workingHoursOverdue >= 96) {
+      targetAlertType = 'DELIVERY_ETA_BREACH_96H';
+    } else if (workingHoursOverdue >= 72) {
+      targetAlertType = 'DELIVERY_ETA_BREACH_72H';
+    } else if (workingHoursOverdue >= 48) {
+      targetAlertType = 'DELIVERY_ETA_BREACH_48H';
+    }
+    if (!targetAlertType) continue;
+
+    const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+    if (!rule) continue;
+
+    const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+    if (exactAlertExists) continue;
+
+    const ETA_TIER_PRIORITY: Record<string, number> = {
+      DELIVERY_ETA_BREACH_48H: 1,
+      DELIVERY_ETA_BREACH_72H: 2,
+      DELIVERY_ETA_BREACH_96H: 3,
+    };
+    const targetPriority = ETA_TIER_PRIORITY[targetAlertType] ?? 0;
+    const activeAlertsToArchive: string[] = [];
+    let shouldCreate = true;
+    for (const active of manifest.alerts) {
+      const activePriority = ETA_TIER_PRIORITY[active.type] ?? 0;
+      if (activePriority < targetPriority) activeAlertsToArchive.push(active.id);
+      else if (activePriority > targetPriority) shouldCreate = false;
+    }
+    if (activeAlertsToArchive.length > 0) await archiveAndScoreAlerts(activeAlertsToArchive, 'ESCALATED');
+    if (!shouldCreate) continue;
+
+    const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+    const alert = await prisma.alert.create({
+      data: {
+        level: rule.level as any,
+        type: rule.type,
+        title: rule.title,
+        description: rule.description.replace('{trackingId}', manifest.trackingId),
+        manifestId: manifest.id,
+        targetUsers: { connect: targetUserIds.map(id => ({ id })) },
+      },
+    });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+      if (rule.level === 'L2') results.l2Alerts++;
+      else if (rule.level === 'L3') results.l3Alerts++;
+      else if (rule.level === 'L4') results.l4Alerts++;
+    }
+  }
+
+  // ── GROUP 3: GHOST DELIVERY TYPE 2 (Receiver QC Rejection, No Claim) ─────────
+  // RECEIVER_REJECTION Evidence exists on a manifest that still has no claimId.
+  // Fire at 6H / 12H / 24H working hours since the Evidence was created.
+  const rejectionEvidences = await prisma.evidence.findMany({
+    where: {
+      type: 'RECEIVER_REJECTION',
+      manifest: { claimId: null },
+      manifestId: { not: null },
+    },
+    include: {
+      manifest: {
+        include: {
+          alerts: { where: { resolved: false, type: { startsWith: 'GHOST_DELIVERY_T2' } } },
+        },
+      },
+    },
+  });
+
+  for (const ev of rejectionEvidences) {
+    if (!ev.manifest) continue;
+    const manifest = ev.manifest;
+
+    const workingHrsElapsed = calculateWarehouseWorkingHours(ev.createdAt, now, startTimeStr, endTimeStr, timezoneStr);
+    let targetAlertType: string | null = null;
+    if (workingHrsElapsed >= 24) {
+      targetAlertType = 'GHOST_DELIVERY_T2_24H';
+    } else if (workingHrsElapsed >= 12) {
+      targetAlertType = 'GHOST_DELIVERY_T2_12H';
+    } else if (workingHrsElapsed >= 6) {
+      targetAlertType = 'GHOST_DELIVERY_T2_6H';
+    }
+    if (!targetAlertType) continue;
+
+    const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+    if (!rule) continue;
+
+    const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+    if (exactAlertExists) continue;
+
+    const T2_TIER_PRIORITY: Record<string, number> = {
+      GHOST_DELIVERY_T2_6H: 1,
+      GHOST_DELIVERY_T2_12H: 2,
+      GHOST_DELIVERY_T2_24H: 3,
+    };
+    const targetPriority = T2_TIER_PRIORITY[targetAlertType] ?? 0;
+    const activeAlertsToArchive: string[] = [];
+    let shouldCreate = true;
+    for (const active of manifest.alerts) {
+      const activePriority = T2_TIER_PRIORITY[active.type] ?? 0;
+      if (activePriority < targetPriority) activeAlertsToArchive.push(active.id);
+      else if (activePriority > targetPriority) shouldCreate = false;
+    }
+    if (activeAlertsToArchive.length > 0) await archiveAndScoreAlerts(activeAlertsToArchive, 'ESCALATED');
+    if (!shouldCreate) continue;
+
+    const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+    const alert = await prisma.alert.create({
+      data: {
+        level: rule.level as any,
+        type: rule.type,
+        title: rule.title,
+        description: rule.description.replace('{trackingId}', manifest.trackingId),
+        manifestId: manifest.id,
+        targetUsers: { connect: targetUserIds.map(id => ({ id })) },
+      },
+    });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+      if (rule.level === 'L2') results.l2Alerts++;
+      else if (rule.level === 'L3') results.l3Alerts++;
+      else if (rule.level === 'L4') results.l4Alerts++;
+    }
+  }
+
+  // ── GROUP 4: RECEIVE UPDATE PENDING ───────────────────────────────────────────
+  // Manifest.qcCheckedAt is set (receiver physically checked the package) but the
+  // manifest status is still EXPECTED or IN_TRANSIT — i.e., the acceptance was not
+  // confirmed in the system. Fire at 2H (L1) and 6H (L2) working hours.
+  const qcCheckedPendingManifests = await prisma.manifest.findMany({
+    where: {
+      qcCheckedAt: { not: null },
+      status: { in: ['EXPECTED', 'IN_TRANSIT'] },
+    },
+    include: {
+      alerts: { where: { resolved: false, type: { startsWith: 'RECEIVE_UPDATE_PENDING' } } },
+    },
+  });
+
+  for (const manifest of qcCheckedPendingManifests) {
+    if (!manifest.qcCheckedAt) continue;
+    const workingHrsElapsed = calculateWarehouseWorkingHours(manifest.qcCheckedAt, now, startTimeStr, endTimeStr, timezoneStr);
+
+    let targetAlertType: string | null = null;
+    if (workingHrsElapsed >= 6) {
+      targetAlertType = 'RECEIVE_UPDATE_PENDING_6H';
+    } else if (workingHrsElapsed >= 2) {
+      targetAlertType = 'RECEIVE_UPDATE_PENDING_2H';
+    }
+    if (!targetAlertType) continue;
+
+    const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+    if (!rule) continue;
+
+    const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+    if (exactAlertExists) continue;
+
+    const RUP_TIER_PRIORITY: Record<string, number> = {
+      RECEIVE_UPDATE_PENDING_2H: 1,
+      RECEIVE_UPDATE_PENDING_6H: 2,
+    };
+    const targetPriority = RUP_TIER_PRIORITY[targetAlertType] ?? 0;
+    const activeAlertsToArchive: string[] = [];
+    let shouldCreate = true;
+    for (const active of manifest.alerts) {
+      const activePriority = RUP_TIER_PRIORITY[active.type] ?? 0;
+      if (activePriority < targetPriority) activeAlertsToArchive.push(active.id);
+      else if (activePriority > targetPriority) shouldCreate = false;
+    }
+    if (activeAlertsToArchive.length > 0) await archiveAndScoreAlerts(activeAlertsToArchive, 'ESCALATED');
+    if (!shouldCreate) continue;
+
+    // Target the specific receiver if known, else resolve by role
+    let targetUserIds: string[] = [];
+    if (manifest.receivedBy) {
+      const receiver = await prisma.user.findUnique({ where: { email: manifest.receivedBy }, select: { id: true } });
+      if (receiver) targetUserIds.push(receiver.id);
+    }
+    if (targetUserIds.length === 0) {
+      targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+    }
+
+    const alert = await prisma.alert.create({
+      data: {
+        level: rule.level as any,
+        type: rule.type,
+        title: rule.title,
+        description: rule.description.replace('{trackingId}', manifest.trackingId),
+        manifestId: manifest.id,
+        targetUsers: { connect: targetUserIds.map(id => ({ id })) },
+      },
+    });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+      if (rule.level === 'L1') results.nudges++;
+      else if (rule.level === 'L2') results.l2Alerts++;
+    }
+  }
+
+  // ── GROUP 15: INVENTORISATION PENDING ─────────────────────────────────────────
+  // ItemStatus with status='QC' (handed to QC team for inventorisation but not yet
+  // completed). Fire at 12H / 18H / 24H / 48H working hours since the item arrived at QC.
+  // "Completed" means isRefurbished = true OR the manifest is RECOVERED_TO_INVENTORY.
+  const qcPendingItems = await prisma.itemStatus.findMany({
+    where: {
+      status: 'QC',
+      isRefurbished: false,           // still not processed
+      manifestId: { not: null },
+      manifest: {
+        status: { not: 'RECOVERED_TO_INVENTORY' },  // manifest not fully done
+      },
+    },
+    include: {
+      manifest: {
+        include: {
+          alerts: { where: { resolved: false, type: { startsWith: 'INVENTORISATION_PENDING' } } },
+        },
+      },
+    },
+  });
+
+  for (const item of qcPendingItems) {
+    if (!item.manifest) continue;
+    const manifest = item.manifest;
+
+    const workingHrsElapsed = calculateWarehouseWorkingHours(item.createdAt, now, startTimeStr, endTimeStr, timezoneStr);
+    let targetAlertType: string | null = null;
+    if (workingHrsElapsed >= 48) {
+      targetAlertType = 'INVENTORISATION_PENDING_48H';
+    } else if (workingHrsElapsed >= 24) {
+      targetAlertType = 'INVENTORISATION_PENDING_24H';
+    } else if (workingHrsElapsed >= 18) {
+      targetAlertType = 'INVENTORISATION_PENDING_18H';
+    } else if (workingHrsElapsed >= 12) {
+      targetAlertType = 'INVENTORISATION_PENDING_12H';
+    }
+    if (!targetAlertType) continue;
+
+    const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+    if (!rule) continue;
+
+    const exactAlertExists = manifest.alerts.some(a => a.type === targetAlertType);
+    if (exactAlertExists) continue;
+
+    const INV_TIER_PRIORITY: Record<string, number> = {
+      INVENTORISATION_PENDING_12H: 1,
+      INVENTORISATION_PENDING_18H: 2,
+      INVENTORISATION_PENDING_24H: 3,
+      INVENTORISATION_PENDING_48H: 4,
+    };
+    const targetPriority = INV_TIER_PRIORITY[targetAlertType] ?? 0;
+    const activeAlertsToArchive: string[] = [];
+    let shouldCreate = true;
+    for (const active of manifest.alerts) {
+      const activePriority = INV_TIER_PRIORITY[active.type] ?? 0;
+      if (activePriority < targetPriority) activeAlertsToArchive.push(active.id);
+      else if (activePriority > targetPriority) shouldCreate = false;
+    }
+    if (activeAlertsToArchive.length > 0) await archiveAndScoreAlerts(activeAlertsToArchive, 'ESCALATED');
+    if (!shouldCreate) continue;
+
+    const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+    const alert = await prisma.alert.create({
+      data: {
+        level: rule.level as any,
+        type: rule.type,
+        title: rule.title,
+        description: rule.description.replace('{trackingId}', manifest.trackingId),
+        manifestId: manifest.id,
+        targetUsers: { connect: targetUserIds.map(id => ({ id })) },
+      },
+    });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+      if (rule.level === 'L1') results.nudges++;
+      else if (rule.level === 'L2') results.l2Alerts++;
+      else if (rule.level === 'L3') results.l3Alerts++;
+      else if (rule.level === 'L4') results.l4Alerts++;
+    }
+  }
+
+  // ── GROUP 17: MISSING TRACKING NUMBER ─────────────────────────────────────────
+  // AMZRemovalShipment rows where trackingNumber IS NULL — Amazon has a shipment record
+  // but has not assigned a tracking number. Dashboard-only nudge (L2, no email).
+  // Suppress if already have an active alert for this orderId.
+  const noTrackingShipments = await prisma.aMZRemovalShipment.findMany({
+    where: { trackingNumber: null, orderId: { not: null } },
+    select: { orderId: true },
+    distinct: ['orderId'],
+  });
+
+  for (const row of noTrackingShipments) {
+    if (!row.orderId) continue;
+    const existing = await prisma.alert.findFirst({
+      where: { type: 'ORDER_NO_TRACKING_ID', description: { contains: row.orderId }, resolved: false },
+    });
+    if (existing) continue;
+
+    const adminUsers = await resolveTargetUserIds(['L2']);
+    const alert = await prisma.alert.create({
+      data: {
+        level: 'L2',
+        type: 'ORDER_NO_TRACKING_ID',
+        title: 'Shipment Row Has No Tracking Number',
+        description: `Removal Order ${row.orderId} has a shipment record in Amazon data but no tracking number is assigned. This may resolve automatically on the next Amazon report sync.`,
+        targetUsers: { connect: adminUsers.map(id => ({ id })) },
+      },
+    });
+    if (alert) {
+      dispatchAlert(alert.id).catch(err => console.error('[Alert Dispatcher]', err));
+      results.l2Alerts++;
+    }
+  }
+
   // ── ARCHIVE PRUNING ──
 
   const oneYearAgo = new Date();
