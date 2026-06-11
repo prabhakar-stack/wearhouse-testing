@@ -541,10 +541,13 @@ function ProfileModal({
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-gradient-to-br from-black to-slate-900 p-8 text-white relative border-b border-black/10">
+        <div className="bg-gradient-to-br from-black to-slate-900 p-8 text-white relative border-b border-black/10 overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+            <Box size={100} className="text-white" />
+          </div>
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+            className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors z-10"
           >
             <X size={18} />
           </button>

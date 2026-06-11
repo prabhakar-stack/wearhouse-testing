@@ -691,7 +691,7 @@ export default function ReceiverDashboard({
               {/* Header gradient */}
               <div className="bg-gradient-to-br from-black to-slate-900 p-8 relative">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
-                  <Shield size={100} className="text-white" />
+                  <Box size={100} className="text-white" />
                 </div>
                 <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
                   {initials}

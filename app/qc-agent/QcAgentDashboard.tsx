@@ -21,6 +21,7 @@ import {
   Info,
   ShieldAlert,
   Home,
+  Box,
 } from "lucide-react";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
@@ -556,43 +557,46 @@ export default function QcAgentDashboard({
         )}
 
         {activeTab === "profile" && (
-          <div className="max-w-4xl mx-auto py-10 px-4 animate-in fade-in duration-300">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-[#313079] to-indigo-950 h-32 relative">
-                <div className="absolute -bottom-10 left-8">
-                  <div className="w-20 h-20 rounded-2xl bg-white p-1 shadow-lg">
-                    <div className="w-full h-full rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 text-2xl font-black">
-                      {name ? name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : "QC"}
-                    </div>
-                  </div>
+          <div className="max-w-lg mx-auto space-y-4 pt-6 px-4 pb-10 animate-in fade-in duration-300">
+            {/* Profile Card */}
+            <div className="bg-white border border-[#313079]/10 overflow-hidden rounded-2xl shadow-md">
+              {/* Header gradient */}
+              <div className="bg-gradient-to-br from-black to-slate-900 p-8 relative">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <Box size={100} className="text-white" />
                 </div>
-              </div>
-              <div className="pt-14 pb-8 px-8">
-                <h2 className="text-2xl font-black text-slate-900 tracking-wider">
+                <div className="w-16 h-16 rounded-full bg-black border-2 border-[#FF6700] flex items-center justify-center text-[#FF6700] text-2xl font-black mb-4 shadow-lg shadow-black/30">
+                  {name ? name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : "QC"}
+                </div>
+                <h2 className="text-xl font-black text-white">
                   {name}
                 </h2>
-                <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest mt-1">
-                  {role.replace(/_/g, ' ')}
-                </p>
+                <p className="text-slate-400 text-xs font-mono mt-1">{email}</p>
+                <span className="inline-block mt-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-black border-black text-[#FF6700]">
+                  {role.replace(/_/g, " ")}
+                </span>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8 border-t border-slate-100 pt-6">
+              {/* Details */}
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 border-t border-slate-100 pt-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
                       {preferredLanguage === 'hi' ? 'ईमेल पता' : 'Email Address'}
                     </label>
-                    <p className="text-sm font-bold text-slate-800 mt-1">{email}</p>
+                    <p className="text-sm font-bold text-[#313079] mt-1">{email}</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
                       {preferredLanguage === 'hi' ? 'भूमिका' : 'Role'}
                     </label>
-                    <p className="text-sm font-bold text-slate-800 mt-1">{role}</p>
+                    <p className="text-sm font-bold text-[#313079] mt-1">{role}</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
                       {preferredLanguage === 'hi' ? 'उपयोगकर्ता आईडी' : 'User ID'}
                     </label>
-                    <p className="text-sm font-bold text-slate-800 mt-1 font-mono">{userId}</p>
+                    <p className="text-sm font-bold text-[#313079] mt-1 font-mono">{userId}</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
@@ -601,18 +605,18 @@ export default function QcAgentDashboard({
                     <LanguagePreference compact />
                   </div>
                 </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-100 flex justify-end">
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center space-x-2 px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-colors shadow-md shadow-red-500/20"
-                  >
-                    <LogOut size={14} />
-                    <span>{preferredLanguage === 'hi' ? 'लॉगआउट' : 'Logout'}</span>
-                  </button>
-                </div>
+                <p className="text-[10px] text-slate-400 text-center font-medium pt-3 border-t border-slate-100 mt-4">
+                  {preferredLanguage === 'hi' ? 'प्रोफ़ाइल केवल पढ़ने योग्य है · विवरण अपडेट करने के लिए एडमिन से संपर्क करें।' : 'Profile is read-only · Contact Admin to update details.'}
+                </p>
               </div>
             </div>
+
+            <button
+              onClick={handleLogout}
+              className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
+            >
+              {preferredLanguage === 'hi' ? 'लॉगआउट' : 'Logout'}
+            </button>
           </div>
         )}
       </main>

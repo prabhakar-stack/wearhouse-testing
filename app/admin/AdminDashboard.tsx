@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, ChevronLeft, LogOut, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
+import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, ChevronLeft, LogOut, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, Box, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
@@ -91,9 +91,11 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header gradient */}
-        <div className="bg-gradient-to-br from-black to-slate-900 p-8 text-white relative border-b border-black/10">
-          <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+        <div className="bg-gradient-to-br from-black to-slate-900 p-8 text-white relative border-b border-black/10 overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+            <Box size={100} className="text-white" />
+          </div>
+          <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors z-10">
             <X size={18} />
           </button>
           {/* Avatar */}
