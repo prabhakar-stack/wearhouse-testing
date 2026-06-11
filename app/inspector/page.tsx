@@ -616,6 +616,45 @@ function InspectorDashboard({ role }: { role: string }) {
             </div>
           </div>
           <div className="flex items-center space-x-6">
+            {(role === 'ADMIN' || role === 'SUPER_ACCESS' || userData?.role === 'ADMIN' || userData?.role === 'SUPER_ACCESS') && (
+              <div className="relative">
+                <select
+                  value={typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'INSPECTOR') : 'INSPECTOR'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    localStorage.setItem('userRole', val);
+                    if (val === 'SUPER_ACCESS') {
+                      window.location.href = '/super-admin';
+                    } else if (val === 'ADMIN') {
+                      window.location.href = '/admin';
+                    } else if (val === 'RECEIVER') {
+                      window.location.href = '/receiver';
+                    } else if (val === 'CLAIMS_SPECIALIST') {
+                      window.location.href = '/claims-specialist';
+                    } else if (val === 'RECOVERER') {
+                      window.location.href = '/recoverer';
+                    } else if (val === 'QC_AGENT') {
+                      window.location.href = '/qc-agent';
+                    } else {
+                      window.location.href = '/inspector';
+                    }
+                  }}
+                  className="bg-slate-100 text-[#313079] text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-200 focus:outline-none cursor-pointer appearance-none pr-6"
+                >
+                  <option value="SUPER_ACCESS">{preferredLanguage === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}</option>
+                  <option value="ADMIN">{preferredLanguage === 'hi' ? 'एडमिन' : 'Admin'}</option>
+                  <option value="RECEIVER">{preferredLanguage === 'hi' ? 'रिसीवर' : 'Receiver'}</option>
+                  <option value="INSPECTOR">{preferredLanguage === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}</option>
+                  <option value="CLAIMS_SPECIALIST">{preferredLanguage === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}</option>
+                  <option value="RECOVERER">{preferredLanguage === 'hi' ? 'रिकवरर' : 'Recoverer'}</option>
+                  <option value="QC_AGENT">{preferredLanguage === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-slate-500">
+                  <ChevronDown size={12} />
+                </div>
+              </div>
+            )}
+
             <button
               onClick={() => setShowNotifications(!showNotifications)}
               className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-[#FF6700]'}`}
@@ -858,14 +897,7 @@ function InspectorDashboard({ role }: { role: string }) {
               </div>
             </div>
 
-            {(role === "SUPER_ACCESS" || role === "ADMIN") && (
-              <Link
-                href={role === "SUPER_ACCESS" ? "/super-admin" : "/admin"}
-                className="w-full flex items-center justify-center py-4 bg-[#FFF700] border-2 border-black hover:brightness-95 transition-all text-[#313079] font-extrabold uppercase tracking-widest text-xs rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
-              >
-                {role === "SUPER_ACCESS" ? "Switch to Super Access Role" : "Switch to Admin Role"}
-              </Link>
-            )}
+
             <button
               onClick={async () => {
                 localStorage.removeItem("userRole");

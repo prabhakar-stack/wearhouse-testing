@@ -8,6 +8,58 @@ import SettingsTab from './SettingsTab';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
 
+const HINDI_ALERT_DESCRIPTIONS: Record<string, string> = {
+  DELIVERY_ETA_BREACH_48H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 48 घंटे अधिक विलंबित है। कूरियर के साथ तुरंत फॉलो-अप की आवश्यकता है।",
+  DELIVERY_ETA_BREACH_72H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 72 घंटे अधिक विलंबित है। मौजूदा थ्रेड में एस्केलेशन मेल भेज दिया गया है।",
+  DELIVERY_ETA_BREACH_96H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि से 96 घंटे अधिक विलंबित है। प्रबंधन को सूचित कर दिया गया है। त्वरित समाधान आवश्यक है।",
+  GHOST_DELIVERY_T1_6H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। डिलीवरी मार्क के 6 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T1_12H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। 12 घंटे बीत जाने के बाद भी क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T1_24H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। 24 घंटे बीत जाने के बाद भी क्लेम दायर नहीं किया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  GHOST_DELIVERY_T2_6H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। कूरियर द्वारा इसे डिलीवर/अनडिलीवर चिह्नित किया गया है। 6 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T2_12H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। 12 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है। मौजूदा थ्रेड में एस्केलेशन भेजा गया है।",
+  GHOST_DELIVERY_T2_24H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। 24 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  RECEIVE_UPDATE_PENDING_2H: "पैकेज {trackingId} का QC पास हो चुका है लेकिन 2 घंटे से अधिक समय से सिस्टम में डिलीवरी की पुष्टि नहीं की गई है।",
+  RECEIVE_UPDATE_PENDING_6H: "पैकेज {trackingId} का QC पास हो चुका है लेकिन 6 घंटे से अधिक समय से डिलीवरी की पुष्टि नहीं की गई है। एडमिन को सूचित कर दिया गया है।",
+  RECV_INSP_HANDSHAKE_10AM: "कल प्राप्त एक या अधिक पैकेजों को आज सुबह 10 बजे तक इंस्पेक्टर को नहीं सौंपा गया है।",
+  RECV_INSP_HANDSHAKE_12PM: "कल प्राप्त पैकेजों को दोपहर 12 बजे तक इंस्पेक्टर को नहीं सौंपा गया है। एडमिन को सूचित कर दिया गया है।",
+  RECV_INSP_HANDSHAKE_3PM: "कल प्राप्त पैकेजों को दोपहर 3 बजे तक भी इंस्पेक्टर को नहीं सौंपा गया है। एस्केलेशन शुरू किया गया है।",
+  RECV_INSP_HANDSHAKE_NEXT_DAY: "पैकेज बिना निरीक्षण हैंडओवर के एक पूरा दिन अतिरिक्त बीत चुके हैं। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSPECTION_PENDING_6H: "पैकेज {trackingId} को 6+ घंटे पहले इंस्पेक्टर को सौंपा गया था लेकिन निरीक्षण अभी तक पूरा नहीं हुआ है।",
+  INSPECTION_PENDING_12H: "पैकेज {trackingId} 12+ घंटे से इंस्पेक्टर के पास लंबित है। एडमिन को सूचित कर दिया गया है।",
+  INSPECTION_PENDING_18H: "पैकेज {trackingId} का निरीक्षण 18 घंटे बाद भी लंबित है। एस्केलेशन ईमेल भेज दिया गया है।",
+  INSPECTION_PENDING_24H: "पैकेज {trackingId} का 24+ घंटे से निरीक्षण नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSPECTION_QC_FAILED_6H: "पैकेज {trackingId} निरीक्षण QC में फेल हो गया। निरीक्षण विफलता के 6 घंटे बाद भी कोई क्लेम दायर नहीं किया गया है।",
+  INSPECTION_QC_FAILED_12H: "पैकेज {trackingId} निरीक्षण QC में फेल हो गया। विफलता के 12 घंटे बाद भी कोई क्लेम दायर नहीं किया गया है। मौजूदा थ्रेड में एस्केलेशन भेजा गया है।",
+  INSPECTION_QC_FAILED_24H: "पैकेज {trackingId} 24+ घंटे पहले QC में फेल हुआ था और कोई क्लेम नहीं उठाया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSP_RECOVERY_HANDSHAKE_12H: "निरीक्षण के बाद {trackingId} से प्राप्त SKU को रिकवरी के लिए चिह्नित किया गया था लेकिन 12 घंटे के भीतर रिकवरी टीम को नहीं सौंपा गया है।",
+  INSP_RECOVERY_HANDSHAKE_18H: "निरीक्षण के बाद {trackingId} से प्राप्त SKU को रिकवरी के लिए चिह्नित किया गया था लेकिन 18 घंटे बाद भी नहीं सौंपा गया है। एडमिन को सूचित किया गया है।",
+  RECOVERY_REJECTION_1_REALTIME: "रिकवरी टीम को सौंपा गया {trackingId} का एक SKU क्षतिग्रस्त चिह्नित किया गया है। एडमिन कार्रवाई आवश्यक है।",
+  RECOVERY_REJECTION_1_6H: "रिकवरी में SKU {trackingId} को 6+ घंटे पहले क्षतिग्रस्त चिह्नित किया गया था। कोई एडमिन कार्रवाई नहीं की गई है। एस्केलेशन शुरू किया गया है।",
+  RECOVERY_REJECTION_2_1H: "एडमिन ने {trackingId} के लिए रिकवरी क्षति को स्वीकार कर लिया है लेकिन 1 घंटे के भीतर क्लेम नहीं उठाया गया है।",
+  RECOVERY_REJECTION_2_6H: "एडमिन ने 6+ घंटे पहले {trackingId} के लिए रिकवरी क्षति स्वीकार की थी लेकिन कोई क्लेम दायर नहीं हुआ है। एस्केलेशन शुरू किया गया है।",
+  RECOVERY_REJECTION_2_12H: "स्वीकृत रिकवरी क्षति {trackingId} के लिए 12 घंटे बाद भी क्लेम दायर नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  RECOVERY_QC_HANDSHAKE_24H: "एक पुनःप्राप्ति योग्य SKU {trackingId} रिकवरी टीम के पास 24+ घंटे से है और इसे इन्वेंटराइजेशन के लिए QC को नहीं सौंपा गया है।",
+  RECOVERY_QC_HANDSHAKE_36H: "पुनर्याप्त करने योग्य SKU {trackingId} को 36+ घंटे से QC को नहीं सौंपा गया है। एडमिन को सूचित कर दिया गया है।",
+  INSP_QC_HANDSHAKE_24H: "निरीक्षण के बाद इन्वेंटराइजेशन के लिए चिह्नित SKU {trackingId} को 24 घंटे के भीतर QC टीम को नहीं सौंपा गया है।",
+  INSP_QC_HANDSHAKE_36H: "QC को इन्वेंटराइजेशन हैंडओवर {trackingId} 36+ घंटे से विलंबित है। एडमिन को सूचित कर दिया गया है।",
+  QC_REJECTION_1_REALTIME: "QC टीम को सौंपा गया {trackingId} का SKU क्षतिग्रस्त पाया गया है। तत्काल एडमिन कार्रवाई आवश्यक है।",
+  INSP_QC_DAMAGE_REALTIME: "QC टीम को सौंपा गया {trackingId} का SKU क्षतिग्रस्त पाया गया है। तत्काल एडमिन कार्रवाई आवश्यक है।",
+  QC_REJECTION_1_24H: "QC में SKU {trackingId} को 24+ घंटे पहले क्षतिग्रस्त चिह्नित किया गया था। कोई एडमिन कार्रवाई नहीं हुई। एस्केलेशन शुरू किया गया है।",
+  QC_REJECTION_2_1H: "एडमिन ने {trackingId} के लिए QC क्षति स्वीकार की लेकिन 1 घंटे के भीतर क्लेम दायर नहीं किया।",
+  QC_REJECTION_2_6H: "एडमिन ने 6+ घंटे पहले {trackingId} के लिए QC क्षति स्वीकार की थी। क्लेम अभी भी दायर नहीं हुआ। एस्केलेशन शुरू किया गया है।",
+  QC_REJECTION_2_24H: "स्वीकृत QC क्षति {trackingId} के लिए 24 घंटे बाद भी क्लेम दायर नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INVENTORISATION_PENDING_12H: "SKU {trackingId} को QC टीम के पास 12+ घंटे से रखा गया है और अभी तक इन्वेंटराइजेशन नहीं हुआ है।",
+  INVENTORISATION_PENDING_18H: "SKU {trackingId} को QC में 18+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। एडमिन को सूचित कर दिया गया है।",
+  INVENTORISATION_PENDING_24H: "SKU {trackingId} को QC में 24+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। एस्केलेशन शुरू किया गया है।",
+  INVENTORISATION_PENDING_48H: "SKU {trackingId} को QC में 48+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  ORDER_NOT_SHIPPED_5D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन Amazon ने 5 दिनों के बाद भी इस शिपमेंट को डिस्पैच नहीं किया है। रिम्बर्समेंट विंडो ~9 दिनों में बंद हो जाएगी।",
+  ORDER_NOT_SHIPPED_10D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन 10 दिनों के बाद भी कोई डिस्पैच नहीं हुआ है। Amazon रिम्बर्समेंट विंडो ~4-5 दिनों में बंद हो जाएगी। तत्काल कार्रवाई आवश्यक है।",
+  ORDER_NO_TRACKING_ID: "रिमूवल ऑर्डर {orderId} का Amazon डेटा में शिपमेंट रिकॉर्ड है लेकिन कोई ट्रैकिंग नंबर असाइन नहीं किया गया है।",
+  RO_DISPATCH_BREACH_5D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन Amazon ने 5 दिनों के बाद भी इस शिपमेंट को डिस्पैच नहीं किया है। रिम्बर्समेंट विंडो ~9 दिनों में बंद हो जाएगी।",
+  RO_DISPATCH_BREACH_10D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन 10 दिनों के बाद भी कोई डिस्पैच नहीं हुआ है। Amazon रिम्बर्समेंट विंडो ~4-5 दिनों में बंद हो जाएगी। तत्काल कार्रवाई आवश्यक है।",
+  RO_TRACKING_NO_ASSIGNED: "रिमूवल ऑर्डर {orderId} का Amazon डेटा में शिपमेंट रिकॉर्ड है लेकिन कोई ट्रैकिंग नंबर असाइन नहीं किया गया है।"
+};
+
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 
 function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: string; email: string; role: string }; onClose: () => void; preferredLanguage: PreferredLanguage }) {
@@ -132,6 +184,16 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
   const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
+  const [selectedRole, setSelectedRole] = useState(role);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('userRole');
+      if (stored) {
+        setSelectedRole(stored);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetch('/api/users/me')
@@ -229,10 +291,32 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
                     <div className="flex justify-between items-start">
                       <div className="min-w-0 flex-1">
                         <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
-                          {alert.level} - {alert.type}
+                          {(() => {
+                            if (lang === 'hi') {
+                              if (alert.level === 'L4') return 'गंभीर';
+                              if (alert.level === 'L3') return 'उच्च';
+                              if (alert.level === 'L2') return 'मध्यम';
+                              if (alert.level === 'L1') return 'निम्न';
+                              return alert.level;
+                            } else {
+                              if (alert.level === 'L4') return 'CRITICAL';
+                              if (alert.level === 'L3') return 'HIGH';
+                              if (alert.level === 'L2') return 'MEDIUM';
+                              if (alert.level === 'L1') return 'LOW';
+                              return alert.level;
+                            }
+                          })()} - {alert.type}
                         </span>
                         <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
-                        <p className="text-[10px] text-slate-500 mt-1 leading-normal">{alert.description}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                          {lang === 'hi' ? (
+                            HINDI_ALERT_DESCRIPTIONS[alert.type]
+                              ? HINDI_ALERT_DESCRIPTIONS[alert.type]
+                                  .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
+                                  .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
+                              : translateInstruction(alert.description, 'hi')
+                          ) : alert.description}
+                        </p>
                         {alert.manifest?.trackingId && (
                           <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
                             AWB: {alert.manifest.trackingId}
@@ -337,21 +421,61 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
 
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-white/10 shrink-0 space-y-3">
-          <div className="flex flex-col space-y-1">
-            <Link 
-              href="/receiver" 
-              className="flex items-center space-x-3 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-wider"
-            >
-              <PackageSearch size={14} />
-              <span>{lang === 'hi' ? 'रिसीवर व्यू' : 'Receiver View'}</span>
-            </Link>
-            <Link 
-              href="/inspector" 
-              className="flex items-center space-x-3 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-wider"
-            >
-              <Activity size={14} />
-              <span>{lang === 'hi' ? 'इंस्पेक्टर व्यू' : 'Inspector View'}</span>
-            </Link>
+          <div className="flex flex-col space-y-1.5 px-2">
+            <label className="text-[10px] uppercase tracking-wider text-white/40 font-bold">
+              {lang === 'hi' ? 'भूमिका बदलें' : 'Switch Role'}
+            </label>
+            <div className="relative">
+              <select
+                value={selectedRole}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedRole(val);
+                  localStorage.setItem('userRole', val);
+                  if (val === 'SUPER_ACCESS') {
+                    window.location.href = '/super-admin';
+                  } else if (val === 'ADMIN') {
+                    window.location.href = '/admin';
+                  } else if (val === 'RECEIVER') {
+                    window.location.href = '/receiver';
+                  } else if (val === 'CLAIMS_SPECIALIST') {
+                    window.location.href = '/claims-specialist';
+                  } else if (val === 'RECOVERER') {
+                    window.location.href = '/recoverer';
+                  } else if (val === 'QC_AGENT') {
+                    window.location.href = '/qc-agent';
+                  } else {
+                    window.location.href = '/inspector';
+                  }
+                }}
+                className="w-full bg-white/10 text-white/90 text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-1 focus:ring-[#FF6700] hover:bg-white/20 transition-all cursor-pointer appearance-none pr-8"
+              >
+                <option value="SUPER_ACCESS" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}
+                </option>
+                <option value="ADMIN" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'एडमिन' : 'Admin'}
+                </option>
+                <option value="RECEIVER" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'रिसीवर' : 'Receiver'}
+                </option>
+                <option value="INSPECTOR" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}
+                </option>
+                <option value="CLAIMS_SPECIALIST" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}
+                </option>
+                <option value="RECOVERER" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'रिकवरर' : 'Recoverer'}
+                </option>
+                <option value="QC_AGENT" className="bg-[#1e1d4b] text-white">
+                  {lang === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}
+                </option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white/60">
+                <ChevronDown size={14} />
+              </div>
+            </div>
           </div>
           
           <div className="h-px bg-white/10"></div>
@@ -377,6 +501,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
 
           <button
             onClick={async () => {
+              localStorage.removeItem("userRole");
               try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
               router.push('/login');
             }}
@@ -1181,13 +1306,38 @@ function AlertsTab() {
     }
   };
 
+  const getSeverityLabel = (level: string) => {
+    if (lang === 'hi') {
+      if (level === 'L4') return 'गंभीर';
+      if (level === 'L3') return 'उच्च';
+      if (level === 'L2') return 'मध्यम';
+      if (level === 'L1') return 'निम्न';
+      return level;
+    } else {
+      if (level === 'L4') return 'CRITICAL';
+      if (level === 'L3') return 'HIGH';
+      if (level === 'L2') return 'MEDIUM';
+      if (level === 'L1') return 'LOW';
+      return level;
+    }
+  };
+
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
+    if (lang === 'hi') {
+      if (mins < 1) return 'अभी-अभी';
+      if (mins < 60) return `${mins} मिनट पहले`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs} घंटे पहले`;
+      return `${Math.floor(hrs / 24)} दिन पहले`;
+    } else {
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    }
   };
 
   return (
@@ -1298,8 +1448,7 @@ function AlertsTab() {
                     <p className={`text-2xl font-mono font-black ${cfg.color}`}>{counts[level] || 0}</p>
                     <div className="shrink-0">{cfg.icon}</div>
                   </div>
-                  <p className={`text-[9px] uppercase tracking-widest font-black ${cfg.color}`}>{cfg.label}</p>
-                  <p className={`text-[8px] uppercase tracking-widest font-bold mt-0.5 ${cfg.color} opacity-60`}>{cfg.action}</p>
+                  <p className={`text-[9px] uppercase tracking-widest font-black ${cfg.color}`}>{getSeverityLabel(level)}</p>
                 </div>
               );
             })}
@@ -1349,16 +1498,10 @@ function AlertsTab() {
                     <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${cfg.bgColor} border ${cfg.borderColor}`}>{cfg.icon}</div>
                     <div className="min-w-0">
                       <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                        <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{alert.level} — {cfg.label}</span>
-                        <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${cfg.color} ${cfg.bgColor} ${cfg.borderColor} opacity-70`}>{cfg.action}</span>
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{getSeverityLabel(alert.level)}</span>
                         {alert.resolved && <span className="text-[9px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">RESOLVED</span>}
                       </div>
                       <p className="text-sm font-bold text-slate-800 mt-0.5 truncate">{alert.title}</p>
-                      {alert.targetUsers && alert.targetUsers.length > 0 && (
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          → {alert.targetUsers.map((u: any) => `${u.name || u.email} (${u.role})`).join(', ')}
-                        </p>
-                      )}
                     </div>
                   </div>
                   <div className="flex items-center space-x-3 shrink-0">
@@ -1399,7 +1542,15 @@ function AlertsTab() {
                 )}
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200">
-                    <p className="text-sm text-slate-600 leading-relaxed">{alert.description}</p>
+                    <p className="text-sm text-slate-650 leading-relaxed">
+                      {lang === 'hi' ? (
+                        HINDI_ALERT_DESCRIPTIONS[alert.type]
+                          ? HINDI_ALERT_DESCRIPTIONS[alert.type]
+                              .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
+                              .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
+                          : translateInstruction(alert.description, 'hi')
+                      ) : alert.description}
+                    </p>
                     {editingSopType === alert.type ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                         <div className="flex justify-between items-center">

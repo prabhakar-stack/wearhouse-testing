@@ -45,6 +45,7 @@ export default function RecovererDashboard({
   }, []);
 
   const handleLogout = async () => {
+    localStorage.removeItem("userRole");
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
@@ -72,42 +73,84 @@ export default function RecovererDashboard({
             </div>
           </div>
 
-          {/* User Menu */}
-          <div className="relative">
-            <button
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center space-x-2 px-4 py-2 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              <User size={18} className="text-slate-600" />
-              <span className="text-sm font-bold text-slate-700">{name}</span>
-              <ChevronDown
-                size={16}
-                className={`text-slate-600 transition-transform ${
-                  isUserMenuOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                    {t("Logged in as")}
-                  </p>
-                  <p className="text-sm font-bold text-slate-900 truncate">
-                    {email}
-                  </p>
-                </div>
-                <LanguagePreference compact />
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center space-x-2 px-4 py-3 hover:bg-red-50 text-red-600 font-bold text-sm uppercase tracking-wider transition-colors"
+          <div className="flex items-center space-x-4">
+            {/* Switch Role Dropdown for Admin/Super */}
+            {(role === 'ADMIN' || role === 'SUPER_ACCESS') && (
+              <div className="relative">
+                <select
+                  value={typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'RECOVERER') : 'RECOVERER'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    localStorage.setItem('userRole', val);
+                    if (val === 'SUPER_ACCESS') {
+                      window.location.href = '/super-admin';
+                    } else if (val === 'ADMIN') {
+                      window.location.href = '/admin';
+                    } else if (val === 'RECEIVER') {
+                      window.location.href = '/receiver';
+                    } else if (val === 'CLAIMS_SPECIALIST') {
+                      window.location.href = '/claims-specialist';
+                    } else if (val === 'RECOVERER') {
+                      window.location.href = '/recoverer';
+                    } else if (val === 'QC_AGENT') {
+                      window.location.href = '/qc-agent';
+                    } else {
+                      window.location.href = '/inspector';
+                    }
+                  }}
+                  className="bg-slate-100 text-slate-700 text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-200 focus:outline-none cursor-pointer appearance-none pr-6"
                 >
-                  <LogOut size={16} />
-                  <span>{t("Logout")}</span>
-                </button>
+                  <option value="SUPER_ACCESS">{preferredLanguage === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}</option>
+                  <option value="ADMIN">{preferredLanguage === 'hi' ? 'एडमिन' : 'Admin'}</option>
+                  <option value="RECEIVER">{preferredLanguage === 'hi' ? 'रिसीवर' : 'Receiver'}</option>
+                  <option value="INSPECTOR">{preferredLanguage === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}</option>
+                  <option value="CLAIMS_SPECIALIST">{preferredLanguage === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}</option>
+                  <option value="RECOVERER">{preferredLanguage === 'hi' ? 'रिकवरर' : 'Recoverer'}</option>
+                  <option value="QC_AGENT">{preferredLanguage === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-slate-500">
+                  <ChevronDown size={12} />
+                </div>
               </div>
             )}
+
+            {/* User Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center space-x-2 px-4 py-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <User size={18} className="text-slate-600" />
+                <span className="text-sm font-bold text-slate-700">{name}</span>
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-600 transition-transform ${
+                    isUserMenuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                      {t("Logged in as")}
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {email}
+                    </p>
+                  </div>
+                  <LanguagePreference compact />
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center space-x-2 px-4 py-3 hover:bg-red-50 text-red-600 font-bold text-sm uppercase tracking-wider transition-colors"
+                  >
+                    <LogOut size={16} />
+                    <span>{t("Logout")}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
