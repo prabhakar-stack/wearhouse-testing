@@ -14,18 +14,17 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useLanguage } from '../utils/i18n';
+const t = (str: string) => str;
 
 interface RecoveryItem {
   lpn: string;
   sku: string;
   damageType: 'Barcode Damaged' | 'Packaging Damaged';
   isRefurbished?: boolean;
-  status: 'recovery' | 'recovered' | 'damaged' | 'requires review at recovery';
+  status: 'inspected' | 'recovered' | 'damaged' | 'requires review at recovery';
 }
 
 export default function RecoveryHubTab() {
-  const { t } = useLanguage();
   const [inputValue, setInputValue] = useState('');
   const [batch, setBatch] = useState<RecoveryItem[]>([]);
   const [activeLpn, setActiveLpn] = useState<string | null>(null);
@@ -101,8 +100,8 @@ export default function RecoveryHubTab() {
 
       const data = await response.json();
       const statusFromDb = (data.status || '').trim().toLowerCase();
-      if (statusFromDb !== 'recovery') {
-        setAlertMessage(`${t("Only items with \"recovery\" status can be included in the handover batch. (Current status:")} "${t(data.status) || 'unknown'}")`);
+      if (statusFromDb !== 'inspected' && statusFromDb !== 'missing at recovery') {
+        setAlertMessage(`${t("Only items with \"inspected\" or \"missing at recovery\" status can be included in the handover batch. (Current status:")} "${t(data.status) || 'unknown'}")`);
         setIsLoading(false);
         setInputValue('');
         return;
@@ -113,7 +112,7 @@ export default function RecoveryHubTab() {
         sku: data.sku,
         damageType: data.damageType === 'Packaging Damaged' || data.damage_type === 'Packaging Damaged' || data.damageType === 'box_damage' || data.damage_type === 'box_damage' ? 'Packaging Damaged' : 'Barcode Damaged',
         isRefurbished: !!(data.isRefurbished || data.is_refurbished),
-        status: 'recovery'
+        status: 'inspected'
       };
 
       setBatch(prev => [...prev, mappedItem]);
@@ -235,7 +234,8 @@ export default function RecoveryHubTab() {
           sku: activeItem.sku,
           damageType: activeItem.damageType,
           isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
-          status: 'recovered'
+          status: 'recovered',
+          scannedAt: new Date().toISOString()
         })
       });
 
@@ -282,7 +282,8 @@ export default function RecoveryHubTab() {
           sku: activeItem.sku,
           damageType: activeItem.damageType,
           isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
-          status: 'requires review at recovery'
+          status: 'requires review at recovery',
+          scannedAt: new Date().toISOString()
         })
       });
 
