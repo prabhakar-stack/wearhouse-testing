@@ -100,7 +100,7 @@ export async function dispatchAlert(alertId: string) {
 /**
  * Sends a Google Chat / Hangouts Incoming Webhook card message.
  */
-async function sendHangoutMessage(alert: any, sopSteps: string[]) {
+async function sendHangoutMessage(alert: any, sopSteps: { en: string; hi: string }[]) {
   const webhookUrl = process.env.GOOGLE_CHAT_WEBHOOK_URL;
   if (!webhookUrl) {
     console.warn('[Alert Dispatcher] GOOGLE_CHAT_WEBHOOK_URL environment variable is not defined.');

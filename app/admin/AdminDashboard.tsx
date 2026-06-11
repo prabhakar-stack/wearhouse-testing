@@ -107,6 +107,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc'>('alerts');
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
@@ -150,7 +151,9 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
     : displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   const fetchAlerts = useCallback(() => {
-    fetch('/api/alerts')
+    fetch('/api/alerts', {
+      headers: { 'x-user-language': preferredLanguage }
+    })
       .then(r => r.json())
       .then(d => {
         if (d.alerts) {
@@ -160,7 +163,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
         if (d.sopMap) setSopMap(d.sopMap);
       })
       .catch(() => {});
-  }, []);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     fetchAlerts();
@@ -385,50 +388,9 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
           </button>
         </div>
       </aside>
-
       {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden relative bg-slate-50 flex flex-col">
-        {/* Main Content Top Bar (Desktop only) */}
-        <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200 shrink-0">
-          <div>
-            <h2 className="text-lg font-black uppercase tracking-wider text-[#313079]">
-              {activeTab === 'users' 
-                ? 'User Directory' 
-                : activeTab === 'claims' 
-                ? 'Claims Staging' 
-                : activeTab === 'triage'
-                ? 'Claims Triage'
-                : activeTab === 'smart-filing'
-                ? 'Smart Filing Monitor'
-                : activeTab === 'recovery'
-                ? 'Recovery Hub'
-                : activeTab === 'qc'
-                ? 'QC Audit'
-                : 'Operational Alerts'}
-            </h2>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
-              Returns Management App &bull; {role.replace(/_/g, ' ')}
-            </p>
-          </div>
-          
-          <div className="flex items-center">
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)} 
-              className={`relative p-1.5 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-slate-400'}`}
-              title="Alerts Center"
-            >
-              <Bell size={24} />
-              {alertCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
-                  {alertCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </header>
-
-        <div className="flex-1 p-6 relative overflow-hidden">
-          <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
+      <main className="flex-1 overflow-hidden flex flex-col bg-white">
+        <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
             {activeTab === 'claims'   && <ClaimsTab />}
@@ -451,7 +413,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
                 </>
               );
             })()}
-          </div>
+
         </div>
       </main>
 
@@ -984,6 +946,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
   const [currentUserLevel, setCurrentUserLevel] = useState<string>('L1');
@@ -1463,14 +1426,14 @@ function AlertsTab({ userRole }: { userRole: string }) {
                               className="w-5 h-5 accent-green-600 rounded cursor-pointer shrink-0"
                             />
                             <label htmlFor={`sop-check-${alert.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
-                              {translateInstruction('I have read and followed all standard operating procedure steps above', preferredLanguage)}
+                              {lang === 'hi' ? 'मैंने उपर दिए गए सभी सतर संचालन प्रक्रिया चरणों को पढ़ा और उनका पालन किया है' : 'I have read and followed all standard operating procedure steps above'}
                             </label>
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 text-center">
-                        <p className="text-xs text-slate-400 mb-2">{translateInstruction('No SOP configured for this alert type.', preferredLanguage)}</p>
+                        <p className="text-xs text-slate-400 mb-2">{lang === 'hi' ? 'इस अलर्ट प्रकार के लिए कोई SOP कॉन्य़िगर नहीं है।' : 'No SOP configured for this alert type.'}</p>
                         <button onClick={() => startEditSop(alert.type)} className="text-[10px] uppercase font-bold text-[#FF6700] hover:text-[#FF6700] tracking-widest">
                           + Create SOP Steps
                         </button>
@@ -1504,7 +1467,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
                             </div>
                             {!sopChecked && (
                               <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                                {translateInstruction('You must check "I have read and followed all standard operating procedure steps above" before resolving.', preferredLanguage)}
+                                {lang === 'hi' ? 'समाधान से पहले आपको उपर दिए गए SOP चरणों को पढ़ना और उनका पालन करना आवश्यक है।' : 'You must check "I have read and followed all standard operating procedure steps above" before resolving.'}
                               </p>
                             )}
                           </div>

@@ -11,7 +11,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { t } from '../utils/i18n';
+import { useLanguage } from '../utils/i18n';
 
 interface BotTask {
   id: string;
@@ -24,6 +24,7 @@ interface BotTask {
 }
 
 export default function SmartFiling() {
+  const { t } = useLanguage();
   const [tasks, setTasks] = useState<BotTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<{ 

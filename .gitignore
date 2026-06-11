@@ -8,6 +8,7 @@ coverage/
 .uploads/
 
 /uploads/
+/failed_uploads/
 
 # Ignore browser automation profiles and states
 claims-process/amazon-profile/

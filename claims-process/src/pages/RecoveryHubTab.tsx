@@ -14,7 +14,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { t } from '../utils/i18n';
+import { useLanguage } from '../utils/i18n';
 
 interface RecoveryItem {
   lpn: string;
@@ -25,6 +25,7 @@ interface RecoveryItem {
 }
 
 export default function RecoveryHubTab() {
+  const { t } = useLanguage();
   const [inputValue, setInputValue] = useState('');
   const [batch, setBatch] = useState<RecoveryItem[]>([]);
   const [activeLpn, setActiveLpn] = useState<string | null>(null);

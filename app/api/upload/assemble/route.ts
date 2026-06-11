@@ -61,19 +61,23 @@ export async function POST(req: NextRequest) {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
 
-      (async () => {
-        try {
-          for (let i = 0; i < total; i++) {
-            const partPath = path.join(chunksDir, `${i}.part`);
-            const chunkData = fs.readFileSync(partPath);
-            writeStream.write(chunkData);
-          }
+      // Stream each chunk into the write stream sequentially (no readFileSync memory spike)
+      const pipeChunkSequentially = (index: number) => {
+        if (index >= total) {
           writeStream.end();
-        } catch (err) {
-          writeStream.destroy(err as Error);
-          reject(err);
+          return;
         }
-      })();
+        const partPath = path.join(chunksDir, `${index}.part`);
+        const readStream = fs.createReadStream(partPath);
+        readStream.on('error', (err) => {
+          writeStream.destroy(err);
+          reject(err);
+        });
+        readStream.on('end', () => pipeChunkSequentially(index + 1));
+        readStream.pipe(writeStream, { end: false });
+      };
+
+      pipeChunkSequentially(0);
     });
 
     const assembledStats = fs.statSync(assembledFilePath);

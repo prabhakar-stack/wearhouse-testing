@@ -1,14 +1,14 @@
 /**
  * Central Alert Rules Registry
  * ─────────────────────────────────────────────────────────────────────────────
- * All 42 alert rule definitions for the warehouse returns management system.
- * Column 1 (implementation status) is intentionally omitted — all rules here
- * are documented specs pending cron/trigger implementation.
+ * All alert rule definitions for the warehouse returns management system.
+ * SOP steps are bilingual — stored as { en, hi } objects.
+ * The API picks the correct language directly — no runtime regex translation.
  *
  * LEVELS:
  *   L1 → In-app nudge only (dashboard + hangout)
  *   L2 → Dashboard nudge + Email escalation (new thread)
- *   L3 → Dashboard nudge + Email escalation (existing thread) [currently same delivery as L2 — to be reviewed]
+ *   L3 → Dashboard nudge + Email escalation (existing thread)
  *   L4 → All of the above + Escalation to Sunil Deshmukh, Harsh Jain, Super-Access
  *
  * TARGET ROLES:
@@ -17,6 +17,11 @@
 
 export type AlertLevel = 'L1' | 'L2' | 'L3' | 'L4';
 export type NotificationChannel = 'dashboard' | 'hangout' | 'email' | 'email_existing_thread';
+
+export interface BilingualStep {
+  en: string;
+  hi: string;
+}
 
 export interface AlertRule {
   /** Unique key used as the `type` field in the Alert model */
@@ -34,8 +39,8 @@ export interface AlertRule {
   targetRoles: string[];
   /** Notification delivery channels */
   channels: NotificationChannel[];
-  /** SOP resolution steps shown to the person resolving the alert */
-  sopSteps: string[];
+  /** SOP resolution steps — bilingual { en, hi } */
+  sopSteps: BilingualStep[];
   /** Time-based threshold in hours that triggers this rule (null = real-time event) */
   thresholdHours: number | null;
 }
@@ -59,10 +64,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email'],
     thresholdHours: 48,
     sopSteps: [
-      'Check the courier tracking portal for the latest scan event.',
-      'Contact the assigned courier account manager to request a status update.',
-      'Log the response in the manifest notes.',
-      'If no update within 4 hours, escalate to L3.',
+      { en: 'Check the courier tracking portal for the latest scan event.', hi: 'कूरियर ट्रैकिंग पोर्टल पर सबसे हाल की स्कैन इवेंट जांचें।' },
+      { en: 'Contact the assigned courier account manager to request a status update.', hi: 'असाइन किए गए कूरियर अकाउंट मैनेजर से स्टेटस अपडेट मांगें।' },
+      { en: 'Log the response in the manifest notes.', hi: 'जवाब मैनिफेस्ट नोट्स में दर्ज करें।' },
+      { en: 'If no update within 4 hours, escalate to L3.', hi: '4 घंटे में कोई अपडेट न मिले तो L3 को एस्केलेट करें।' },
     ],
   },
   {
@@ -76,10 +81,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 72,
     sopSteps: [
-      'Review the existing mail thread for prior escalation responses.',
-      'Reply to the existing email thread requesting a firm delivery commitment.',
-      'Check if a courier claim for late delivery is applicable.',
-      'If no commitment received in 12 hours, escalate to L4.',
+      { en: 'Review the existing mail thread for prior escalation responses.', hi: 'पिछले एस्केलेशन जवाबों के लिए मौजूदा मेल थ्रेड देखें।' },
+      { en: 'Reply to the existing email thread requesting a firm delivery commitment.', hi: 'मौजूदा ईमेल थ्रेड में जवाब दें और पक्की डिलीवरी तारीख मांगें।' },
+      { en: 'Check if a courier claim for late delivery is applicable.', hi: 'देखें कि देरी से डिलीवरी के लिए कूरियर क्लेम लागू है या नहीं।' },
+      { en: 'If no commitment received in 12 hours, escalate to L4.', hi: '12 घंटे में कोई प्रतिबद्धता न मिले तो L4 को एस्केलेट करें।' },
     ],
   },
   {
@@ -93,11 +98,11 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 96,
     sopSteps: [
-      'Immediately contact the courier\'s senior escalation desk.',
-      'Initiate a formal lost-in-transit inquiry with the carrier.',
-      'Inform Sunil Deshmukh and Harsh Jain of the current status.',
-      'If confirmed lost, file an FBA inbound lost claim with Amazon.',
-      'Mark the manifest as LOST_IN_TRANSIT once courier confirms.',
+      { en: "Immediately contact the courier's senior escalation desk.", hi: 'तुरंत कूरियर के वरिष्ठ एस्केलेशन डेस्क से संपर्क करें।' },
+      { en: 'Initiate a formal lost-in-transit inquiry with the carrier.', hi: 'कूरियर के साथ औपचारिक ट्रांजिट में खोने की जांच शुरू करें।' },
+      { en: 'Inform Sunil Deshmukh and Harsh Jain of the current status.', hi: 'सुनील देशमुख और हर्ष जैन को मौजूदा स्थिति की जानकारी दें।' },
+      { en: 'If confirmed lost, file an FBA inbound lost claim with Amazon.', hi: 'खोने की पुष्टि हो तो Amazon FBA के साथ इनबाउंड लॉस्ट क्लेम दायर करें।' },
+      { en: 'Mark the manifest as LOST_IN_TRANSIT once courier confirms.', hi: 'कूरियर की पुष्टि के बाद मैनिफेस्ट को LOST_IN_TRANSIT मार्क करें।' },
     ],
   },
 
@@ -114,10 +119,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
-      'Check the courier\'s delivery proof-of-delivery (POD) photograph.',
-      'Search the dock area physically for any unscanned packages.',
-      'Confirm with the on-duty receiver if the package arrived but was not scanned.',
-      'If package is missing, initiate a formal courier inquiry.',
+      { en: "Check the courier's delivery proof-of-delivery (POD) photograph.", hi: 'कूरियर की डिलीवरी POD फोटो जांचें।' },
+      { en: 'Search the dock area physically for any unscanned packages.', hi: 'डॉक एरिया में किसी बिना स्कैन पैकेज के लिए भौतिक रूप से खोजें।' },
+      { en: 'Confirm with the on-duty receiver if the package arrived but was not scanned.', hi: 'ड्यूटी पर मौजूद रिसीवर से पुष्टि करें कि पैकेज आया पर स्कैन नहीं हुआ।' },
+      { en: 'If package is missing, initiate a formal courier inquiry.', hi: 'पैकेज गायब हो तो औपचारिक कूरियर जांच शुरू करें।' },
     ],
   },
   {
@@ -131,10 +136,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
-      'Review the existing email thread for prior updates.',
-      'Escalate inquiry to the courier\'s regional operations team.',
-      'Collect all evidence: POD photo, door camera footage, receiver logs.',
-      'Begin drafting a formal claim against the courier for non-delivery.',
+      { en: 'Review the existing email thread for prior updates.', hi: 'पिछले अपडेट के लिए मौजूदा ईमेल थ्रेड देखें।' },
+      { en: "Escalate inquiry to the courier's regional operations team.", hi: 'कूरियर की क्षेत्रीय ऑपरेशन टीम को जांच एस्केलेट करें।' },
+      { en: 'Collect all evidence: POD photo, door camera footage, receiver logs.', hi: 'सभी सबूत इकट्ठा करें: POD फोटो, डोर कैमरा फुटेज, रिसीवर लॉग।' },
+      { en: 'Begin drafting a formal claim against the courier for non-delivery.', hi: 'गैर-डिलीवरी के लिए कूरियर के खिलाफ औपचारिक क्लेम तैयार करना शुरू करें।' },
     ],
   },
   {
@@ -148,11 +153,11 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'File a formal lost inbound claim with Amazon FBA immediately.',
-      'Attach all collected evidence to the claim.',
-      'Notify Sunil Deshmukh and Harsh Jain of the filed claim reference.',
-      'Mark the manifest as LOST_IN_TRANSIT.',
-      'Follow up with the courier for reimbursement against the delivery.',
+      { en: 'File a formal lost inbound claim with Amazon FBA immediately.', hi: 'तुरंत Amazon FBA के साथ औपचारिक इनबाउंड लॉस्ट क्लेम दायर करें।' },
+      { en: 'Attach all collected evidence to the claim.', hi: 'क्लेम में सभी इकट्ठा किए सबूत संलग्न करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain of the filed claim reference.', hi: 'दायर क्लेम संदर्भ की जानकारी सुनील देशमुख और हर्ष जैन को दें।' },
+      { en: 'Mark the manifest as LOST_IN_TRANSIT.', hi: 'मैनिफेस्ट को LOST_IN_TRANSIT मार्क करें।' },
+      { en: 'Follow up with the courier for reimbursement against the delivery.', hi: 'डिलीवरी के बदले रिम्बर्समेंट के लिए कूरियर से फॉलो अप करें।' },
     ],
   },
 
@@ -169,10 +174,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
-      'Review the receiver\'s QC rejection reason and photos.',
-      'Verify the courier\'s delivery/non-delivery status on their portal.',
-      'Contact the courier to reconcile the status discrepancy.',
-      'Prepare claim documentation based on the QC failure evidence.',
+      { en: "Review the receiver's QC rejection reason and photos.", hi: 'रिसीवर की QC अस्वीकृति का कारण और फोटो देखें।' },
+      { en: "Verify the courier's delivery/non-delivery status on their portal.", hi: 'कूरियर पोर्टल पर डिलीवरी/गैर-डिलीवरी स्टेटस सत्यापित करें।' },
+      { en: 'Contact the courier to reconcile the status discrepancy.', hi: 'स्टेटस की विसंगति दूर करने के लिए कूरियर से संपर्क करें।' },
+      { en: 'Prepare claim documentation based on the QC failure evidence.', hi: 'QC विफलता के सबूत के आधार पर क्लेम दस्तावेज तैयार करें।' },
     ],
   },
   {
@@ -186,9 +191,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
-      'Reply in the existing email thread with QC failure documentation.',
-      'File a freight damage or QC-failure return claim with the carrier.',
-      'Confirm claim eligibility with the Amazon IDR portal.',
+      { en: 'Reply in the existing email thread with QC failure documentation.', hi: 'मौजूदा ईमेल थ्रेड में QC विफलता दस्तावेज के साथ जवाब दें।' },
+      { en: 'File a freight damage or QC-failure return claim with the carrier.', hi: 'कूरियर के साथ फ्रेट डैमेज या QC विफलता रिटर्न क्लेम दायर करें।' },
+      { en: 'Confirm claim eligibility with the Amazon IDR portal.', hi: 'Amazon IDR पोर्टल से क्लेम की पात्रता की पुष्टि करें।' },
     ],
   },
   {
@@ -202,10 +207,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'File the freight damage claim immediately with full QC evidence.',
-      'Submit an Amazon FBA warehouse damage claim if applicable.',
-      'Notify Sunil Deshmukh and Harsh Jain with the claim reference number.',
-      'Mark the manifest appropriately and log the claim ID.',
+      { en: 'File the freight damage claim immediately with full QC evidence.', hi: 'पूरे QC सबूत के साथ तुरंत फ्रेट डैमेज क्लेम दायर करें।' },
+      { en: 'Submit an Amazon FBA warehouse damage claim if applicable.', hi: 'लागू हो तो Amazon FBA वेयरहाउस डैमेज क्लेम दायर करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with the claim reference number.', hi: 'क्लेम संदर्भ संख्या के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Mark the manifest appropriately and log the claim ID.', hi: 'मैनिफेस्ट को उचित रूप से मार्क करें और क्लेम ID दर्ज करें।' },
     ],
   },
 
@@ -222,9 +227,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 2,
     sopSteps: [
-      'Log into the receiver dashboard and confirm acceptance for the package.',
-      'Verify that all QC checks are complete and documented.',
-      'Update the package status to accepted in the system.',
+      { en: 'Log into the receiver dashboard and confirm acceptance for the package.', hi: 'रिसीवर डैशबोर्ड में लॉग इन करें और पैकेज की स्वीकृति की पुष्टि करें।' },
+      { en: 'Verify that all QC checks are complete and documented.', hi: 'सुनिश्चित करें कि सभी QC जांचें पूरी और दर्ज हैं।' },
+      { en: 'Update the package status to accepted in the system.', hi: 'सिस्टम में पैकेज का स्टेटस स्वीकृत में अपडेट करें।' },
     ],
   },
   {
@@ -238,9 +243,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 6,
     sopSteps: [
-      'Admin: Contact the receiver immediately via hangout to confirm the status.',
-      'Receiver: Complete the acceptance process and update the manifest.',
-      'If receiver is unavailable, have an alternate receiver confirm the package.',
+      { en: 'Admin: Contact the receiver immediately via hangout to confirm the status.', hi: 'एडमिन: तुरंत हैंगआउट के ज़रिए रिसीवर से संपर्क करें और स्टेटस की पुष्टि करें।' },
+      { en: 'Receiver: Complete the acceptance process and update the manifest.', hi: 'रिसीवर: स्वीकृति प्रक्रिया पूरी करें और मैनिफेस्ट अपडेट करें।' },
+      { en: 'If receiver is unavailable, have an alternate receiver confirm the package.', hi: 'रिसीवर उपलब्ध न हो तो किसी अन्य रिसीवर से पैकेज की पुष्टि करवाएं।' },
     ],
   },
 
@@ -255,11 +260,11 @@ export const ALERT_RULES: AlertRule[] = [
     description: 'One or more packages received yesterday have not been handed over to the inspector by 10 AM today.',
     targetRoles: ['RECEIVER'],
     channels: ['dashboard', 'hangout'],
-    thresholdHours: null, // time-of-day based
+    thresholdHours: null,
     sopSteps: [
-      'Review all packages received yesterday with status AT_DOCK.',
-      'Initiate handover to the assigned inspector immediately.',
-      'Confirm handover in the system before 12 PM.',
+      { en: 'Review all packages received yesterday with status AT_DOCK.', hi: 'कल AT_DOCK स्टेटस में प्राप्त सभी पैकेज जांचें।' },
+      { en: 'Initiate handover to the assigned inspector immediately.', hi: 'तुरंत असाइन किए गए इंस्पेक्टर को हैंडओवर शुरू करें।' },
+      { en: 'Confirm handover in the system before 12 PM.', hi: 'दोपहर 12 बजे से पहले सिस्टम में हैंडओवर की पुष्टि करें।' },
     ],
   },
   {
@@ -273,9 +278,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: null,
     sopSteps: [
-      'Admin: Contact the receiver to understand the delay.',
-      'Receiver: Complete all pending handovers immediately.',
-      'Reassign the inspection if the primary inspector is unavailable.',
+      { en: 'Admin: Contact the receiver to understand the delay.', hi: 'एडमिन: देरी समझने के लिए रिसीवर से संपर्क करें।' },
+      { en: 'Receiver: Complete all pending handovers immediately.', hi: 'रिसीवर: सभी लंबित हैंडओवर तुरंत पूरे करें।' },
+      { en: 'Reassign the inspection if the primary inspector is unavailable.', hi: 'प्राथमिक इंस्पेक्टर उपलब्ध न हो तो निरीक्षण पुनः असाइन करें।' },
     ],
   },
   {
@@ -289,9 +294,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: null,
     sopSteps: [
-      'Admin: Escalate to operations head if receiver is non-responsive.',
-      'Manually trigger handover in the system and assign an available inspector.',
-      'Document the delay reason in the manifest notes.',
+      { en: 'Admin: Escalate to operations head if receiver is non-responsive.', hi: 'एडमिन: रिसीवर जवाब न दे तो ऑपरेशन्स हेड को एस्केलेट करें।' },
+      { en: 'Manually trigger handover in the system and assign an available inspector.', hi: 'सिस्टम में मैन्युअली हैंडओवर ट्रिगर करें और उपलब्ध इंस्पेक्टर असाइन करें।' },
+      { en: 'Document the delay reason in the manifest notes.', hi: 'मैनिफेस्ट नोट्स में देरी का कारण दर्ज करें।' },
     ],
   },
   {
@@ -305,10 +310,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: null,
     sopSteps: [
-      'Immediately investigate the root cause of the multi-day delay.',
-      'Force-assign an inspector and complete handover within the hour.',
-      'Notify Sunil Deshmukh and Harsh Jain with the resolution timeline.',
-      'Document the incident for SLA performance review.',
+      { en: 'Immediately investigate the root cause of the multi-day delay.', hi: 'कई दिनों की देरी के मूल कारण की तुरंत जांच करें।' },
+      { en: 'Force-assign an inspector and complete handover within the hour.', hi: 'एक घंटे के भीतर इंस्पेक्टर को जबरन असाइन करें और हैंडओवर पूरा करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with the resolution timeline.', hi: 'समाधान टाइमलाइन के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Document the incident for SLA performance review.', hi: 'SLA प्रदर्शन समीक्षा के लिए घटना दर्ज करें।' },
     ],
   },
 
@@ -325,9 +330,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 6,
     sopSteps: [
-      'Open the inspector dashboard and locate the pending package.',
-      'Complete the inspection and update the item condition.',
-      'If blocked, contact admin for support.',
+      { en: 'Open the inspector dashboard and locate the pending package.', hi: 'इंस्पेक्टर डैशबोर्ड खोलें और लंबित पैकेज ढूंढें।' },
+      { en: 'Complete the inspection and update the item condition.', hi: 'निरीक्षण पूरा करें और आइटम की स्थिति अपडेट करें।' },
+      { en: 'If blocked, contact admin for support.', hi: 'कोई रुकावट हो तो सहायता के लिए एडमिन से संपर्क करें।' },
     ],
   },
   {
@@ -341,9 +346,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 12,
     sopSteps: [
-      'Admin: Contact the inspector via hangout to determine the blocker.',
-      'Inspector: Prioritize this package and complete inspection immediately.',
-      'If the inspector is absent, reassign to an available inspector.',
+      { en: 'Admin: Contact the inspector via hangout to determine the blocker.', hi: 'एडमिन: हैंगआउट के ज़रिए इंस्पेक्टर से संपर्क करें और रुकावट का पता लगाएं।' },
+      { en: 'Inspector: Prioritize this package and complete inspection immediately.', hi: 'इंस्पेक्टर: इस पैकेज को प्राथमिकता दें और तुरंत निरीक्षण पूरा करें।' },
+      { en: 'If the inspector is absent, reassign to an available inspector.', hi: 'इंस्पेक्टर अनुपस्थित हो तो उपलब्ध इंस्पेक्टर को पुनः असाइन करें।' },
     ],
   },
   {
@@ -357,9 +362,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 18,
     sopSteps: [
-      'Escalate via email to the operations team for immediate reassignment.',
-      'Reassign the package to the most available inspector.',
-      'Log the SLA breach in the inspection tracker.',
+      { en: 'Escalate via email to the operations team for immediate reassignment.', hi: 'तत्काल पुनः असाइनमेंट के लिए ईमेल से ऑपरेशन्स टीम को एस्केलेट करें।' },
+      { en: 'Reassign the package to the most available inspector.', hi: 'सबसे उपलब्ध इंस्पेक्टर को पैकेज पुनः असाइन करें।' },
+      { en: 'Log the SLA breach in the inspection tracker.', hi: 'निरीक्षण ट्रैकर में SLA उल्लंघन दर्ज करें।' },
     ],
   },
   {
@@ -373,10 +378,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'Immediately reassign the inspection to a senior inspector.',
-      'Complete the inspection within the next 2 hours.',
-      'Report the delay reason to Sunil Deshmukh and Harsh Jain.',
-      'Initiate an SLA breach review for this incident.',
+      { en: 'Immediately reassign the inspection to a senior inspector.', hi: 'तुरंत निरीक्षण को वरिष्ठ इंस्पेक्टर को पुनः असाइन करें।' },
+      { en: 'Complete the inspection within the next 2 hours.', hi: 'अगले 2 घंटे में निरीक्षण पूरा करें।' },
+      { en: 'Report the delay reason to Sunil Deshmukh and Harsh Jain.', hi: 'देरी का कारण सुनील देशमुख और हर्ष जैन को रिपोर्ट करें।' },
+      { en: 'Initiate an SLA breach review for this incident.', hi: 'इस घटना के लिए SLA उल्लंघन समीक्षा शुरू करें।' },
     ],
   },
 
@@ -393,10 +398,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'email'],
     thresholdHours: 6,
     sopSteps: [
-      'Review the inspection QC failure reason and evidence photos.',
-      'Access the Amazon IDR (Seller Central claims portal).',
-      'Begin filing the dispute/claim with the inspection evidence.',
-      'Update the manifest claimId with the filed Amazon case ID.',
+      { en: 'Review the inspection QC failure reason and evidence photos.', hi: 'निरीक्षण QC विफलता का कारण और सबूत फोटो देखें।' },
+      { en: 'Access the Amazon IDR (Seller Central claims portal).', hi: 'Amazon IDR (Seller Central क्लेम पोर्टल) खोलें।' },
+      { en: 'Begin filing the dispute/claim with the inspection evidence.', hi: 'निरीक्षण सबूत के साथ विवाद/क्लेम दायर करना शुरू करें।' },
+      { en: 'Update the manifest claimId with the filed Amazon case ID.', hi: 'मैनिफेस्ट claimId को दायर Amazon केस ID से अपडेट करें।' },
     ],
   },
   {
@@ -410,9 +415,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
-      'Reply in the existing email thread confirming claim filing intent.',
-      'Immediately file the claim in Amazon Seller Central.',
-      'Log the Amazon case ID in the manifest.',
+      { en: 'Reply in the existing email thread confirming claim filing intent.', hi: 'मौजूदा ईमेल थ्रेड में क्लेम दायर करने के इरादे की पुष्टि करते हुए जवाब दें।' },
+      { en: 'Immediately file the claim in Amazon Seller Central.', hi: 'Amazon Seller Central में तुरंत क्लेम दायर करें।' },
+      { en: 'Log the Amazon case ID in the manifest.', hi: 'मैनिफेस्ट में Amazon केस ID दर्ज करें।' },
     ],
   },
   {
@@ -426,10 +431,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'File the Amazon claim immediately — do not delay further.',
-      'Attach all inspection evidence: photos, video, unboxing logs.',
-      'Notify Sunil Deshmukh and Harsh Jain with the Amazon case reference.',
-      'Log status as "Filed" in the reimbursement tracker.',
+      { en: 'File the Amazon claim immediately — do not delay further.', hi: 'Amazon क्लेम तुरंत दायर करें — और देरी न करें।' },
+      { en: 'Attach all inspection evidence: photos, video, unboxing logs.', hi: 'सभी निरीक्षण सबूत संलग्न करें: फोटो, वीडियो, अनबॉक्सिंग लॉग।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with the Amazon case reference.', hi: 'Amazon केस संदर्भ के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Log status as "Filed" in the reimbursement tracker.', hi: 'रिम्बर्समेंट ट्रैकर में स्टेटस "दायर" दर्ज करें।' },
     ],
   },
 
@@ -446,8 +451,8 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 12,
     sopSteps: [
-      'Locate the SKU in the inspection area.',
-      'Complete the handover to the recovery team and log it in the system.',
+      { en: 'Locate the SKU in the inspection area.', hi: 'निरीक्षण क्षेत्र में SKU ढूंढें।' },
+      { en: 'Complete the handover to the recovery team and log it in the system.', hi: 'रिकवरी टीम को हैंडओवर पूरा करें और सिस्टम में दर्ज करें।' },
     ],
   },
   {
@@ -461,9 +466,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 18,
     sopSteps: [
-      'Admin: Contact the inspector to resolve the handover delay.',
-      'Inspector: Complete the recovery handover immediately.',
-      'If inspector is unavailable, request an admin override handover.',
+      { en: 'Admin: Contact the inspector to resolve the handover delay.', hi: 'एडमिन: हैंडओवर की देरी सुलझाने के लिए इंस्पेक्टर से संपर्क करें।' },
+      { en: 'Inspector: Complete the recovery handover immediately.', hi: 'इंस्पेक्टर: रिकवरी हैंडओवर तुरंत पूरा करें।' },
+      { en: 'If inspector is unavailable, request an admin override handover.', hi: 'इंस्पेक्टर उपलब्ध न हो तो एडमिन ओवरराइड हैंडओवर का अनुरोध करें।' },
     ],
   },
 
@@ -478,11 +483,11 @@ export const ALERT_RULES: AlertRule[] = [
     description: 'A SKU from {trackingId} handed over to the recovery team has been marked as damaged. Admin action required.',
     targetRoles: ['L2'],
     channels: ['dashboard', 'hangout'],
-    thresholdHours: null, // real-time event
+    thresholdHours: null,
     sopSteps: [
-      'Review the damage report from the recovery team.',
-      'Confirm the extent of damage and determine claim eligibility.',
-      'Initiate a damage claim on Amazon Seller Central.',
+      { en: 'Review the damage report from the recovery team.', hi: 'रिकवरी टीम से डैमेज रिपोर्ट की समीक्षा करें।' },
+      { en: 'Confirm the extent of damage and determine claim eligibility.', hi: 'नुकसान की सीमा की पुष्टि करें और क्लेम पात्रता तय करें।' },
+      { en: 'Initiate a damage claim on Amazon Seller Central.', hi: 'Amazon Seller Central पर डैमेज क्लेम शुरू करें।' },
     ],
   },
   {
@@ -496,9 +501,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
-      'Admin must acknowledge the damage report and begin claim filing.',
-      'Reply in the existing email thread with the action taken.',
-      'File the damage claim with Amazon IDR immediately.',
+      { en: 'Admin must acknowledge the damage report and begin claim filing.', hi: 'एडमिन डैमेज रिपोर्ट स्वीकार करें और क्लेम दायर करना शुरू करें।' },
+      { en: 'Reply in the existing email thread with the action taken.', hi: 'मौजूदा ईमेल थ्रेड में की गई कार्रवाई के साथ जवाब दें।' },
+      { en: 'File the damage claim with Amazon IDR immediately.', hi: 'Amazon IDR के साथ तुरंत डैमेज क्लेम दायर करें।' },
     ],
   },
 
@@ -515,9 +520,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 1,
     sopSteps: [
-      'Open Amazon Seller Central and navigate to the IDR claims portal.',
-      'File the claim with the damage photos from recovery.',
-      'Log the case ID in the manifest and update status.',
+      { en: 'Open Amazon Seller Central and navigate to the IDR claims portal.', hi: 'Amazon Seller Central खोलें और IDR क्लेम पोर्टल पर जाएं।' },
+      { en: 'File the claim with the damage photos from recovery.', hi: 'रिकवरी की डैमेज फोटो के साथ क्लेम दायर करें।' },
+      { en: 'Log the case ID in the manifest and update status.', hi: 'मैनिफेस्ट में केस ID दर्ज करें और स्टेटस अपडेट करें।' },
     ],
   },
   {
@@ -531,9 +536,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
-      'Reply in the existing thread — claim must be filed now.',
-      'File the Amazon damage claim immediately.',
-      'Update the manifest claimId once filed.',
+      { en: 'Reply in the existing thread — claim must be filed now.', hi: 'मौजूदा थ्रेड में जवाब दें — क्लेम अभी दायर होना चाहिए।' },
+      { en: 'File the Amazon damage claim immediately.', hi: 'Amazon डैमेज क्लेम तुरंत दायर करें।' },
+      { en: 'Update the manifest claimId once filed.', hi: 'दायर होने पर मैनिफेस्ट claimId अपडेट करें।' },
     ],
   },
   {
@@ -547,9 +552,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 12,
     sopSteps: [
-      'File the Amazon claim immediately with full evidence.',
-      'Notify Sunil Deshmukh and Harsh Jain with claim reference.',
-      'Document all delays for claims performance review.',
+      { en: 'File the Amazon claim immediately with full evidence.', hi: 'पूरे सबूत के साथ Amazon क्लेम तुरंत दायर करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with claim reference.', hi: 'क्लेम संदर्भ के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Document all delays for claims performance review.', hi: 'क्लेम प्रदर्शन समीक्षा के लिए सभी देरी दर्ज करें।' },
     ],
   },
 
@@ -566,9 +571,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 24,
     sopSteps: [
-      'Locate the SKU in the recovery area.',
-      'Complete the packaging/recovery work and hand over to QC.',
-      'Log the handover in the system.',
+      { en: 'Locate the SKU in the recovery area.', hi: 'रिकवरी एरिया में SKU ढूंढें।' },
+      { en: 'Complete the packaging/recovery work and hand over to QC.', hi: 'पैकेजिंग/रिकवरी काम पूरा करें और QC को सौंपें।' },
+      { en: 'Log the handover in the system.', hi: 'सिस्टम में हैंडओवर दर्ज करें।' },
     ],
   },
   {
@@ -582,9 +587,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 36,
     sopSteps: [
-      'Admin: Contact the recovery team to determine the delay.',
-      'Recovery: Expedite the inventorisation handover to QC.',
-      'If recovery is blocked, escalate to operations head.',
+      { en: 'Admin: Contact the recovery team to determine the delay.', hi: 'एडमिन: देरी का कारण जानने के लिए रिकवरी टीम से संपर्क करें।' },
+      { en: 'Recovery: Expedite the inventorisation handover to QC.', hi: 'रिकवरी: QC को इन्वेंटराइजेशन हैंडओवर में तेजी लाएं।' },
+      { en: 'If recovery is blocked, escalate to operations head.', hi: 'रिकवरी अवरुद्ध हो तो ऑपरेशन्स हेड को एस्केलेट करें।' },
     ],
   },
 
@@ -601,8 +606,8 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 24,
     sopSteps: [
-      'Locate the inventorisation-ready SKU.',
-      'Hand it over to the QC team and confirm in the system.',
+      { en: 'Locate the inventorisation-ready SKU.', hi: 'इन्वेंटराइजेशन के लिए तैयार SKU ढूंढें।' },
+      { en: 'Hand it over to the QC team and confirm in the system.', hi: 'QC टीम को सौंपें और सिस्टम में पुष्टि करें।' },
     ],
   },
   {
@@ -616,9 +621,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 36,
     sopSteps: [
-      'Admin: Contact the inspector to resolve the QC handover delay.',
-      'Inspector: Complete the handover to QC immediately.',
-      'If the inspector is unavailable, an admin can override the handover.',
+      { en: 'Admin: Contact the inspector to resolve the QC handover delay.', hi: 'एडमिन: QC हैंडओवर देरी सुलझाने के लिए इंस्पेक्टर से संपर्क करें।' },
+      { en: 'Inspector: Complete the handover to QC immediately.', hi: 'इंस्पेक्टर: QC को हैंडओवर तुरंत पूरा करें।' },
+      { en: 'If the inspector is unavailable, an admin can override the handover.', hi: 'इंस्पेक्टर उपलब्ध न हो तो एडमिन हैंडओवर ओवरराइड कर सकता है।' },
     ],
   },
 
@@ -635,9 +640,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: null,
     sopSteps: [
-      'Review the QC damage report and photos.',
-      'Determine claim eligibility (courier damage vs. product defect).',
-      'Initiate the appropriate claim on Amazon Seller Central.',
+      { en: 'Review the QC damage report and photos.', hi: 'QC डैमेज रिपोर्ट और फोटो की समीक्षा करें।' },
+      { en: 'Determine claim eligibility (courier damage vs. product defect).', hi: 'क्लेम पात्रता तय करें (कूरियर डैमेज बनाम उत्पाद दोष)।' },
+      { en: 'Initiate the appropriate claim on Amazon Seller Central.', hi: 'Amazon Seller Central पर उचित क्लेम शुरू करें।' },
     ],
   },
   {
@@ -651,9 +656,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'Admin must acknowledge and act on the QC damage report now.',
-      'File the claim with damage evidence via Amazon IDR.',
-      'Reply in the existing email thread with action taken.',
+      { en: 'Admin must acknowledge and act on the QC damage report now.', hi: 'एडमिन अभी QC डैमेज रिपोर्ट स्वीकार करें और कार्रवाई करें।' },
+      { en: 'File the claim with damage evidence via Amazon IDR.', hi: 'Amazon IDR के ज़रिए डैमेज सबूत के साथ क्लेम दायर करें।' },
+      { en: 'Reply in the existing email thread with action taken.', hi: 'मौजूदा ईमेल थ्रेड में की गई कार्रवाई के साथ जवाब दें।' },
     ],
   },
 
@@ -670,8 +675,8 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 1,
     sopSteps: [
-      'Open the Amazon IDR claims portal and file the claim with QC evidence.',
-      'Log the case ID in the manifest and update the status.',
+      { en: 'Open the Amazon IDR claims portal and file the claim with QC evidence.', hi: 'Amazon IDR क्लेम पोर्टल खोलें और QC सबूत के साथ क्लेम दायर करें।' },
+      { en: 'Log the case ID in the manifest and update the status.', hi: 'मैनिफेस्ट में केस ID दर्ज करें और स्टेटस अपडेट करें।' },
     ],
   },
   {
@@ -685,9 +690,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 6,
     sopSteps: [
-      'Reply in the existing email thread with filing intent.',
-      'File the Amazon claim immediately.',
-      'Log the case ID once filed.',
+      { en: 'Reply in the existing email thread with filing intent.', hi: 'मौजूदा ईमेल थ्रेड में क्लेम दायर करने के इरादे के साथ जवाब दें।' },
+      { en: 'File the Amazon claim immediately.', hi: 'Amazon क्लेम तुरंत दायर करें।' },
+      { en: 'Log the case ID once filed.', hi: 'दायर होने पर केस ID दर्ज करें।' },
     ],
   },
   {
@@ -701,9 +706,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'File the Amazon claim immediately with full QC damage evidence.',
-      'Notify Sunil Deshmukh and Harsh Jain with claim reference number.',
-      'Document all delays for claims SLA performance review.',
+      { en: 'File the Amazon claim immediately with full QC damage evidence.', hi: 'पूरे QC डैमेज सबूत के साथ Amazon क्लेम तुरंत दायर करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with claim reference number.', hi: 'क्लेम संदर्भ संख्या के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Document all delays for claims SLA performance review.', hi: 'क्लेम SLA प्रदर्शन समीक्षा के लिए सभी देरी दर्ज करें।' },
     ],
   },
 
@@ -720,9 +725,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 12,
     sopSteps: [
-      'Locate the SKU awaiting inventorisation.',
-      'Complete the QC inventorisation process and update the system.',
-      'Mark the SKU as RECOVERED_TO_INVENTORY once done.',
+      { en: 'Locate the SKU awaiting inventorisation.', hi: 'इन्वेंटराइजेशन की प्रतीक्षा में SKU ढूंढें।' },
+      { en: 'Complete the QC inventorisation process and update the system.', hi: 'QC इन्वेंटराइजेशन प्रक्रिया पूरी करें और सिस्टम अपडेट करें।' },
+      { en: 'Mark the SKU as RECOVERED_TO_INVENTORY once done.', hi: 'पूरा होने पर SKU को RECOVERED_TO_INVENTORY मार्क करें।' },
     ],
   },
   {
@@ -736,9 +741,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout'],
     thresholdHours: 18,
     sopSteps: [
-      'Admin: Contact the QC team to resolve the inventorisation delay.',
-      'QC: Prioritize and complete the inventorisation immediately.',
-      'If QC is blocked, reassign to an available QC member.',
+      { en: 'Admin: Contact the QC team to resolve the inventorisation delay.', hi: 'एडमिन: इन्वेंटराइजेशन देरी सुलझाने के लिए QC टीम से संपर्क करें।' },
+      { en: 'QC: Prioritize and complete the inventorisation immediately.', hi: 'QC: इन्वेंटराइजेशन को प्राथमिकता दें और तुरंत पूरा करें।' },
+      { en: 'If QC is blocked, reassign to an available QC member.', hi: 'QC अवरुद्ध हो तो उपलब्ध QC सदस्य को पुनः असाइन करें।' },
     ],
   },
   {
@@ -752,9 +757,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 24,
     sopSteps: [
-      'Escalate via email — QC inventorisation must complete today.',
-      'Admin to verify QC team availability and reassign if needed.',
-      'Document the SLA breach in the inventorisation tracker.',
+      { en: 'Escalate via email — QC inventorisation must complete today.', hi: 'ईमेल से एस्केलेट करें — QC इन्वेंटराइजेशन आज ही पूरा होना चाहिए।' },
+      { en: 'Admin to verify QC team availability and reassign if needed.', hi: 'एडमिन QC टीम की उपलब्धता जांचें और ज़रूरत हो तो पुनः असाइन करें।' },
+      { en: 'Document the SLA breach in the inventorisation tracker.', hi: 'इन्वेंटराइजेशन ट्रैकर में SLA उल्लंघन दर्ज करें।' },
     ],
   },
   {
@@ -768,10 +773,10 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard', 'hangout', 'email_existing_thread'],
     thresholdHours: 48,
     sopSteps: [
-      'Immediately escalate to operations head for forced inventorisation.',
-      'Complete the inventorisation within 2 hours.',
-      'Notify Sunil Deshmukh and Harsh Jain with the resolution timeline.',
-      'Initiate an SLA breach investigation for this inventory delay.',
+      { en: 'Immediately escalate to operations head for forced inventorisation.', hi: 'जबरन इन्वेंटराइजेशन के लिए तुरंत ऑपरेशन्स हेड को एस्केलेट करें।' },
+      { en: 'Complete the inventorisation within 2 hours.', hi: '2 घंटे में इन्वेंटराइजेशन पूरा करें।' },
+      { en: 'Notify Sunil Deshmukh and Harsh Jain with the resolution timeline.', hi: 'समाधान टाइमलाइन के साथ सुनील देशमुख और हर्ष जैन को सूचित करें।' },
+      { en: 'Initiate an SLA breach investigation for this inventory delay.', hi: 'इस इन्वेंट्री देरी के लिए SLA उल्लंघन जांच शुरू करें।' },
     ],
   },
 
@@ -786,12 +791,12 @@ export const ALERT_RULES: AlertRule[] = [
     description: 'Removal Order {orderId} was requested on {requestDate} but Amazon has NOT dispatched this shipment after 5 days. No manifest is IN_TRANSIT or beyond. Reimbursement window closes in ~9 days.',
     targetRoles: ['L2'],
     channels: ['dashboard', 'email'],
-    thresholdHours: 120, // 5 days
+    thresholdHours: 120,
     sopSteps: [
-      'Log into Amazon Seller Central and check the removal order status.',
-      'If status is still "Pending" or "In Progress", contact Amazon Seller Support.',
-      'Request an expedited dispatch or a status update on the removal.',
-      'Log the follow-up in the reimbursement tracker sheet.',
+      { en: 'Log into Amazon Seller Central and check the removal order status.', hi: 'Amazon Seller Central में लॉग इन करें और रिमूवल ऑर्डर स्टेटस जांचें।' },
+      { en: 'If status is still "Pending" or "In Progress", contact Amazon Seller Support.', hi: 'स्टेटस "Pending" या "In Progress" हो तो Amazon Seller Support से संपर्क करें।' },
+      { en: 'Request an expedited dispatch or a status update on the removal.', hi: 'त्वरित डिस्पैच या रिमूवल पर स्टेटस अपडेट मांगें।' },
+      { en: 'Log the follow-up in the reimbursement tracker sheet.', hi: 'रिम्बर्समेंट ट्रैकर शीट में फॉलो-अप दर्ज करें।' },
     ],
   },
   {
@@ -803,13 +808,13 @@ export const ALERT_RULES: AlertRule[] = [
     description: 'Removal Order {orderId} requested on {requestDate} still has no dispatched shipment (no manifest in IN_TRANSIT or beyond) after 10 days. Amazon reimbursement window closes in ~4–5 days. Immediate action required.',
     targetRoles: ['L2', 'L3'],
     channels: ['dashboard', 'email_existing_thread'],
-    thresholdHours: 240, // 10 days
+    thresholdHours: 240,
     sopSteps: [
-      'Immediately contact Amazon Seller Support via phone/chat for an escalation.',
-      'Request Amazon to either dispatch the removal or process an in-place reimbursement.',
-      'Document all communication timestamps.',
-      'If Amazon is unresponsive within 24 hours, escalate to L4.',
-      'File a pre-emptive claim if within 13 days of request date.',
+      { en: 'Immediately contact Amazon Seller Support via phone/chat for an escalation.', hi: 'तुरंत फोन/चैट के ज़रिए Amazon Seller Support से एस्केलेशन के लिए संपर्क करें।' },
+      { en: 'Request Amazon to either dispatch the removal or process an in-place reimbursement.', hi: 'Amazon से रिमूवल डिस्पैच करने या इन-प्लेस रिम्बर्समेंट प्रोसेस करने का अनुरोध करें।' },
+      { en: 'Document all communication timestamps.', hi: 'सभी संचार टाइमस्टैम्प दर्ज करें।' },
+      { en: 'If Amazon is unresponsive within 24 hours, escalate to L4.', hi: '24 घंटे में Amazon जवाब न दे तो L4 को एस्केलेट करें।' },
+      { en: 'File a pre-emptive claim if within 13 days of request date.', hi: 'अनुरोध तारीख के 13 दिन के भीतर हो तो पूर्व-निवारक क्लेम दायर करें।' },
     ],
   },
 
@@ -826,9 +831,9 @@ export const ALERT_RULES: AlertRule[] = [
     channels: ['dashboard'],
     thresholdHours: null,
     sopSteps: [
-      'Wait for the next Amazon report sync to see if a tracking number appears.',
-      'If still missing after next sync, check Seller Central removal order for courier assignment.',
-      'If no tracking number appears within 3 syncs, contact Amazon Seller Support.',
+      { en: 'Wait for the next Amazon report sync to see if a tracking number appears.', hi: 'अगले Amazon रिपोर्ट सिंक का इंतजार करें और देखें कि ट्रैकिंग नंबर आता है या नहीं।' },
+      { en: 'If still missing after next sync, check Seller Central removal order for courier assignment.', hi: 'अगले सिंक के बाद भी न मिले तो Seller Central रिमूवल ऑर्डर में कूरियर असाइनमेंट जांचें।' },
+      { en: 'If no tracking number appears within 3 syncs, contact Amazon Seller Support.', hi: '3 सिंक के बाद भी ट्रैकिंग नंबर न आए तो Amazon Seller Support से संपर्क करें।' },
     ],
   },
 ];
@@ -841,9 +846,19 @@ export const ALERT_RULES: AlertRule[] = [
 export const ALERT_RULE_BY_TYPE: Record<string, AlertRule> =
   Object.fromEntries(ALERT_RULES.map(r => [r.type, r]));
 
-/** Quick lookup: alertType → SOP steps array (for use in /api/alerts/sop) */
+/**
+ * Quick lookup: alertType → SOP steps array for a given language.
+ * Returns the `en` text by default (backward compat).
+ */
+export function getSopMap(lang: 'en' | 'hi' = 'en'): Record<string, string[]> {
+  return Object.fromEntries(
+    ALERT_RULES.map(r => [r.type, r.sopSteps.map(s => s[lang] || s.en)])
+  );
+}
+
+/** Legacy flat string SOP_MAP — English only (for any code that still uses it) */
 export const SOP_MAP: Record<string, string[]> =
-  Object.fromEntries(ALERT_RULES.map(r => [r.type, r.sopSteps]));
+  Object.fromEntries(ALERT_RULES.map(r => [r.type, r.sopSteps.map(s => s.en)]));
 
 /** All unique alert type keys */
 export const ALL_ALERT_TYPES = ALERT_RULES.map(r => r.type);

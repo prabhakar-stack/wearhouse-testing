@@ -11,21 +11,22 @@ export async function GET(req: NextRequest) {
     let steps: { id: string; alertType: string; stepOrder: number; instruction: string }[] = [];
 
     if (alertType) {
-      const list = SOP_MAP[alertType] || [];
-      steps = list.map((inst, idx) => ({
+      const rule = ALERT_RULES.find(r => r.type === alertType);
+      const list = rule?.sopSteps || [];
+      steps = list.map((step, idx) => ({
         id: `${alertType}_sop_${idx}`,
         alertType,
         stepOrder: idx + 1,
-        instruction: translateInstruction(inst, preferredLanguage)
+        instruction: preferredLanguage === 'hi' ? step.hi : step.en
       }));
     } else {
-      // Return all SOP steps for all 42 registered alert types
+      // Return all SOP steps for all registered alert types
       for (const rule of ALERT_RULES) {
-        steps.push(...rule.sopSteps.map((inst, idx) => ({
+        steps.push(...rule.sopSteps.map((step, idx) => ({
           id: `${rule.type}_sop_${idx}`,
           alertType: rule.type,
           stepOrder: idx + 1,
-          instruction: translateInstruction(inst, preferredLanguage)
+          instruction: preferredLanguage === 'hi' ? step.hi : step.en
         })));
       }
     }

@@ -10,7 +10,7 @@ interface AccessDeniedProps {
 
 export default function AccessDenied({ message = "Invalid Role Authorization" }: AccessDeniedProps) {
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
-  const t = (text: string) => translateInstruction(text, preferredLanguage);
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
   useEffect(() => {
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
@@ -26,10 +26,10 @@ export default function AccessDenied({ message = "Invalid Role Authorization" }:
     <div className="h-screen w-screen bg-red-50 text-red-800 flex flex-col justify-center items-center p-6 select-none overscroll-none border-8 border-red-200">
       <AlertOctagon size={120} className="mb-8 text-red-400" />
       <h1 className="text-4xl md:text-5xl font-black uppercase tracking-widest text-center leading-tight text-red-700">
-        {t("Access Denied")}
+        {lang === 'hi' ? 'प्रवेश अस्वीकृत' : 'Access Denied'}
       </h1>
       <p className="text-xl mt-6 font-bold tracking-wider text-red-500">
-        {t(message)}
+        {lang === 'hi' ? 'अमान्य भूमिका प्राधिकरण' : message}
       </p>
     </div>
   );

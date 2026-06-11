@@ -12,6 +12,7 @@ import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/li
 
 function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: string; email: string; role: string }; onClose: () => void; preferredLanguage: PreferredLanguage }) {
   const [profile, setProfile] = useState<any>(null);
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
@@ -58,14 +59,14 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
                 <div className="bg-white rounded-xl p-4 border border-[#FF6700]/10 shadow-sm">
                   <div className="flex items-center space-x-2 mb-2">
                     <Package size={14} className="text-[#FF6700]" />
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Items Processed")}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'प्रसंस्कृत आइटम' : 'Items Processed'}</p>
                   </div>
                   <p className="text-2xl font-black text-[#313079] font-mono">{profile.itemsProcessed ?? 0}</p>
                 </div>
                 <div className="bg-green-50 rounded-xl p-4 border border-green-100">
                   <div className="flex items-center space-x-2 mb-2">
                     <TrendingUp size={14} className="text-green-500" />
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Accuracy Rate")}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'सटीकता दर' : 'Accuracy Rate'}</p>
                   </div>
                   <p className="text-2xl font-black text-green-600 font-mono">{profile.accuracyRate?.toFixed(1) ?? '100.0'}%</p>
                 </div>
@@ -73,7 +74,7 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                 <div className="flex items-center space-x-2 mb-2">
                   <Calendar size={14} className="text-slate-400" />
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{t("Member Since")}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'सदस्यता तिथि' : 'Member Since'}</p>
                 </div>
                 <p className="text-sm font-bold text-[#313079]">
                   {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
@@ -81,14 +82,14 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
               </div>
             </>
           ) : (
-            <div className="text-center py-6 text-slate-400 text-xs uppercase tracking-widest animate-pulse">{t("Loading profile...")}</div>
+            <div className="text-center py-6 text-slate-400 text-xs uppercase tracking-widest animate-pulse">{lang === 'hi' ? 'प्रोफ़ाइल लोड हो रहा है...' : 'Loading profile...'}</div>
           )}
 
           <LanguagePreference />
 
           <div className="h-px bg-[#313079]/10" />
           <p className="text-[10px] text-slate-400 text-center font-medium">
-            {t("Full system access · All alert levels visible")}
+            {lang === 'hi' ? 'पूर्ण सिस्टम एक्सेस · सभी अलर्ट स्तर दिखाई दे रहे हैं' : 'Full system access · All alert levels visible'}
           </p>
         </div>
       </div>
@@ -102,6 +103,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc' | 'settings'>('alerts');
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
@@ -145,7 +147,9 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
     : displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   const fetchAlerts = useCallback(() => {
-    fetch('/api/alerts')
+    fetch('/api/alerts', {
+      headers: { 'x-user-language': preferredLanguage }
+    })
       .then(r => r.json())
       .then(d => {
         if (d.alerts) {
@@ -155,7 +159,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
         if (d.sopMap) setSopMap(d.sopMap);
       })
       .catch(() => {});
-  }, []);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     fetchAlerts();
@@ -201,7 +205,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
             <div className="flex items-center space-x-2">
               <Bell className="text-[#FF6700]" size={16} />
-              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">Active Alerts</span>
+              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">{lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}</span>
               {alerts.length > 0 && (
                 <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">{alerts.length}</span>
               )}
@@ -215,7 +219,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
             {alerts.length === 0 ? (
               <div className="text-center py-12 flex flex-col items-center">
                 <CheckCircle2 size={36} className="text-green-500 mb-2 opacity-50" />
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">All Clear — No Pending Alerts</p>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{lang === 'hi' ? 'सब ठीक — कोई अलर्ट नहीं' : 'All Clear — No Pending Alerts'}</p>
               </div>
             ) : (
               alerts.map(alert => {
@@ -313,22 +317,22 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
 
         {/* Navigation Tabs */}
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-          <TabButton id="users"    icon={<Users size={14} />}       label="Users"          activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
-          <TabButton id="alerts"   icon={<Bell size={14} />}        label="Alerts"         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} />
-          <TabButton id="claims"   icon={<FileWarning size={14} />} label="Claims"         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          <TabButton id="users"    icon={<Users size={14} />}       label={lang === 'hi' ? 'उपयोगकर्ता' : 'Users'}          activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          <TabButton id="alerts"   icon={<Bell size={14} />}        label={lang === 'hi' ? 'अलर्ट' : 'Alerts'}         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} />
+          <TabButton id="claims"   icon={<FileWarning size={14} />} label={lang === 'hi' ? 'दावे' : 'Claims'}         activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           {canAccessTriage && (
-            <TabButton id="triage" icon={<FileWarning size={14} />} label="Claims Triage" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="triage" icon={<FileWarning size={14} />} label={lang === 'hi' ? 'दावा ट्रियेज' : 'Claims Triage'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           )}
           {canAccessSmartFiling && (
-            <TabButton id="smart-filing" icon={<Activity size={14} />} label="Smart Filing Monitor" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="smart-filing" icon={<Activity size={14} />} label={lang === 'hi' ? 'स्मार्ट फाइलिंग मॉनिटर' : 'Smart Filing Monitor'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           )}
           {canAccessRecovery && (
-            <TabButton id="recovery" icon={<PackageSearch size={14} />} label="Recovery Hub" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="recovery" icon={<PackageSearch size={14} />} label={lang === 'hi' ? 'रिकवरी हब' : 'Recovery Hub'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           )}
           {canAccessQC && (
-            <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="qc" icon={<CheckCircle2 size={14} />} label={lang === 'hi' ? 'QC ऑडिट' : 'QC Audit'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
           )}
-          <TabButton id="settings" icon={<Clock size={14} />} label="Operational Settings" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          <TabButton id="settings" icon={<Clock size={14} />} label={lang === 'hi' ? 'संचालन सेटिंग्स' : 'Operational Settings'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
         </nav>
 
         {/* Sidebar Footer */}
@@ -339,14 +343,14 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
               className="flex items-center space-x-3 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-wider"
             >
               <PackageSearch size={14} />
-              <span>Receiver View</span>
+              <span>{lang === 'hi' ? 'रिसीवर व्यू' : 'Receiver View'}</span>
             </Link>
             <Link 
               href="/inspector" 
               className="flex items-center space-x-3 px-4 py-2.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-wider"
             >
               <Activity size={14} />
-              <span>Inspector View</span>
+              <span>{lang === 'hi' ? 'इंस्पेक्टर व्यू' : 'Inspector View'}</span>
             </Link>
           </div>
           
@@ -378,54 +382,14 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
             }}
             className="w-full px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md"
           >
-            Logout
+            {lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden relative bg-slate-50 flex flex-col">
-        {/* Main Content Top Bar (Desktop only) */}
-        <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200 shrink-0">
-          <div>
-            <h2 className="text-lg font-black uppercase tracking-wider text-[#313079]">
-              {activeTab === 'users' 
-                ? 'User Directory' 
-                : activeTab === 'claims' 
-                ? 'Claims Staging' 
-                : activeTab === 'triage'
-                ? 'Claims Triage'
-                : activeTab === 'smart-filing'
-                ? 'Smart Filing Monitor'
-                : activeTab === 'recovery'
-                ? 'Recovery Hub'
-                : activeTab === 'qc'
-                ? 'QC Audit'
-                : 'Operational Alerts'}
-            </h2>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
-              Returns Management App &bull; {role.replace(/_/g, ' ')}
-            </p>
-          </div>
-          
-          <div className="flex items-center">
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)} 
-              className={`relative p-1.5 hover:text-[#313079] transition-colors ${showNotifications ? 'text-[#313079]' : 'text-slate-400'}`}
-              title="Alerts Center"
-            >
-              <Bell size={24} />
-              {alertCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
-                  {alertCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </header>
-
-        <div className="flex-1 p-6 relative overflow-hidden">
-          <div className="absolute inset-6 bg-white border border-slate-200 shadow-xl flex flex-col rounded-2xl overflow-hidden">
+      <main className="flex-1 overflow-hidden flex flex-col bg-white">
+        <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab />}
             {activeTab === 'claims'   && <ClaimsTab />}
@@ -452,7 +416,6 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
               );
             })()}
             {activeTab === 'settings' && <SettingsTab />}
-          </div>
         </div>
       </main>
 
@@ -511,6 +474,9 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
   const [updating, setUpdating] = useState(false);
+  
+  const [preferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
   const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'SUPER_ACCESS'];
 
@@ -630,36 +596,36 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
     <div className="flex flex-col h-full p-8 space-y-8 overflow-y-auto custom-scrollbar">
       <div className="flex justify-between items-end shrink-0 border-b border-slate-200 pb-4">
         <div>
-           <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">User Management</h2>
-           <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">Manage personnel access and roles globally.</p>
+           <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">{lang === 'hi' ? 'उपयोगकर्ता प्रबंधन' : 'User Management'}</h2>
+           <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">{lang === 'hi' ? 'वैश्विक रूप से कर्मचारी प्रवेश और भूमिकाएं प्रबंधित करें।' : 'Manage personnel access and roles globally.'}</p>
         </div>
         <button 
           onClick={handleToggleCreateBlock} 
           className="bg-black hover:bg-[#FF6700] hover:text-white text-[#FF6700] border border-[#FF6700] px-4 py-2.5 text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-md flex items-center gap-2"
         >
-          <span>+ Authorize Personnel</span>
+          <span>{lang === 'hi' ? '+ कर्मचारी अधिकृत करें' : '+ Authorize Personnel'}</span>
         </button>
       </div>
 
       <div className="w-full border border-slate-200 bg-white overflow-hidden flex flex-col rounded-xl shadow-sm">
         <div className="p-4 border-b border-slate-200 bg-slate-50">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-700">Active Personnel Directory</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-700">{lang === 'hi' ? 'सक्रिय कर्मचारी डायरेक्टरी' : 'Active Personnel Directory'}</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4 font-medium">Name</th>
-                <th className="px-6 py-4 font-medium">Email</th>
-                <th className="px-6 py-4 font-medium">Role</th>
-                <th className="px-6 py-4 font-medium">Alert Level</th>
-                <th className="px-6 py-4 font-medium text-right">Items Proc.</th>
-                <th className="px-6 py-4 font-medium text-right">Action</th>
+                <th className="px-6 py-4 font-medium">{lang === 'hi' ? 'नाम' : 'Name'}</th>
+                <th className="px-6 py-4 font-medium">{lang === 'hi' ? 'ईमेल' : 'Email'}</th>
+                <th className="px-6 py-4 font-medium">{lang === 'hi' ? 'भूमिका' : 'Role'}</th>
+                <th className="px-6 py-4 font-medium">{lang === 'hi' ? 'अलर्ट स्तर' : 'Alert Level'}</th>
+                <th className="px-6 py-4 font-medium text-right">{lang === 'hi' ? 'आईटम' : 'Items Proc.'}</th>
+                <th className="px-6 py-4 font-medium text-right">{lang === 'hi' ? 'कार्रवाई' : 'Action'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-600">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">Loading directory...</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">{lang === 'hi' ? 'डायरेक्टरी लोड हो रही है...' : 'Loading directory...'}</td></tr>
               ) : users.map(user => (
                 <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-800">
@@ -667,7 +633,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                        <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-[10px] font-black shrink-0">
                          {(user.name || user.email).slice(0, 2).toUpperCase()}
                        </div>
-                       <span>{user.name || <span className="text-slate-400 italic text-xs">No name</span>}</span>
+                       <span>{user.name || <span className="text-slate-400 italic text-xs">{lang === 'hi' ? 'नाम नहीं' : 'No name'}</span>}</span>
                      </div>
                   </td>
                   <td className="px-6 py-4 font-mono text-[11px] text-slate-500">{user.email}</td>
@@ -720,7 +686,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                           className="flex items-center space-x-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 shadow-sm"
                         >
                           <Pencil size={11} />
-                          <span>Edit</span>
+                           <span>{lang === 'hi' ? 'संपादित करें' : 'Edit'}</span>
                         </button>
                       )}
                       {user.id !== currentUserId && user.role !== 'SUPER_ACCESS' && (
@@ -737,7 +703,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                 </tr>
               ))}
               {!loading && users.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">No active personnel.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-xs">{lang === 'hi' ? 'कोई सक्रिय कर्मचारी नहीं।' : 'No active personnel.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -752,8 +718,8 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
         >
           <div className="bg-gradient-to-br from-black to-slate-900 p-6 text-white flex justify-between items-center border-b border-black/10">
             <div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">Authorize Personnel</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Grant system access and permissions</p>
+              <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">{lang === 'hi' ? 'कर्मचारी अधिकृत करें' : 'Authorize Personnel'}</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">{lang === 'hi' ? 'सिस्टम प्रवेश और अनुमति दें' : 'Grant system access and permissions'}</p>
             </div>
             <button onClick={() => setShowCreateBlock(false)} className="text-slate-400 hover:text-white transition-colors">
               <X size={18} />
@@ -762,26 +728,26 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
           <form onSubmit={handleCreate} className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'ईमेल पता' : 'Email Address'}</label>
                 <input type="email" required value={email} onChange={e => setEmail(e.target.value)} 
                   placeholder="e.g. employee@company.com"
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'पूरा नाम' : 'Full Name'}</label>
                 <input type="text" required value={name} onChange={e => setName(e.target.value)}
                   placeholder="e.g. Ravi Kumar"
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'निर्धारित भूमिका' : 'Assigned Role'}</label>
                 <select value={targetRole} onChange={e => setTargetRole(e.target.value)}
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
                   {availableRoles.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Alert Level Config (Optional)</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'अलर्ट स्तर कॉन्फ़िग (वैकल्पिक)' : 'Alert Level Config (Optional)'}</label>
                 <select value={alertLevel} onChange={e => setAlertLevel(e.target.value)}
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
                   <option value="">None (Default)</option>
@@ -796,10 +762,10 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
             {success && <p className="text-xs text-green-600 font-medium">{success}</p>}
             <div className="flex justify-end space-x-3 pt-2">
               <button type="button" onClick={() => setShowCreateBlock(false)} className="border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors">
-                Cancel
+                {lang === 'hi' ? 'रद्द करें' : 'Cancel'}
               </button>
               <button type="submit" className="bg-[#FF6700] hover:bg-[#FF6700]/90 text-white px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded shadow-sm transition-colors">
-                Grant Access
+                {lang === 'hi' ? 'प्रवेश दें' : 'Grant Access'}
               </button>
             </div>
           </form>
@@ -812,8 +778,8 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             <div className="bg-gradient-to-br from-black to-slate-900 p-6 text-white flex justify-between items-center border-b border-black/10">
               <div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">Edit Personnel</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Modifying {editingUser.email}</p>
+                <h3 className="text-sm font-black uppercase tracking-widest text-[#FF6700]">{lang === 'hi' ? 'कर्मचारी संपादित करें' : 'Edit Personnel'}</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">{lang === 'hi' ? 'संशोधित:' : 'Modifying'} {editingUser.email}</p>
               </div>
               <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-white transition-colors">
                 <X size={18} />
@@ -821,17 +787,17 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
             </div>
             <form onSubmit={handleUpdate} className="p-6 space-y-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Email Address</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'ईमेल पता' : 'Email Address'}</label>
                 <input type="email" required value={editEmail} onChange={e => setEditEmail(e.target.value)} 
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Full Name</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'पूरा नाम' : 'Full Name'}</label>
                 <input type="text" required value={editName} onChange={e => setEditName(e.target.value)} 
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Assigned Role</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'निर्धारित भूमिका' : 'Assigned Role'}</label>
                 <select value={editRole} onChange={e => setEditRole(e.target.value)}
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
                   {availableRoles.map(r => (
@@ -840,7 +806,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Alert Level Config (Optional)</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'अलर्ट स्तर कॉन्फ़िग (वैकल्पिक)' : 'Alert Level Config (Optional)'}</label>
                 <select value={editAlertLevel} onChange={e => setEditAlertLevel(e.target.value)}
                   className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded">
                   <option value="">None (Default)</option>
@@ -852,12 +818,12 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Items Processed</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'प्रसंस्कृत आइटम' : 'Items Processed'}</label>
                   <input type="number" min="0" required value={editItemsProcessed} onChange={e => setEditItemsProcessed(parseInt(e.target.value, 10) || 0)} 
                     className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Accuracy Rate (%)</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{lang === 'hi' ? 'सटीकता दर (%)' : 'Accuracy Rate (%)'}</label>
                   <input type="number" step="0.1" min="0" max="100" required value={editAccuracyRate} onChange={e => setEditAccuracyRate(parseFloat(e.target.value) || 0.0)} 
                     className="w-full bg-white border border-slate-300 text-slate-800 px-4 py-2 text-sm focus:border-[#FF6700] focus:ring-1 focus:ring-[#FF6700] focus:outline-none transition-all rounded" />
                 </div>
@@ -866,10 +832,10 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
               {editSuccess && <p className="text-xs text-green-600 font-medium">{editSuccess}</p>}
               <div className="flex space-x-3 pt-2">
                 <button type="button" onClick={() => setEditingUser(null)} className="flex-1 border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors">
-                  Cancel
+                  {lang === 'hi' ? 'रद्द करें' : 'Cancel'}
                 </button>
                 <button type="submit" disabled={updating} className="flex-1 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded shadow-sm disabled:opacity-50 transition-colors">
-                  {updating ? 'Saving...' : 'Save Changes'}
+                  {updating ? (lang === 'hi' ? 'सेव हो रहा है...' : 'Saving...') : (lang === 'hi' ? 'बदलाव सेव करें' : 'Save Changes')}
                 </button>
               </div>
             </form>
@@ -885,9 +851,9 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-red-200 flex items-center gap-2">
                   <ShieldAlert size={16} />
-                  <span>Confirm Deletion</span>
+                  <span>{lang === 'hi' ? 'साईनिंग अनुबंध रद्द करें' : 'Confirm Deletion'}</span>
                 </h3>
-                <p className="text-[10px] text-red-300 font-bold uppercase mt-0.5 tracking-wider">Irreversible Security Action</p>
+                <p className="text-[10px] text-red-300 font-bold uppercase mt-0.5 tracking-wider">{lang === 'hi' ? 'अपरिवर्तनीय सुरक्षा कार्रवाई' : 'Irreversible Security Action'}</p>
               </div>
               <button onClick={() => { setDeletingUser(null); setDeleteConfirmEmail(''); }} className="text-red-300 hover:text-white transition-colors">
                 <X size={18} />
@@ -896,16 +862,18 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
             
             <div className="p-6 space-y-4">
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl">
-                <p className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">Danger Zone Warning</p>
+                <p className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">{lang === 'hi' ? 'खतरे की चेतावनी' : 'Danger Zone Warning'}</p>
                 <p className="text-xs text-red-650 leading-relaxed">
-                  You are about to permanently revoke system access for <strong className="font-extrabold font-mono text-[11px] bg-red-100 px-1 py-0.5 rounded text-red-800">{deletingUser.email}</strong>. 
-                  All active roles, visual evaluations, and alert configuration links for this account will be erased.
+                  {lang === 'hi'
+                    ? <>आप <strong className="font-extrabold font-mono text-[11px] bg-red-100 px-1 py-0.5 rounded text-red-800">{deletingUser.email}</strong> का सिस्टम अधिकार स्थायी रूप से रद्द करने वाले हैं। इस खाते से सभी सक्रिय भूमिकाएं और अलर्ट संरचना मिटा दी जाएगी।</>
+                    : <>You are about to permanently revoke system access for <strong className="font-extrabold font-mono text-[11px] bg-red-100 px-1 py-0.5 rounded text-red-800">{deletingUser.email}</strong>. All active roles, visual evaluations, and alert configuration links for this account will be erased.</>
+                  }
                 </p>
               </div>
               
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Type the user's email to verify:
+                  {lang === 'hi' ? 'सत्यापित करने के लिए उपयोगकर्ता का ईमेल दर्ज करें:' : "Type the user's email to verify:"}
                 </label>
                 <input 
                   type="text" 
@@ -925,7 +893,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                   onClick={() => { setDeletingUser(null); setDeleteConfirmEmail(''); }} 
                   className="flex-1 border border-slate-300 text-slate-500 px-4 py-2.5 text-xs uppercase tracking-widest font-semibold rounded hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  {lang === 'hi' ? 'रद्द करें' : 'Cancel'}
                 </button>
                 <button 
                   type="button"
@@ -933,7 +901,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
                   onClick={() => confirmDelete(deletingUser.id)}
                   className="flex-1 bg-red-600 hover:bg-red-750 text-white disabled:bg-red-400 disabled:opacity-50 px-4 py-2.5 text-xs uppercase tracking-widest font-black rounded shadow-sm transition-all duration-200"
                 >
-                  Revoke Access
+                  {lang === 'hi' ? 'प्रवेश रद्द करें' : 'Revoke Access'}
                 </button>
               </div>
             </div>
@@ -947,6 +915,8 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
 function ClaimsTab() {
   const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [preferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
   const fetchClaims = async () => {
     setLoading(true);
@@ -979,8 +949,8 @@ function ClaimsTab() {
     <div className="flex flex-col h-full p-8 space-y-6 overflow-hidden">
       <div className="shrink-0 flex justify-between items-end border-b border-slate-200 pb-4">
          <div>
-            <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">Claims Staging</h2>
-            <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">Pending marketplace reimbursements.</p>
+            <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">{lang === 'hi' ? 'दावा स्टेजिंग' : 'Claims Staging'}</h2>
+            <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">{lang === 'hi' ? 'लंबित मार्केटप्लेस प्रतिपूर्ति।' : 'Pending marketplace reimbursements.'}</p>
          </div>
       </div>
       <div className="flex-1 overflow-x-auto bg-white border border-slate-200 rounded-md shadow-sm">
@@ -996,7 +966,7 @@ function ClaimsTab() {
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-600">
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-xs">Loading items...</td></tr>
+              <tr><td colSpan={5} className="px-6 py-8 text-center text-xs">{lang === 'hi' ? 'आईटम लोड हो रहे हैं...' : 'Loading items...'}</td></tr>
             ) : claims.map((c: any) => {
               const inspection = c.inspection;
               const cond = inspection?.isMissingItems ? 'MISSING ITEMS' : 'INSPECTED';
@@ -1012,19 +982,19 @@ function ClaimsTab() {
                         <span>View Artifact</span> <ExternalLink size={10} />
                       </a>
                     ) : (
-                      <span className="text-[10px] text-slate-400 font-medium">None attached</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{lang === 'hi' ? 'कोई नहीं' : 'None attached'}</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button onClick={() => handleResolve(c.id)} className="text-[10px] uppercase font-bold tracking-widest text-green-600 hover:text-green-700 transition-colors">
-                      Mark Resolved
+                      {lang === 'hi' ? 'समाधान हो गया चिह्नित करें' : 'Mark Resolved'}
                     </button>
                   </td>
                 </tr>
               )
             })}
             {!loading && claims.length === 0 && (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-xs">No pending claims.</td></tr>
+              <tr><td colSpan={5} className="px-6 py-8 text-center text-xs">{lang === 'hi' ? 'कोई लंबित दावा नहीं।' : 'No pending claims.'}</td></tr>
             )}
           </tbody>
         </table>
@@ -1046,6 +1016,7 @@ function AlertsTab() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
   const [sopChecked, setSopChecked] = useState(false);
@@ -1224,8 +1195,8 @@ function AlertsTab() {
       <div className="shrink-0 p-6 border-b border-slate-200 bg-slate-50">
         <div className="flex justify-between items-end mb-4">
           <div>
-            <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">Alert Centre</h2>
-            <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">System-wide escalations &amp; incidents · All levels visible.</p>
+            <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest">{lang === 'hi' ? 'अलर्ट केंद्र' : 'Alert Centre'}</h2>
+            <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">{lang === 'hi' ? 'सिस्टम-व्यापी एस्केलेशन और घटनाएं · सभी स्तर दिखाई दे रहे हैं।' : 'System-wide escalations & incidents · All levels visible.'}</p>
           </div>
           <button
             onClick={() => setShowResolved(!showResolved)}
@@ -1233,7 +1204,7 @@ function AlertsTab() {
               showResolved ? 'bg-slate-100 border-slate-300 text-slate-600' : 'bg-white border-slate-200 text-slate-500 hover:border-[#FF6700]'
             }`}
           >
-            {showResolved ? 'Show Active' : 'Show Resolved'}
+            {showResolved ? (lang === 'hi' ? 'सक्रिय दिखाएं' : 'Show Active') : (lang === 'hi' ? 'समाधानित दिखाएं' : 'Show Resolved')}
           </button>
         </div>
 
@@ -1256,18 +1227,18 @@ function AlertsTab() {
                   disabled={bulkResolving}
                   className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded transition-colors shadow-sm shrink-0"
                 >
-                  {bulkResolving ? 'Resolving...' : `✓ Resolve ${selectedIds.size}`}
+                  {bulkResolving ? (lang === 'hi' ? 'समाधान हो रहा है...' : 'Resolving...') : `✓ ${lang === 'hi' ? 'समाधान' : 'Resolve'} ${selectedIds.size}`}
                 </button>
                 <button
                   onClick={selectNone}
                   className="px-3 py-1.5 border border-slate-300 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded hover:border-slate-400 transition-colors shrink-0"
                 >
-                  Deselect All
+                   {lang === 'hi' ? 'सभी चयन हटाएं' : 'Deselect All'}
                 </button>
               </>
             ) : (
               <>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">Bulk Select:</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider shrink-0">{lang === 'hi' ? 'बल्क चयन:' : 'Bulk Select:'}</span>
                 <button
                   onClick={() => selectNext10()}
                   className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded hover:border-[#FF6700] hover:text-[#FF6700] transition-colors"
@@ -1292,23 +1263,23 @@ function AlertsTab() {
                 <Activity size={20} />
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">SOP Compliance Score</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Real-time daily adherence stack</p>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">{lang === 'hi' ? 'SOP अनुपालन स्कोर' : 'SOP Compliance Score'}</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{lang === 'hi' ? 'वास्तविक समय दैनिक अनुपालन स्टैक' : 'Real-time daily adherence stack'}</p>
               </div>
             </div>
             <div className="flex items-center space-x-6 text-center">
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Resolved Today</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{lang === 'hi' ? 'आज समाधानित' : 'Resolved Today'}</p>
                 <p className="text-lg font-mono font-black text-white mt-0.5">{stats.resolvedToday}</p>
               </div>
               <div className="h-6 w-px bg-slate-800" />
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SOP Followed</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{lang === 'hi' ? 'SOP पालन' : 'SOP Followed'}</p>
                 <p className="text-lg font-mono font-black text-green-400 mt-0.5">{stats.sopFollowedToday}</p>
               </div>
               <div className="h-6 w-px bg-slate-800" />
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Adherence Rate</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{lang === 'hi' ? 'अनुपालन दर' : 'Adherence Rate'}</p>
                 <p className={`text-lg font-mono font-black mt-0.5 ${stats.adherenceRate >= 90 ? 'text-green-400' : stats.adherenceRate >= 75 ? 'text-amber-400' : 'text-red-400'}`}>
                   {stats.adherenceRate}%
                 </p>
@@ -1338,12 +1309,12 @@ function AlertsTab() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
         {loading ? (
-          <div className="text-center py-12 text-slate-500 text-xs uppercase tracking-widest animate-pulse font-bold">Loading alerts...</div>
+          <div className="text-center py-12 text-slate-500 text-xs uppercase tracking-widest animate-pulse font-bold">{lang === 'hi' ? 'अलर्ट लोड हो रहे हैं...' : 'Loading alerts...'}</div>
         ) : alerts.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-slate-300 bg-white rounded-lg">
             <CheckCircle2 size={48} className="mx-auto text-green-500 mb-4 opacity-50" />
             <h3 className="text-sm font-bold uppercase tracking-widest text-slate-800">
-              {showResolved ? 'No resolved alerts' : 'All Clear'}
+              {showResolved ? (lang === 'hi' ? 'कोई समाधानित अलर्ट नहीं' : 'No resolved alerts') : (lang === 'hi' ? 'सब ठीक है' : 'All Clear')}
             </h3>
           </div>
         ) : (
@@ -1408,7 +1379,7 @@ function AlertsTab() {
                         title="Quick Resolve (Super-Admin: bypasses data check)"
                         className="text-[9px] font-black uppercase tracking-widest text-green-600 hover:text-green-800 disabled:opacity-50 border border-green-200 hover:border-green-400 bg-green-50 hover:bg-green-100 px-2.5 py-1 rounded transition-all whitespace-nowrap"
                       >
-                        {quickResolvingId === alert.id ? '···' : '✓ Resolve'}
+                        {quickResolvingId === alert.id ? '···' : (lang === 'hi' ? '✓ समाधान' : '✓ Resolve')}
                       </button>
                     </div>
                   )}
@@ -1432,10 +1403,10 @@ function AlertsTab() {
                     {editingSopType === alert.type ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                         <div className="flex justify-between items-center">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-700">Edit Resolution Steps</h4>
+                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-700">{lang === 'hi' ? 'समाधान चरण संपादित करें' : 'Edit Resolution Steps'}</h4>
                           <div className="flex space-x-2">
-                            <button onClick={() => setEditingSopType(null)} className="text-[10px] uppercase font-bold text-slate-500">Cancel</button>
-                            <button onClick={saveSop} disabled={savingSop} className="text-[10px] uppercase font-bold text-[#FF6700]">{savingSop ? 'Saving...' : 'Save'}</button>
+                            <button onClick={() => setEditingSopType(null)} className="text-[10px] uppercase font-bold text-slate-500">{lang === 'hi' ? 'रद्द' : 'Cancel'}</button>
+                            <button onClick={saveSop} disabled={savingSop} className="text-[10px] uppercase font-bold text-[#FF6700]">{savingSop ? (lang === 'hi' ? 'सेव हो रहा है...' : 'Saving...') : (lang === 'hi' ? 'सेव करें' : 'Save')}</button>
                           </div>
                         </div>
                         {editingSopSteps.map((step, i) => (
@@ -1450,8 +1421,8 @@ function AlertsTab() {
                     ) : sopSteps.length > 0 ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                         <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-700">Resolution SOP</h4>
-                          <button onClick={() => startEditSop(alert.type)} className="text-[10px] uppercase font-bold text-[#FF6700] flex items-center space-x-1"><Pencil size={10} /><span>Edit</span></button>
+                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-700">{lang === 'hi' ? 'समाधान SOP' : 'Resolution SOP'}</h4>
+                          <button onClick={() => startEditSop(alert.type)} className="text-[10px] uppercase font-bold text-[#FF6700] flex items-center space-x-1"><Pencil size={10} /><span>{lang === 'hi' ? 'संपादित' : 'Edit'}</span></button>
                         </div>
                         <ol className="space-y-2">
                           {sopSteps.map((step: any, i: number) => (
@@ -1471,14 +1442,14 @@ function AlertsTab() {
                               className="w-5 h-5 accent-green-600 rounded cursor-pointer shrink-0"
                             />
                             <label htmlFor={`sop-check-${alert.id}`} className="text-xs font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
-                              {translateInstruction('I have read and followed all standard operating procedure steps above', preferredLanguage)}
+                              {lang === 'hi' ? 'मैंने उपर दिए गए सभी SOP चरणों को पढ़ा और उनका पालन किया है' : 'I have read and followed all standard operating procedure steps above'}
                             </label>
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-4 text-center">
-                        <p className="text-xs text-slate-400 mb-2">{translateInstruction('No SOP configured.', preferredLanguage)}</p>
+                        <p className="text-xs text-slate-400 mb-2">{lang === 'hi' ? 'इस अलर्ट प्रकार के लिए कोई SOP कॉन्य़िगर नहीं है।' : 'No SOP configured.'}</p>
                         <button onClick={() => startEditSop(alert.type)} className="text-[10px] uppercase font-bold text-[#FF6700] tracking-widest">+ Create SOP Steps</button>
                       </div>
                     )}
@@ -1497,12 +1468,12 @@ function AlertsTab() {
                               disabled={resolving || !sopChecked || !resolutionText.trim()}
                               className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs uppercase font-bold tracking-widest rounded transition-colors shadow-sm"
                             >
-                              {resolving ? 'Resolving...' : 'Confirm Resolve'}
+                              {resolving ? (lang === 'hi' ? 'समाधान हो रहा है...' : 'Resolving...') : (lang === 'hi' ? 'समाधान सुनिश्चित करें' : 'Confirm Resolve')}
                             </button>
                           </div>
                           {!sopChecked && (
                             <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                              {translateInstruction('You must check "I have read and followed all standard operating procedure steps above" before resolving.', preferredLanguage)}
+                              {lang === 'hi' ? 'समाधान से पहले आपको उपर दिए गए SOP चरणों को मानना आवश्यक है।' : 'You must check "I have read and followed all standard operating procedure steps above" before resolving.'}
                             </p>
                           )}
                         </div>
@@ -1511,7 +1482,7 @@ function AlertsTab() {
                     )}
                     {alert.resolved && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p className="text-xs font-bold uppercase tracking-widest text-green-700 mb-1">Resolved</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-green-700 mb-1">{lang === 'hi' ? 'समाधानित' : 'Resolved'}</p>
                         <p className="text-sm text-green-800">{alert.resolution || 'No notes'}</p>
                         <p className="text-[10px] text-green-600 mt-2">By: {alert.resolvedBy?.name || alert.resolvedBy?.email || 'System'} • {alert.resolvedAt ? new Date(alert.resolvedAt).toLocaleString() : ''}</p>
                       </div>

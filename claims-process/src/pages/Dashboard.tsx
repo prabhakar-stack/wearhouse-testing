@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useEffect, useState } from 'react';
-import { t } from '../utils/i18n';
+import { useLanguage } from '../utils/i18n';
 
 const stats = [
   { name: 'Total Active Claims', value: '142', change: '+12%', icon: Package, trend: 'up' },
@@ -20,6 +20,7 @@ const stats = [
 ];
 
 export default function Dashboard() {
+  const { t } = useLanguage();
   const [showOtpAlert, setShowOtpAlert] = useState(false);
 
   useEffect(() => {

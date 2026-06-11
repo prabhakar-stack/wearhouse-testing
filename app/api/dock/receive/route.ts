@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
           where: { lpn: manifest.trackingId },
           update: {
             orderId: removalOrderId,
+            trackingId: manifest.trackingId,
             type: 'RECEIVER_REJECTION',
             uploadedByEmail: userEmail,
             manifestId: manifest.id,
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
           create: {
             lpn: manifest.trackingId,
             orderId: removalOrderId,
+            trackingId: manifest.trackingId,
             type: 'RECEIVER_REJECTION',
             uploadedByEmail: userEmail,
             manifestId: manifest.id,

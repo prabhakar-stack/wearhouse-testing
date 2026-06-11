@@ -66,6 +66,7 @@ export default function ReceiverDashboard({
   >("home");
   const [userData, setUserData] = useState<any>(null);
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
   useEffect(() => {
     setPreferredLanguage(getStoredLanguage());
@@ -207,16 +208,16 @@ export default function ReceiverDashboard({
           <div>
             <h1 className="text-xl font-bold uppercase tracking-widest text-[#FF6700]">
               {activeTab === "home"
-                ? t("Receiver Hub")
+                ? (lang === 'hi' ? 'रिसीवर हब' : 'Receiver Hub')
                 : activeTab === "receive"
-                  ? t("Package Intake")
+                  ? (lang === 'hi' ? 'पैकेज प्राप्ति' : 'Package Intake')
                   : activeTab === "profile"
-                    ? t("Profile")
+                    ? (lang === 'hi' ? 'प्रोफ़ाइल' : 'Profile')
                     : activeTab === "expected"
-                      ? t("Expected")
+                      ? (lang === 'hi' ? 'अपेक्षित' : 'Expected')
                       : activeTab === "alerts"
-                        ? t("Active Alerts")
-                        : t("Handover Ledger")}
+                        ? (lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts')
+                        : (lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger')}
             </h1>
             <p className="text-[10px] uppercase text-[#313079]/60 tracking-wider mt-1 font-bold">
               {resolvedName} &bull; {role.replace("_", " ")}
@@ -254,7 +255,7 @@ export default function ReceiverDashboard({
             <div className="flex items-center space-x-2">
               <Bell className="text-[#FF6700]" size={16} />
               <span className="text-xs font-black uppercase tracking-widest text-[#313079]">
-                {t("Active Alerts")}
+                {lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}
               </span>
               {alerts.length > 0 && (
                 <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">
@@ -281,7 +282,7 @@ export default function ReceiverDashboard({
                   className="text-green-500 mb-2 opacity-50"
                 />
                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                  {t("All Clear — No Pending Alerts")}
+                  {lang === 'hi' ? 'सब ठीक है — कोई अलर्ट नहीं' : 'All Clear — No Pending Alerts'}
                 </p>
               </div>
             ) : (
@@ -328,13 +329,13 @@ export default function ReceiverDashboard({
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
                 <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                  {t("Expected Deliveries")}
+                  {lang === 'hi' ? 'अपेक्षित डिलीवरी' : 'Expected Deliveries'}
                   <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
                     {expectedCount}
                   </span>
                 </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {t("Packages expected today")}
+                  {lang === 'hi' ? 'आज के अपेक्षित पैकेज' : 'Packages expected today'}
                 </p>
               </div>
               <FileText
@@ -350,10 +351,10 @@ export default function ReceiverDashboard({
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
                 <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
-                  {t("Receive Package")}
+                  {lang === 'hi' ? 'पैकेज प्राप्त करें' : 'Receive Package'}
                 </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {t("Launch camera scanner sequence")}
+                  {lang === 'hi' ? 'कैमरा स्कैनर चालू करें' : 'Launch camera scanner sequence'}
                 </p>
               </div>
               <QrCode
@@ -369,13 +370,13 @@ export default function ReceiverDashboard({
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
                 <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                  {t("Handover Ledger")}
+                  {lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger'}
                   <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
                     {ledgerCount}
                   </span>
                 </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {t("View active custody stack")}
+                  {lang === 'hi' ? 'सक्रिय कस्टडी स्टैक देखें' : 'View active custody stack'}
                 </p>
               </div>
               <Box
@@ -391,7 +392,7 @@ export default function ReceiverDashboard({
               <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="relative z-10">
                 <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                  {t("Active Alerts")}
+                  {lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}
                   {alertCount > 0 && (
                     <span className="ml-2.5 bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0 animate-pulse">
                       {alertCount}
@@ -399,7 +400,7 @@ export default function ReceiverDashboard({
                   )}
                 </h3>
                 <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {t("Operational escalations & alerts")}
+                  {lang === 'hi' ? 'परिचालन एस्केलेशन और अलर्ट' : 'Operational escalations & alerts'}
                 </p>
               </div>
               <Bell
@@ -436,7 +437,7 @@ export default function ReceiverDashboard({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-[#FF6700]/5 border border-[#FF6700]/10 rounded-xl p-4">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50 mb-2">
-                      {t("Items Received")}
+                      {lang === 'hi' ? 'प्राप्त आइटम' : 'Items Received'}
                     </p>
                     <p className="text-3xl font-black font-mono text-[#313079]">
                       {userData?.itemsProcessed ?? 0}
@@ -444,7 +445,7 @@ export default function ReceiverDashboard({
                   </div>
                   <div className="bg-green-50 border border-green-100 rounded-xl p-4">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50 mb-2">
-                      {t("Accuracy Rate")}
+                      {lang === 'hi' ? 'सटीकता दर' : 'Accuracy Rate'}
                     </p>
                     <p className="text-3xl font-black font-mono text-green-600">
                       {userData?.accuracyRate?.toFixed(1) ?? "100.0"}%
@@ -454,7 +455,7 @@ export default function ReceiverDashboard({
                 {userData?.createdAt && (
                   <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#313079]/50 mb-1">
-                      {t("Member Since")}
+                      {lang === 'hi' ? 'सदस्यता तिथि' : 'Member Since'}
                     </p>
                     <p className="text-sm font-bold text-[#313079]">
                       {new Date(userData.createdAt).toLocaleDateString(
@@ -466,7 +467,7 @@ export default function ReceiverDashboard({
                 )}
                   <LanguagePreference />
                   <p className="text-[10px] text-slate-400 text-center font-medium pt-1">
-                    {t("Profile is read-only · Contact Admin to update details.")}
+                    {lang === 'hi' ? 'प्रोफ़ाइल केवल पढ़ने योग्य है · विवरण अपडेट करने के लिए एडमिन से संपर्क करें।' : 'Profile is read-only · Contact Admin to update details.'}
                   </p>
               </div>
             </div>
@@ -477,8 +478,8 @@ export default function ReceiverDashboard({
                 className="w-full flex items-center justify-center py-4 bg-[#FFF700] border-2 border-black hover:brightness-95 transition-all text-[#313079] font-extrabold uppercase tracking-widest text-xs rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
               >
                 {role === "SUPER_ACCESS"
-                  ? t("Switch to Super Access Role")
-                  : t("Switch to Admin Role")}
+                  ? (lang === 'hi' ? 'सुपर एक्सेस भूमिका पर जाएं' : 'Switch to Super Access Role')
+                  : (lang === 'hi' ? 'एडमिन भूमिका पर जाएं' : 'Switch to Admin Role')}
               </Link>
             )}
             <button
@@ -491,7 +492,7 @@ export default function ReceiverDashboard({
               }}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
             >
-              {t("Sign Out")}
+              {lang === 'hi' ? 'साइन आउट' : 'Sign Out'}
             </button>
           </div>
         )}
@@ -519,8 +520,8 @@ export default function ReceiverDashboard({
 
 // ─── Expected Tab ─────────────────────────────────────────────────────────────
 function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: PreferredLanguage }) {
-  const t = (text: string) => translateInstruction(text, preferredLanguage);
-  const [expected, setExpected] = useState<any[]>([]);
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
+  const [expected, setExpected] = useState<any[]>([]);;
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -542,15 +543,15 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
     <div className="max-w-lg mx-auto pb-10 px-2">
       <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
         <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-          {t("Expected Today")}
+          {lang === 'hi' ? 'आज के अपेक्षित' : 'Expected Today'}
         </h2>
         <span className="bg-white border border-[#FF6700]/20 text-[#FF6700] px-3 py-1 font-mono text-xs rounded-full shadow-sm font-bold">
-          {expected.length} {t("INBOUND")}
+          {expected.length} {lang === 'hi' ? 'इनबाउंड' : 'INBOUND'}
         </span>
       </div>
       {loading ? (
         <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">
-          {t("Syncing Inbound Ledger...")}
+          {lang === 'hi' ? 'इनबाउंड लेजर सिंक हो रही है...' : 'Syncing Inbound Ledger...'}
         </div>
       ) : expected.length === 0 ? (
         <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-xl">
@@ -559,7 +560,7 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
             className="mx-auto text-green-500 mb-4 opacity-50"
           />
           <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-            {t("No Expected Deliveries")}
+            {lang === 'hi' ? 'कोई अपेक्षित डिलीवरी नहीं' : 'No Expected Deliveries'}
           </h3>
         </div>
       ) : (
@@ -616,8 +617,8 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
                     </p>
                     {trackingSnapshot ? (
                       <p className="text-[11px] text-[#313079]/70 mt-1 font-medium">
-                        {t(trackingSnapshot.latestStatus ||
-                          "Tracking in progress")}
+                        {trackingSnapshot.latestStatus ||
+                          (lang === 'hi' ? 'ट्रैकिंग जारी है' : 'Tracking in progress')}
                         {trackingSnapshot.latestLocation
                           ? ` · ${trackingSnapshot.latestLocation}`
                           : ""}
@@ -627,7 +628,7 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
                       </p>
                     ) : (
                       <p className="text-[11px] text-[#313079]/70 mt-1 font-medium">
-                        {t("Tracking pending")}
+                        {lang === 'hi' ? 'ट्रैकिंग लंबित' : 'Tracking pending'}
                         {etaDate
                           ? ` · ETA ${new Date(etaDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
                           : ""}
@@ -637,15 +638,15 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
                   <div>
                     {deliveryStatus === "overdue" || deliveryStatus === "late" ? (
                       <span className="bg-amber-50 text-amber-700 px-2 py-1 text-xs font-bold uppercase border border-amber-200 rounded-full">
-                        {t("OVERDUE")}
+                        {lang === 'hi' ? 'समय सीमा पार' : 'OVERDUE'}
                       </span>
                     ) : deliveryStatus === "on_time" ? (
                       <span className="text-[#FF6700] text-xs font-bold uppercase">
-                        {t("ON TIME")}
+                        {lang === 'hi' ? 'समय पर' : 'ON TIME'}
                       </span>
                     ) : (
                       <span className="text-[#313079]/40 text-xs font-bold uppercase">
-                        {t("NO ETA")}
+                        {lang === 'hi' ? 'ETA नहीं' : 'NO ETA'}
                       </span>
                     )}
                   </div>
@@ -669,7 +670,7 @@ function ReceiveTab({
   trackingIdMarketplaceMap: Record<string, Marketplace>;
   preferredLanguage?: PreferredLanguage;
 }) {
-  const t = (text: string) => translateInstruction(text, preferredLanguage);
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [trackingId, setTrackingId] = useState("");
   const [scannedTrackingId, setScannedTrackingId] = useState("");
   const [marketplace, setMarketplace] = useState<Marketplace>("AMAZON");
@@ -973,17 +974,20 @@ function ReceiveTab({
 
     // Silent background upload
     (async () => {
+      const timestamp = Date.now();
+      const fileName = `rejection-${orderId}-${timestamp}.jpg`;
       try {
         const filesMetaData = [
           {
             key: "file",
-            name: `rejection-${orderId}-${Date.now()}.jpg`,
+            name: fileName,
             mimeType: "image/jpeg",
           },
         ];
         let folderLink = `https://mock.local/${orderId}`;
         let finalFileId = `folder-${orderId}`;
         let fileLink = "";
+        let uploadSuccess = false;
 
         const initRes = await fetch("/api/upload/init", {
           method: "POST",
@@ -994,6 +998,7 @@ function ReceiveTab({
             filesMetaData,
           }),
         });
+
         if (initRes.ok) {
           const d = await initRes.json();
           folderLink = d.folderLink;
@@ -1007,8 +1012,13 @@ function ReceiveTab({
               const rd = await rawRes.json();
               fileLink = rd.webViewLink;
               finalFileId = rd.fileId || finalFileId;
+              uploadSuccess = true;
             }
           }
+        }
+
+        if (!uploadSuccess) {
+          throw new Error("Google Drive upload failed or skipped due to initialization issue.");
         }
 
         await fetch("/api/upload/finalize", {
@@ -1036,8 +1046,53 @@ function ReceiveTab({
             evidenceUrl: fileLink || folderLink || "UPLOAD_FAILED",
           }),
         }).catch(console.error);
-      } catch (e) {
-        console.error("[Silent Rejection Upload] failed:", e);
+      } catch (e: any) {
+        console.error("[Silent Rejection Upload] failed, triggering local backup:", e);
+        // Save local backup
+        try {
+          const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(orderId)}&filename=${encodeURIComponent(fileName)}`, {
+            method: "PUT",
+            body: blob,
+          });
+          if (backupRes.ok) {
+            console.log(`[Local Backup] Successfully saved receiver rejection file locally to failed_uploads/${orderId}`);
+          } else {
+            console.error(`[Local Backup] Failed to save receiver local backup: status ${backupRes.status}`);
+          }
+        } catch (backupErr) {
+          console.error("[Local Backup] Error saving files locally for receiver:", backupErr);
+        }
+
+        // Database fallback registration
+        try {
+          await fetch("/api/upload/finalize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId,
+              folderLink: `/api/uploads/${fileName}`,
+              orderFolderId: `local_${fileName}`,
+              type: "RECEIVER_REJECTION",
+              uploadedById: uid,
+              reason: "Package failed visual inspection (local backup)",
+              manifestId: orderId,
+            }),
+          }).catch(console.error);
+
+          await fetch("/api/dock/receive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trackingId: orderId,
+              tapeIntact: ts !== "damaged",
+              boxCrushed: bs === "damaged",
+              isTampered: ts2 === "damaged",
+              evidenceUrl: `/api/uploads/${fileName}`,
+            }),
+          }).catch(console.error);
+        } catch (dbErr) {
+          console.error("Failed to register fallback receive status in database:", dbErr);
+        }
       }
     })();
   };
@@ -1136,19 +1191,19 @@ function ReceiveTab({
           <CheckCircle2 size={100} className="text-white mb-6" />
         )}
         <h2 className="text-4xl font-black text-white uppercase tracking-widest text-center leading-tight">
-          {rejected ? t("🛑 REJECTED") : t("✅ ACCEPTED")}
+          {rejected ? (lang === 'hi' ? '🛑 अस्वीकृत' : '🛑 REJECTED') : (lang === 'hi' ? '✅ स्वीकृत' : '✅ ACCEPTED')}
         </h2>
         <p className="text-white text-xl font-bold tracking-widest mt-4 opacity-90 uppercase text-center">
           {rejected
-            ? t("Hand package back to courier.")
-            : t("Package received successfully.")}
+            ? (lang === 'hi' ? 'पैकेज कूरियर को वापस करें।' : 'Hand package back to courier.')
+            : (lang === 'hi' ? 'पैकेज सफलतापूर्वक प्राप्त हुआ।' : 'Package received successfully.')}
         </p>
         <button
           onClick={resetForm}
           className="mt-12 w-full max-w-sm py-5 bg-white font-black uppercase tracking-widest rounded-2xl shadow-2xl text-xl hover:opacity-90 transition-opacity"
           style={{ color: rejected ? "#dc2626" : "#16a34a" }}
         >
-          {t("Process Next Package")}
+          {lang === 'hi' ? 'अगला पैकेज प्रोसेस करें' : 'Process Next Package'}
         </button>
       </div>
     );
@@ -1161,10 +1216,10 @@ function ReceiveTab({
         <div className="border border-[#313079]/10 bg-white p-8 flex flex-col space-y-6 rounded-2xl shadow-sm">
           <div className="text-center">
             <h2 className="text-xl uppercase tracking-widest text-[#FF6700] font-black">
-              {t("Scan Package Tracking ID")}
+              {lang === 'hi' ? 'पैकेज ट्रैकिंग ID स्कैन करें' : 'Scan Package Tracking ID'}
             </h2>
             <p className="text-base text-[#313079]/70 font-medium mt-1">
-              {t("Position barcode in frame")}
+              {lang === 'hi' ? 'बारकोड को फ्रेम में रखें' : 'Position barcode in frame'}
             </p>
           </div>
           <div className="relative bg-[#FF6700]/5 w-full aspect-square border-2 border-dashed border-[#313079]/10 overflow-hidden flex flex-col items-center justify-center rounded-xl">
@@ -1174,7 +1229,7 @@ function ReceiveTab({
             )}
             {!scanning && (
               <p className="text-base uppercase tracking-widest text-[#313079]/45 font-bold">
-                {t("Camera Offline")}
+                {lang === 'hi' ? 'कैमरा बंद है' : 'Camera Offline'}
               </p>
             )}
           </div>
@@ -1184,20 +1239,20 @@ function ReceiveTab({
               className="w-full py-6 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white transition-colors font-black uppercase tracking-widest text-lg flex items-center justify-center space-x-3 rounded-2xl shadow-md"
             >
               <Camera size={24} />
-              <span>{t("Activate Camera")}</span>
+              <span>{lang === 'hi' ? 'कैमरा चालू करें' : 'Activate Camera'}</span>
             </button>
           ) : (
             <button
               onClick={stopScanner}
               className="w-full py-6 bg-red-500 hover:bg-red-600 text-white transition-colors font-black uppercase tracking-widest text-lg rounded-2xl"
             >
-              {t("Stop Camera")}
+              {lang === 'hi' ? 'कैमरा बंद करें' : 'Stop Camera'}
             </button>
           )}
           <div className="relative flex items-center py-1">
             <div className="absolute border-t border-[#313079]/10 w-full" />
             <span className="bg-white px-4 text-[#313079]/45 text-sm uppercase font-bold tracking-widest relative z-10 mx-auto">
-              {t("Manual Override")}
+              {lang === 'hi' ? 'मैन्युअल ओवरराइड' : 'Manual Override'}
             </span>
           </div>
           <form
@@ -1206,7 +1261,7 @@ function ReceiveTab({
           >
             <input
               type="text"
-              placeholder={t("ENTER TRACKING ID")}
+              placeholder={lang === 'hi' ? 'ट्रैकिंग ID दर्ज करें' : 'ENTER TRACKING ID'}
               value={trackingId}
               onChange={(e) => {
                 setTrackingId(e.target.value);
@@ -1217,7 +1272,7 @@ function ReceiveTab({
             {searchError && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm font-bold rounded flex items-center space-x-2 w-full">
                 <AlertOctagon size={18} className="shrink-0" />
-                <span>{t(searchError)}</span>
+                <span>{searchError}</span>
               </div>
             )}
             <button
@@ -1228,7 +1283,7 @@ function ReceiveTab({
               {loadingVerify ? (
                 <div className="w-5 h-5 border-2 border-[#313079]/70 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <span>{t("Proceed")}</span>
+                <span>{lang === 'hi' ? 'आगे बढ़ें' : 'Proceed'}</span>
               )}
             </button>
           </form>
@@ -1237,32 +1292,35 @@ function ReceiveTab({
     );
   }
 
-  // ── INSPECTION SCREEN ──────────────────────────────────────────
+
   const steps = [
     {
        id: 1,
-       label: t("Factory Tape Intact"),
+       label: lang === 'hi' ? 'फ़ैक्टरी टेप अखंड है' : 'Factory Tape Intact',
        state: tapeState,
-       instruction:
-         t("Check that the factory sealing tape across all box seams is unbroken, smooth, and continuous. Any cut, peel, or re-application means DAMAGED."),
+       instruction: lang === 'hi'
+         ? 'जांचें कि बॉक्स की सभी सीम पर लगी फ़ैक्टरी सीलिंग टेप अटूट, चिकनी और निरंतर है। कोई भी कट, उखड़न, या दोबारा लगाई गई टेप = क्षतिग्रस्त।'
+         : 'Check that the factory sealing tape across all box seams is unbroken, smooth, and continuous. Any cut, peel, or re-application means DAMAGED.',
        goodImg: tapeImgs.good,
        badImg: tapeImgs.bad,
     },
     {
        id: 2,
-       label: t("Box Structure OK"),
+       label: lang === 'hi' ? 'बॉक्स संरचना ठीक है' : 'Box Structure OK',
        state: boxState,
-       instruction:
-         t("Inspect all 6 sides and all corners for crushing, deep dents, moisture damage, or torn edges. Press gently on sides to check for internal collapse."),
+       instruction: lang === 'hi'
+         ? 'सभी 6 साइड और सभी कोनों पर कुचलन, गहरे डेंट, नमी का नुकसान, या फटे हुए किनारों की जांच करें। आंतरिक ढहने की जांच के लिए साइड पर हल्के से दबाएं।'
+         : 'Inspect all 6 sides and all corners for crushing, deep dents, moisture damage, or torn edges. Press gently on sides to check for internal collapse.',
        goodImg: "/samples/box_good.png",
        badImg: "/samples/box_damaged.png",
     },
     {
        id: 3,
-       label: t("No Signs of Tampering"),
+       label: lang === 'hi' ? 'छेड़छाड़ के कोई संकेत नहीं' : 'No Signs of Tampering',
        state: tamperState,
-       instruction:
-         t("Look for extra tape applied over original seams, torn/re-applied labels, void stickers showing VOID, or mismatched tape colours. Any of these = DAMAGED."),
+       instruction: lang === 'hi'
+         ? 'मूल सीम पर लगाई गई अतिरिक्त टेप, फटे/दोबारा लगाए गए लेबल, VOID दिखाने वाले वॉयड स्टिकर, या मेल न खाने वाले टेप रंगों की जांच करें। इनमें से कोई भी = क्षतिग्रस्त।'
+         : 'Look for extra tape applied over original seams, torn/re-applied labels, void stickers showing VOID, or mismatched tape colours. Any of these = DAMAGED.',
        goodImg: "/samples/tamper_good.png",
        badImg: "/samples/tamper_bad.png",
     },
@@ -1280,7 +1338,7 @@ function ReceiveTab({
       >
         <div>
           <p className="text-xs uppercase tracking-widest text-[#313079]/60 font-black">
-            {t("Scanned Tracking ID")} &bull;{" "}
+            {lang === 'hi' ? 'स्कैन किया ट्रैकिंग ID' : 'Scanned Tracking ID'} •{" "}
             <span className="text-[#FF6700]">{marketplace}</span>
           </p>
           <p className="font-mono text-2xl text-[#313079] font-black mt-0.5">
@@ -1291,7 +1349,7 @@ function ReceiveTab({
           onClick={resetForm}
           className="text-[#313079]/70 hover:text-red-600 text-xs uppercase tracking-widest font-black px-4 py-2 border border-[#313079]/20 rounded-xl transition-colors"
         >
-          {t("Reset")}
+          {lang === 'hi' ? 'रीसेट' : 'Reset'}
         </button>
       </div>
 
@@ -1380,7 +1438,7 @@ function ReceiveTab({
                       </p>
                       {step.state !== "null" && (
                         <p className={`text-sm font-bold uppercase tracking-wider ${step.state === "good" ? "text-green-600" : "text-red-600"}`}>
-                          {step.state === "good" ? t("✅ Good") : t("❌ Damaged")}
+                          {step.state === "good" ? (lang === 'hi' ? '✅ अच्छा' : '✅ Good') : (lang === 'hi' ? '❌ क्षतिग्रस्त' : '❌ Damaged')}
                         </p>
                       )}
                     </div>
@@ -1406,7 +1464,7 @@ function ReceiveTab({
                         />
                       </div>
                       <p className="text-center text-sm font-black uppercase tracking-wider text-green-600 mt-1 shrink-0">
-                        {t("✅ GOOD")}
+                        {lang === 'hi' ? '✅ अच्छा' : '✅ GOOD'}
                       </p>
                     </div>
                     <div className="flex flex-col space-y-1 h-full">
@@ -1420,7 +1478,7 @@ function ReceiveTab({
                         />
                       </div>
                       <p className="text-center text-sm font-black uppercase tracking-wider text-red-600 mt-1 shrink-0">
-                        {t("❌ DAMAGED")}
+                        {lang === 'hi' ? '❌ क्षतिग्रस्त' : '❌ DAMAGED'}
                       </p>
                     </div>
                   </div>
@@ -1437,7 +1495,7 @@ function ReceiveTab({
                       }`}
                     >
                       <Check size={24} strokeWidth={3} />
-                      <span>{t("GOOD")}</span>
+                       <span>{lang === 'hi' ? 'अच्छा' : 'GOOD'}</span>
                     </button>
                     <button
                       type="button"
@@ -1449,7 +1507,7 @@ function ReceiveTab({
                       }`}
                     >
                       <X size={24} strokeWidth={3} />
-                      <span>{t("DAMAGED")}</span>
+                       <span>{lang === 'hi' ? 'क्षतिग्रस्त' : 'DAMAGED'}</span>
                     </button>
                   </div>
                 </div>
@@ -1476,7 +1534,7 @@ function ReceiveTab({
               }`}
             >
               <ArrowLeft size={18} />
-              <span>{t("Back")}</span>
+              <span>{lang === 'hi' ? 'वापस' : 'Back'}</span>
             </button>
 
             <button
@@ -1501,7 +1559,7 @@ function ReceiveTab({
                   : "bg-[#FF6700] hover:bg-[#FF6700]/95 text-white"
               }`}
             >
-              <span>{activeStep === 3 ? t("Complete") : t("Next")}</span>
+              <span>{activeStep === 3 ? (lang === 'hi' ? 'पूर्ण करें' : 'Complete') : (lang === 'hi' ? 'अगला' : 'Next')}</span>
             </button>
           </div>
         </>
@@ -1521,7 +1579,7 @@ function ReceiveTab({
               <div className="w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse shrink-0" />
               <div>
                 <p className="text-[9px] uppercase tracking-widest text-white/50 font-black">
-                  {t("Damage Rejection Evidence")}
+                  {lang === 'hi' ? 'क्षति अस्वीकृति साक्ष्य' : 'Damage Rejection Evidence'}
                 </p>
                 <p className="font-mono text-sm font-black text-white mt-0.5">
                   AWB: {scannedTrackingId}
@@ -1573,7 +1631,7 @@ function ReceiveTab({
                   <div className="w-14 h-14 bg-red-600 rounded-full transition-transform active:scale-95" />
                 </button>
                 <span className="text-[10px] uppercase tracking-widest font-black text-white/70 shadow-sm">
-                  {t("Capture Image")}
+                  {lang === 'hi' ? 'तस्वीर लें' : 'Capture Image'}
                 </span>
               </div>
             ) : (
@@ -1586,7 +1644,7 @@ function ReceiveTab({
                   }}
                   className="flex-1 py-4 bg-white/10 hover:bg-white/15 border border-white/30 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg focus:outline-none transition-all active:scale-95"
                 >
-                  {t("Retake")}
+                  {lang === 'hi' ? 'दोबारा लें' : 'Retake'}
                 </button>
                 
                 <button
@@ -1594,7 +1652,7 @@ function ReceiveTab({
                   onClick={handleContinueReject}
                   className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-lg focus:outline-none transition-all active:scale-95"
                 >
-                  {t("Continue")}
+                  {lang === 'hi' ? 'जारी रखें' : 'Continue'}
                 </button>
               </div>
             )}
@@ -1610,7 +1668,7 @@ function ReceiveTab({
               <div className="flex flex-col items-center justify-center space-y-4 py-4">
                 <div className="w-10 h-10 border-4 border-[#FF6700] border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm uppercase font-black tracking-widest text-slate-500">
-                  {t("Fetching Delivery OTP...")}
+                  {lang === 'hi' ? 'डिलीवरी OTP प्राप्त हो रहा है...' : 'Fetching Delivery OTP...'}
                 </p>
               </div>
             )}
@@ -1618,14 +1676,14 @@ function ReceiveTab({
               <div className="flex flex-col items-center justify-center space-y-3 py-4 bg-green-50 border border-green-200 rounded-xl">
                 <CheckCircle2 size={36} className="text-green-500" />
                 <p className="text-sm uppercase font-black tracking-widest text-green-700 text-center">
-                  {t("OTP Not Required")}
+                  {lang === 'hi' ? 'OTP आवश्यक नहीं' : 'OTP Not Required'}
                 </p>
               </div>
             )}
             {otpState === "FETCHED" && (
               <div className="flex flex-col items-space-y-3 py-2">
                 <p className="text-xs uppercase font-black tracking-widest text-[#313079]/60">
-                  {t("System OTP")}
+                  {lang === 'hi' ? 'सिस्टम OTP' : 'System OTP'}
                 </p>
                 <div className="w-full bg-[#FF6700]/5 border border-[#FF6700]/20 px-4 py-6 text-center text-4xl font-mono tracking-[0.3em] text-[#313079] rounded-xl shadow-inner">
                   {fetchedOtp}
@@ -1636,14 +1694,14 @@ function ReceiveTab({
               <div className="flex flex-col items-center space-y-3 py-4 bg-red-50 border border-red-200 rounded-xl px-4">
                 <AlertOctagon size={36} className="text-red-500" />
                 <p className="text-sm uppercase font-black tracking-widest text-red-700 text-center">
-                  {t("OTP Fetch Failed")}
+                  {lang === 'hi' ? 'OTP प्राप्त नहीं हुआ' : 'OTP Fetch Failed'}
                 </p>
                 <p className="text-xs text-red-600 font-semibold text-center mb-2">
-                  {t("System offline. Please call the Admin/Device Holder to get the OTP.")}
+                  {lang === 'hi' ? 'सिस्टम ऑफलाइन है। OTP प्राप्त करने के लिए एडमिन/डिवाइस होल्डर को कॉल करें।' : 'System offline. Please call the Admin/Device Holder to get the OTP.'}
                 </p>
                 <input
                   type="text"
-                  placeholder={t("ENTER OTP MANUALLY")}
+                  placeholder={lang === 'hi' ? 'OTP मैन्युअल दर्ज करें' : 'ENTER OTP MANUALLY'}
                   value={manualOtp}
                   onChange={(e) => setManualOtp(e.target.value)}
                   className="w-full bg-white border-2 border-red-300 text-red-700 p-3 font-mono text-lg focus:outline-none focus:border-red-500 text-center rounded-xl"
@@ -1658,7 +1716,7 @@ function ReceiveTab({
               className="flex items-center space-x-2 px-6 py-5 rounded-2xl border border-[#313079]/20 text-[#313079]/70 hover:bg-[#FF6700]/5 hover:border-[#FF6700] hover:text-[#FF6700] font-black text-sm uppercase tracking-widest transition-all shadow-sm active:scale-95 shrink-0"
             >
               <ArrowLeft size={18} />
-              <span>{t("Back")}</span>
+              <span>{lang === 'hi' ? 'वापस' : 'Back'}</span>
             </button>
 
             {(["NOT_REQUIRED", "FETCHED"].includes(otpState) || (otpState === "ERROR" && manualOtp.trim().length > 0)) ? (
@@ -1668,7 +1726,7 @@ function ReceiveTab({
                 className="flex-1 py-5 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white uppercase font-black tracking-widest text-base sm:text-lg rounded-2xl shadow-lg flex items-center justify-center space-x-2 transition-all active:scale-95"
               >
                 <CheckCircle2 size={22} />
-                <span>{t("Complete & Accept")}</span>
+                <span>{lang === 'hi' ? 'पूर्ण और स्वीकार करें' : 'Complete & Accept'}</span>
               </button>
             ) : (
               <div className="flex-1" />
@@ -1682,7 +1740,7 @@ function ReceiveTab({
 
 // ─── Ledger Tab ───────────────────────────────────────────────────────────────
 function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: PreferredLanguage }) {
-  const t = (text: string) => translateInstruction(text, preferredLanguage);
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1700,15 +1758,15 @@ function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
     <div className="max-w-lg mx-auto pb-10 px-2">
       <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
         <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-          {t("Handover Ledger")}
+          {lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger'}
         </h2>
         <span className="bg-white border border-[#FF6700]/20 text-[#FF6700] px-3 py-1 font-mono text-xs font-bold rounded-full shadow-sm">
-          {ledger.length} {t("ITEMS")}
+          {ledger.length} {lang === 'hi' ? 'आइटम' : 'ITEMS'}
         </span>
       </div>
       {loading ? (
         <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">
-          {t("Syncing Ledger...")}
+          {lang === 'hi' ? 'लेजर सिंक हो रही है...' : 'Syncing Ledger...'}
         </div>
       ) : ledger.length === 0 ? (
         <div className="text-center py-20 border border-dashed border-[#313079]/10 bg-white rounded-2xl">
@@ -1717,7 +1775,7 @@ function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
             className="mx-auto text-green-500 mb-4 opacity-50"
           />
           <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-            {t("All Clear")}
+            {lang === 'hi' ? 'सब ठीक है' : 'All Clear'}
           </h3>
         </div>
       ) : (
@@ -1738,7 +1796,7 @@ function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
               </div>
               <div className="text-right">
                 <p className="text-xs font-bold uppercase text-[#313079]/60">
-                  {t("Received")}
+                  {lang === 'hi' ? 'प्राप्त' : 'Received'}
                 </p>
                 <p className="text-sm font-mono text-[#313079] font-bold">
                   {new Date(item.receivedAt).toLocaleTimeString([], {

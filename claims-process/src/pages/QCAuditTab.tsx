@@ -14,7 +14,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { t } from '../utils/i18n';
+import { useLanguage } from '../utils/i18n';
 
 interface SkuStatus {
   sku: string;
@@ -46,6 +46,7 @@ interface RejectedClaim {
 }
 
 export default function QCAuditTab() {
+  const { t } = useLanguage();
   // Section 1 States
   const [skuList, setSkuList] = useState<SkuStatus[]>([]);
   const [scanValue, setScanValue] = useState('');

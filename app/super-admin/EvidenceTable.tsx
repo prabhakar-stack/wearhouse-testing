@@ -183,9 +183,21 @@ export default function EvidenceTable() {
 
                     {/* Associated Order */}
                     <td className="px-6 py-4">
-                      <span className="font-mono text-xs font-bold text-slate-700">
-                        {record.orderId || record.manifest?.trackingId || 'N/A'}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        {(record.orderId) && (
+                          <span className="font-mono text-xs font-bold text-slate-700">
+                            {record.orderId}
+                          </span>
+                        )}
+                        {(record.trackingId || record.manifest?.trackingId) && (
+                          <span className="font-mono text-[10px] font-semibold text-slate-400">
+                            TRK: {record.trackingId || record.manifest?.trackingId}
+                          </span>
+                        )}
+                        {!record.orderId && !record.trackingId && !record.manifest?.trackingId && (
+                          <span className="text-xs text-slate-400 italic">N/A</span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Claim Reasons and context details */}

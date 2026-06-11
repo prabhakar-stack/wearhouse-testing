@@ -264,6 +264,7 @@ export async function POST(req: Request) {
             where: { lpn: normalizedLpnVal },
             update: {
               orderId: scopedOrderId,
+              trackingId: manifest.trackingId,
               type: 'INSPECTOR_REJECTION',
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
@@ -275,6 +276,7 @@ export async function POST(req: Request) {
             create: {
               lpn: normalizedLpnVal,
               orderId: scopedOrderId,
+              trackingId: manifest.trackingId,
               type: 'INSPECTOR_REJECTION',
               claimReason: claimReason || resolvedCondition,
               claimSubReason: claimSubReason || `Product defect for LPN ${normalizedLpnVal}`,
@@ -304,6 +306,7 @@ export async function POST(req: Request) {
             },
             update: {
               missingQuantity: missingQty,
+              trackingId: manifest.trackingId,
               orderDriveLink: evidenceUrl || null,
               orderId: scopedOrderId,
             },
@@ -311,6 +314,7 @@ export async function POST(req: Request) {
               orderId: scopedOrderId,
               fnsku: fnsku,
               missingQuantity: missingQty,
+              trackingId: manifest.trackingId,
               orderDriveLink: evidenceUrl || null,
               manifestId: manifest.id,
             }

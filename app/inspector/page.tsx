@@ -93,7 +93,7 @@ function StepVisualGuide({
   step,
   className = "relative w-56 h-36 rounded-lg overflow-hidden border border-[#FF6700]/20 bg-[#313079] flex items-center justify-center shrink-0 shadow-lg",
 }: {
-  step: { id: number; title: string; desc: string; sampleImg: string | string[] | null };
+  step: { id: number; title: { en: string; hi: string } | string; desc: { en: string; hi: string } | string; sampleImg: string | string[] | null };
   className?: string;
 }) {
   const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
@@ -543,7 +543,9 @@ function InspectorDashboard({ role }: { role: string }) {
   }, []);
 
   const fetchAlerts = useCallback(() => {
-    fetch('/api/alerts')
+    fetch('/api/alerts', {
+      headers: { 'x-user-language': preferredLanguage }
+    })
       .then(r => r.json())
       .then(d => {
         if (d.alerts) {
@@ -553,7 +555,7 @@ function InspectorDashboard({ role }: { role: string }) {
         if (d.sopMap) setSopMap(d.sopMap);
       })
       .catch(console.error);
-  }, []);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     fetchAlerts();
@@ -1660,10 +1662,10 @@ function InspectTab({
             const backgroundUpload = async () => {
               if (!activeOrderId) return;
               setIsUploading(true);
+              const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
               try {
                 const videoChunks = chunksRef.current.length > 0 ? chunksRef.current : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
                 const blob = new Blob(videoChunks, { type: "video/webm" });
-                const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
                 filesToUpload.push({ key: "file", name: "video-proof.webm", mimeType: "video/webm", blob });
 
                 let boxCounter = 1;
@@ -1683,7 +1685,7 @@ function InspectTab({
                     const lpn = img.id;
                     if (!lpnCounters[lpn]) lpnCounters[lpn] = 1;
                     const stepNum = lpnCounters[lpn]++;
-                    filesToUpload.push({ key: `collage_img_${img.id}`, name: `step${stepNum}.jpg`, mimeType: "image/jpeg", blob: img.blob, lpn: img.id });
+                filesToUpload.push({ key: `collage_img_${img.id}`, name: `step${stepNum}.jpg`, mimeType: "image/jpeg", blob: img.blob, lpn: img.id });
                   }
                 });
 
@@ -1712,62 +1714,190 @@ function InspectTab({
                   }
                 } catch (evalErr) { console.error("[BG Upload] Early evaluate error:", evalErr); }
 
+                // ─── Helper: compress a JPEG image blob client-side ───────────────────────
+                // Reduces JPEG captures to ≤ 1 MB so they stay well under Vercel's 4.5 MB
+                // request body limit when sent to /api/upload/raw.
+                const compressImage = async (blob: Blob, quality = 0.65): Promise<Blob> => {
+                  try {
+                    const bmp = await createImageBitmap(blob);
+                    const canvas = document.createElement("canvas");
+                    canvas.width = bmp.width;
+                    canvas.height = bmp.height;
+                    const ctx = canvas.getContext("2d");
+                    if (!ctx) return blob;
+                    ctx.drawImage(bmp, 0, 0);
+                    return await new Promise<Blob>((res, rej) =>
+                      canvas.toBlob((b) => b ? res(b) : rej(new Error("toBlob failed")), "image/jpeg", quality)
+                    );
+                  } catch {
+                    return blob; // fall back to original if compression fails
+                  }
+                };
+
+                // ─── Helper: upload a small file (image) to /api/upload/raw ──────────────
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
-                  const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((f.blob.size / 100000) * 1000)));
+                  // Compress JPEG images to stay under Vercel's 4.5 MB body limit
+                  let uploadBlob = f.blob;
+                  if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
+                    uploadBlob = await compressImage(f.blob, 0.65);
+                    console.log(`[Upload] Compressed ${f.name}: ${(f.blob.size / 1024).toFixed(0)} KB → ${(uploadBlob.size / 1024).toFixed(0)} KB`);
+                  }
+                  const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
+                  let lastError = null;
                   for (let attempt = 1; attempt <= 3; attempt++) {
                     const controller = new AbortController();
                     const tid = setTimeout(() => controller.abort(), timeoutMs);
                     try {
-                      const res = await fetch(url, { method: "PUT", body: f.blob, signal: controller.signal });
+                      const res = await fetch(url, { method: "PUT", body: uploadBlob, signal: controller.signal });
                       clearTimeout(tid);
                       if (res.ok) return;
-                    } catch (err: any) { clearTimeout(tid); }
+                      lastError = new Error(`Status ${res.status}`);
+                    } catch (err: any) {
+                      clearTimeout(tid);
+                      lastError = err;
+                    }
                     if (attempt < 3) await new Promise((r) => setTimeout(r, 1000 * attempt));
                   }
+                  throw new Error(`Failed to upload ${f.name} after 3 attempts: ${lastError?.message || "unknown"}`);
                 };
 
-                const uploadVideoChunked = async (f: { key: string; name: string; mimeType: string; blob: Blob }, targetFolderId: string) => {
-                  const CHUNK_SIZE = 5 * 1024 * 1024;
-                  const totalChunks = Math.max(1, Math.ceil(f.blob.size / CHUNK_SIZE));
-                  const uploadId = crypto.randomUUID();
+                // ─── Helper: upload video via Google Drive Resumable Upload ───────────────
+                // 1. Ask server for a resumable session URI (only the token exchange hits Vercel)
+                // 2. Send 5 MB chunks directly to Google's servers — no Vercel body size limit
+                // 3. After upload completes, tell server to set public permissions
+                const uploadVideoResumable = async (
+                  f: { key: string; name: string; mimeType: string; blob: Blob },
+                  targetFolderId: string
+                ) => {
+                  const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB — Google minimum for resumable is 256 KB
+                  const totalSize = f.blob.size;
+
+                  console.log(`[Resumable] Starting upload for ${f.name} (${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
+
+                  // Step 1: Get resumable session URI from our server
+                  const sessionRes = await fetch("/api/upload/resumable-init", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ folderId: targetFolderId, name: f.name, mimeType: f.mimeType, fileSize: totalSize }),
+                  });
+                  if (!sessionRes.ok) {
+                    throw new Error(`Failed to create resumable session: ${sessionRes.status}`);
+                  }
+                  const { sessionUri } = await sessionRes.json();
+
+                  // Step 2: Upload chunks directly to Google
+                  let uploadedBytes = 0;
+                  const totalChunks = Math.max(1, Math.ceil(totalSize / CHUNK_SIZE));
+
                   for (let i = 0; i < totalChunks; i++) {
-                    const chunk = f.blob.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, f.blob.size));
+                    const start = i * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, totalSize);
+                    const chunk = f.blob.slice(start, end);
+
                     let chunkOk = false;
+                    let lastErr: any = null;
+
                     for (let attempt = 1; attempt <= 3; attempt++) {
                       const controller = new AbortController();
-                      const tid = setTimeout(() => controller.abort(), 90000);
+                      const tid = setTimeout(() => controller.abort(), 120000); // 2 min per chunk
                       try {
-                        const res = await fetch(`/api/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&chunkIndex=${i}&totalChunks=${totalChunks}&name=${encodeURIComponent(f.name)}`, { method: "PUT", body: chunk, signal: controller.signal });
+                        const res = await fetch(sessionUri, {
+                          method: "PUT",
+                          headers: {
+                            "Content-Range": `bytes ${start}-${end - 1}/${totalSize}`,
+                            "Content-Type": f.mimeType,
+                          },
+                          body: chunk,
+                          signal: controller.signal,
+                        });
                         clearTimeout(tid);
-                        if (res.ok) { chunkOk = true; break; }
-                      } catch (err: any) { clearTimeout(tid); }
-                      if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
+                        // 200/201 = complete, 308 = chunk accepted (resume incomplete)
+                        if (res.status === 200 || res.status === 201 || res.status === 308) {
+                          uploadedBytes = end;
+                          chunkOk = true;
+                          break;
+                        }
+                        lastErr = new Error(`Google returned status ${res.status}`);
+                      } catch (err: any) {
+                        clearTimeout(tid);
+                        lastErr = err;
+                      }
+                      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
                     }
-                    if (!chunkOk) return;
+
+                    if (!chunkOk) {
+                      throw new Error(`Chunk ${i + 1}/${totalChunks} failed after 3 attempts: ${lastErr?.message || "unknown"}`);
+                    }
+                    console.log(`[Resumable] Chunk ${i + 1}/${totalChunks} uploaded (${(uploadedBytes / 1024 / 1024).toFixed(1)} MB / ${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
                   }
-                  try {
-                    await fetch("/api/upload/assemble", {
-                      method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
-                    });
-                  } catch (err: any) { }
+
+                  // Step 3: Set file permissions via server (client doesn't have OAuth token)
+                  const finalizeRes = await fetch("/api/upload/resumable-finalize-by-name", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ folderId: targetFolderId, name: f.name }),
+                  });
+                  if (!finalizeRes.ok) {
+                    console.warn("[Resumable] Could not finalize/set permissions, but upload succeeded.");
+                  } else {
+                    const fd = await finalizeRes.json();
+                    console.log(`[Resumable] Upload complete. webViewLink: ${fd.webViewLink}`);
+                  }
                 };
 
                 for (const f of filesToUpload) {
-                  if (f.key === "file") await uploadVideoChunked(f, orderFolderId);
-                  else {
+                  if (f.key === "file") {
+                    await uploadVideoResumable(f, orderFolderId);
+                  } else {
                     const url = uploadUrls[f.key];
                     if (url) await uploadSmallFile(f, url);
                   }
                 }
 
                 const cleanUserId = activeUserId && activeUserId !== "undefined" && activeUserId !== "null" ? activeUserId : undefined;
-                await fetch("/api/upload/finalize", {
+                const finalizeRes = await fetch("/api/upload/finalize", {
                   method: "POST", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ orderId: activeOrderId, manifestId: activeManifestId, orderPlatformId: activePlatformOrderId, folderLink, orderFolderId, type: "INSPECTION_VIDEO", uploadedById: cleanUserId, reason: "Complete Order Inspection Folder", lpnConditions, lpnRecoveryTypes }),
                 });
-              } catch (e) {
+                if (!finalizeRes.ok) {
+                  throw new Error(`Failed to finalize upload: ${finalizeRes.status}`);
+                }
+              } catch (e: any) {
                 console.error("Silent background pipeline failed:", e);
+                // Trigger local backup on failure — video is chunked to stay under Vercel body limits
+                for (const f of filesToUpload) {
+                  try {
+                    if (f.blob.type.startsWith("video/") && f.blob.size > 2 * 1024 * 1024) {
+                      // Chunk the video backup in 2 MB slices — Vercel hard limit is 4.5 MB,
+                      // 2 MB leaves a safe margin for request headers and overhead.
+                      const BACKUP_CHUNK = 2 * 1024 * 1024;
+                      const totalChunks = Math.ceil(f.blob.size / BACKUP_CHUNK);
+                      for (let i = 0; i < totalChunks; i++) {
+                        const chunk = f.blob.slice(i * BACKUP_CHUNK, Math.min((i + 1) * BACKUP_CHUNK, f.blob.size));
+                        const chunkName = `${f.name}.part${i}of${totalChunks}`;
+                        const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(chunkName)}`, {
+                          method: "PUT",
+                          body: chunk,
+                        });
+                        if (backupRes.ok) {
+                          console.log(`[Local Backup] Saved video chunk ${i + 1}/${totalChunks} → failed_uploads/${activeOrderId}/${chunkName}`);
+                        }
+                      }
+                    } else {
+                      const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(f.name)}`, {
+                        method: "PUT",
+                        body: f.blob,
+                      });
+                      if (backupRes.ok) {
+                        console.log(`[Local Backup] Successfully saved ${f.name} locally to failed_uploads/${activeOrderId}`);
+                      } else {
+                        console.error(`[Local Backup] Failed to save ${f.name} locally: status ${backupRes.status}`);
+                      }
+                    }
+                  } catch (backupErr: any) {
+                    console.error(`[Local Backup] Error saving ${f.name} locally:`, backupErr);
+                  }
+                }
               } finally { setIsUploading(false); }
             };
             backgroundUpload();
@@ -2128,18 +2258,41 @@ function InspectTab({
 
   const CLAIM_REASONS = [
     {
-      id: "damaged_used", label: t("I received damaged/ used item(s)"),
-      subReasons: [{ value: "heavily_damaged", label: t("Item(s) heavily damaged") }, { value: "minor_damages", label: t("Item(s) with minor damages/dents/scratches") }, { value: "packaging_damaged", label: t("Only product packaging damaged") }],
+      id: "damaged_used", label: "I received damaged/ used item(s)",
+      subReasons: [{ value: "heavily_damaged", label: "Item(s) heavily damaged" }, { value: "minor_damages", label: "Item(s) with minor damages/dents/scratches" }, { value: "packaging_damaged", label: "Only product packaging damaged" }],
     },
     {
-      id: "different_empty", label: t("I received different item or empty box"),
-      subReasons: [{ value: "different_junk", label: t("Different/junk item received") }, { value: "empty_box", label: t("Empty box received") }, { value: "fake_counterfeit", label: t("Fake/ replica/ counterfeit item received") }],
+      id: "different_empty", label: "I received different item or empty box",
+      subReasons: [{ value: "different_junk", label: "Different/junk item received" }, { value: "empty_box", label: "Empty box received" }, { value: "fake_counterfeit", label: "Fake/ replica/ counterfeit item received" }],
     },
     {
       id: "missing_quantity", label: "I received removal order with missing quantity/ accessories/parts",
       subReasons: [{ value: "missing_parts", label: "Missing parts/accessories/components" }, { value: "missing_main_item", label: "Missing main item" }],
     },
   ];
+
+  const CLAIM_TRANSLATIONS: Record<string, string> = {
+    "I received damaged/ used item(s)": "मुझे क्षतिग्रस्त/उपयोग किया हुआ सामान मिला",
+    "Item(s) heavily damaged": "सामान भारी रूप से क्षतिग्रस्त है",
+    "Item(s) with minor damages/dents/scratches": "सामान में मामूली नुकसान/डेंट/खरोंच हैं",
+    "Only product packaging damaged": "केवल उत्पाद की पैकेजिंग क्षतिग्रस्त है",
+    "I received different item or empty box": "मुझे दूसरा सामान या खाली बॉक्स मिला",
+    "Different/junk item received": "दूसरा/कबाड़ सामान मिला",
+    "Empty box received": "खाली बॉक्स मिला",
+    "Fake/ replica/ counterfeit item received": "नकली/प्रतिकृति/जाली सामान मिला",
+    "I received removal order with missing quantity/ accessories/parts": "मुझे कम मात्रा/सामग्री/पुर्जे के साथ रिमूवल ऑर्डर मिला",
+    "Missing parts/accessories/components": "पुर्जे/सामग्री/घटक गायब हैं",
+    "Missing main item": "मुख्य सामान गायब है"
+  };
+
+  const translateClaimLabel = (text: string | null): string => {
+    if (!text) return "";
+    if (lang === 'hi' && CLAIM_TRANSLATIONS[text]) {
+      return CLAIM_TRANSLATIONS[text];
+    }
+    return text;
+  };
+
 
   const handleCategory = (cat: "GOOD" | "RECOVERY" | "BAD") => {
     triggerXp(100);
@@ -2202,26 +2355,98 @@ function InspectTab({
 
   const handleMissing = () => { stopAndFinalizeRecording(); setMissingAcknowledged(true); };
 
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
+
   const BOX_STEPS = [
-    { id: 1, title: "Top Side", desc: "Just a plain image showing no rotation. Lay the box flat and center the top face in the camera frame.", sampleImg: "/samples/1.png" },
-    { id: 2, title: "Bottom Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
-    { id: 3, title: "Front Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
-    { id: 4, title: "Back Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/234.png" },
-    { id: 5, title: "Left Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/566.png" },
-    { id: 6, title: "Right Side", desc: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", sampleImg: "/samples/566.png" },
-    { id: 7, title: "Delivery Label", desc: "Hold the DELIVERY LABEL clearly to the camera. All text must be readable. Ensure AWB matches scanned number.", sampleImg: null },
-    { id: 8, title: "Open Box & Contents", desc: "Open the box completely and capture a clear image of the contents inside the box. Ensure all items are visible.", sampleImg: null },
-  ];
+    {
+      id: 1,
+      title: { en: "Top Side", hi: "ऊपरी साइड" },
+      desc: { en: "Just a plain image showing no rotation. Lay the box flat and center the top face in the camera frame.", hi: "कोई घुमाव नहीं — बॉक्स को सपाट रखें और ऊपरी फेस को कैमरे में सेंटर करें।" },
+      sampleImg: "/samples/1.png",
+    },
+    {
+      id: 2,
+      title: { en: "Bottom Side", hi: "निचली साइड" },
+      desc: { en: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", hi: "सैंपल इमेज देखें। तीर के निर्देशानुसार बॉक्स घुमाएं: तीर की पूंछ वाली साइड को तीर के सिर की स्थिति में लाएं।" },
+      sampleImg: "/samples/234.png",
+    },
+    {
+      id: 3,
+      title: { en: "Front Side", hi: "अगली साइड" },
+      desc: { en: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", hi: "सैंपल इमेज देखें। तीर के निर्देशानुसार बॉक्स घुमाएं: तीर की पूंछ वाली साइड को तीर के सिर की स्थिति में लाएं।" },
+      sampleImg: "/samples/234.png",
+    },
+    {
+      id: 4,
+      title: { en: "Back Side", hi: "पिछली साइड" },
+      desc: { en: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", hi: "सैंपल इमेज देखें। तीर के निर्देशानुसार बॉक्स घुमाएं: तीर की पूंछ वाली साइड को तीर के सिर की स्थिति में लाएं।" },
+      sampleImg: "/samples/234.png",
+    },
+    {
+      id: 5,
+      title: { en: "Left Side", hi: "बाईं साइड" },
+      desc: { en: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", hi: "सैंपल इमेज देखें। तीर के निर्देशानुसार बॉक्स घुमाएं: तीर की पूंछ वाली साइड को तीर के सिर की स्थिति में लाएं।" },
+      sampleImg: "/samples/566.png",
+    },
+    {
+      id: 6,
+      title: { en: "Right Side", hi: "दाईं साइड" },
+      desc: { en: "Look at the sample image. Rotate the box by following the arrow: move the side at the tail of the arrow to the position at the head.", hi: "सैंपल इमेज देखें। तीर के निर्देशानुसार बॉक्स घुमाएं: तीर की पूंछ वाली साइड को तीर के सिर की स्थिति में लाएं।" },
+      sampleImg: "/samples/566.png",
+    },
+    {
+      id: 7,
+      title: { en: "Delivery Label", hi: "डिलीवरी लेबल" },
+      desc: { en: "Hold the DELIVERY LABEL clearly to the camera. All text must be readable. Ensure AWB matches scanned number.", hi: "डिलीवरी लेबल को कैमरे के सामने स्पष्ट रूप से पकड़ें। सारा टेक्स्ट पढ़ने योग्य होना चाहिए। AWB स्कैन किए नंबर से मेल खाना चाहिए।" },
+      sampleImg: null,
+    },
+    {
+      id: 8,
+      title: { en: "Open Box & Contents", hi: "बॉक्स खोलें और सामग्री" },
+      desc: { en: "Open the box completely and capture a clear image of the contents inside the box. Ensure all items are visible.", hi: "बॉक्स पूरी तरह खोलें और अंदर की सामग्री की स्पष्ट तस्वीर लें। सभी आइटम दिखाई देने चाहिए।" },
+      sampleImg: null,
+    },
+  ] as const;
 
   const ITEM_STEPS = [
-    { id: 1, title: "Scan Item LPN", instruction: "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the order before proceeding." },
-    { id: 2, title: "Product Verification", instruction: "Verify that the scanned LPN matches the expected product details shown below before continuing with inspection." },
-    { id: 3, title: "Capture LPN Photo", instruction: "Point the camera at the LPN label on the item. Keep the LPN label in the RIGHT HALF of the frame. Hold steady and capture.", sampleImg: "/samples/inspector_lpn_scan.png" },
-    { id: 4, title: "Testing Instructions", instruction: "Perform the physical product check below before capturing the image. Ensure no step is skipped." },
-    { id: 5, title: "Capture Product Image", instruction: "Place the product in the RIGHT HALF of the camera frame. Capture all visible sides — scratches, dents, missing parts must be visible.", sampleImg: "/samples/inspector_product_photo.png" },
-    { id: 6, title: "Categorize Condition", instruction: "Based on your physical test and visual inspection, select the correct condition grade. This determines the bin the item goes into." },
-    { id: 7, title: "Physical Binning", instruction: "Place the item into the labelled bin shown below. Confirm once placed — this cannot be undone without a supervisor override." },
-  ];
+    {
+      id: 1,
+      title: { en: "Scan Item LPN", hi: "आइटम LPN स्कैन करें" },
+      instruction: { en: "Type or scan the LPN barcode number printed on the item sticker. Verify it matches the order before proceeding.", hi: "आइटम स्टिकर पर छपा LPN बारकोड नंबर टाइप या स्कैन करें। आगे बढ़ने से पहले सुनिश्चित करें कि यह ऑर्डर से मेल खाता है।" },
+    },
+    {
+      id: 2,
+      title: { en: "Product Verification", hi: "उत्पाद सत्यापन" },
+      instruction: { en: "Verify that the scanned LPN matches the expected product details shown below before continuing with inspection.", hi: "निरीक्षण जारी रखने से पहले सत्यापित करें कि स्कैन किया LPN नीचे दिखाए गए अपेक्षित उत्पाद विवरण से मेल खाता है।" },
+    },
+    {
+      id: 3,
+      title: { en: "Capture LPN Photo", hi: "LPN फोटो लें" },
+      instruction: { en: "Point the camera at the LPN label on the item. Keep the LPN label in the RIGHT HALF of the frame. Hold steady and capture.", hi: "कैमरे को आइटम पर LPN लेबल की तरफ करें। LPN लेबल को फ्रेम के दाएं हिस्से में रखें। स्थिर रहें और तस्वीर लें।" },
+      sampleImg: "/samples/inspector_lpn_scan.png",
+    },
+    {
+      id: 4,
+      title: { en: "Testing Instructions", hi: "परीक्षण निर्देश" },
+      instruction: { en: "Perform the physical product check below before capturing the image. Ensure no step is skipped.", hi: "तस्वीर लेने से पहले नीचे दी गई भौतिक उत्पाद जांच करें। कोई भी चरण न छोड़ें।" },
+    },
+    {
+      id: 5,
+      title: { en: "Capture Product Image", hi: "उत्पाद की तस्वीर लें" },
+      instruction: { en: "Place the product in the RIGHT HALF of the camera frame. Capture all visible sides — scratches, dents, missing parts must be visible.", hi: "उत्पाद को कैमरे फ्रेम के दाएं हिस्से में रखें। सभी दिखाई देने वाली साइड कैप्चर करें — खरोंच, डेंट, गायब हिस्से दिखने चाहिए।" },
+      sampleImg: "/samples/inspector_product_photo.png",
+    },
+    {
+      id: 6,
+      title: { en: "Categorize Condition", hi: "स्थिति वर्गीकृत करें" },
+      instruction: { en: "Based on your physical test and visual inspection, select the correct condition grade. This determines the bin the item goes into.", hi: "भौतिक परीक्षण और दृश्य निरीक्षण के आधार पर सही स्थिति ग्रेड चुनें। इससे तय होता है कि आइटम किस बिन में जाएगा।" },
+    },
+    {
+      id: 7,
+      title: { en: "Physical Binning", hi: "भौतिक बिनिंग" },
+      instruction: { en: "Place the item into the labelled bin shown below. Confirm once placed — this cannot be undone without a supervisor override.", hi: "आइटम को नीचे दिखाए गए लेबल वाले बिन में रखें। रखने के बाद पुष्टि करें — सुपरवाइज़र ओवरराइड के बिना इसे पूर्ववत नहीं किया जा सकता।" },
+    },
+  ] as const;
 
   return (
     <div className="absolute inset-0 z-40 flex flex-row bg-slate-900 select-none overflow-hidden text-slate-800">
@@ -2236,12 +2461,12 @@ function InspectTab({
               <AlertOctagon size={48} />
             </div>
             <div className="space-y-2 max-w-sm">
-              <h3 className="text-lg font-black uppercase tracking-wider text-white">Camera Permission Blocked</h3>
+              <h3 className="text-lg font-black uppercase tracking-wider text-white">{lang === 'hi' ? 'कैमरा अनुमति अवरुद्ध है' : 'Camera Permission Blocked'}</h3>
               <p className="text-white/60 font-bold text-xs uppercase tracking-wide leading-relaxed">
-                This website requires access to your camera to record video and take pictures of the box contents and products.
+                {lang === 'hi' ? 'यह वेबसाइट वीडियो रिकॉर्ड करने और बॉक्स की सामग्री की तस्वीरें लेने के लिए आपके कैमरे की अनुमति आवश्यक है।' : 'This website requires access to your camera to record video and take pictures of the box contents and products.'}
               </p>
               <p className="text-amber-500 text-[10px] font-black uppercase tracking-wider">
-                Please click the camera/permission icon in your browser's address bar, select "Allow", then click retry.
+                {lang === 'hi' ? 'कृपया ब्राउज़र के एड्रेस बार में कैमरा/अनुमति आइकन पर क्लिक करें, "Allow" चुनें, फिर पुनः प्रयास करें।' : 'Please click the camera/permission icon in your browser\'s address bar, select "Allow", then click retry.'}
               </p>
             </div>
             <button
@@ -2249,7 +2474,7 @@ function InspectTab({
               className="px-6 py-2.5 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex items-center space-x-2 border border-[#FF6700]/20"
             >
               <RefreshCw size={12} />
-              <span>Retry Permission</span>
+              <span>{lang === 'hi' ? 'पुनः प्रयास करें' : 'Retry Permission'}</span>
             </button>
           </div>
         )}
@@ -2261,13 +2486,12 @@ function InspectTab({
               playsInline
               muted
               className="absolute inset-0 w-full h-full object-cover bg-black"
-              style={{ transform: "rotate(180deg)" }}
             />
             <canvas ref={recCanvasRef} className="hidden" />
 
             <div className={`absolute top-2 left-2 backdrop-blur text-white px-2 py-1 text-[9px] font-black uppercase tracking-widest flex items-center space-x-1.5 rounded shadow-lg z-10 transition-colors duration-300 ${isRecording ? "bg-red-600/90" : "bg-slate-700/95"}`}>
               <div className={`w-2 h-2 rounded-full ${isRecording ? "bg-white animate-pulse" : "bg-slate-400"}`} />
-              <span>{isRecording ? t("REC") : t("STANDBY")}</span>
+              <span>{isRecording ? (lang === 'hi' ? 'रिकॉर्ड' : 'REC') : (lang === 'hi' ? 'प्रतीक्षा' : 'STANDBY')}</span>
             </div>
 
             <div className="absolute top-2 right-2 bg-black/70 border border-white/20 text-white px-2 py-1 text-[10px] font-mono tracking-widest rounded flex items-center space-x-1.5 z-10">
@@ -2280,18 +2504,18 @@ function InspectTab({
                 onClick={() => setShowConfigPanel((v) => !v)}
                 className="absolute bottom-2 left-2 z-10 text-[8px] font-bold uppercase tracking-widest text-white/70 hover:text-white transition-colors border border-white/10 hover:border-white/20 bg-black/50 px-2 py-1 rounded"
               >
-                {showConfigPanel ? "Hide Config" : "Configure Cameras"}
+                {showConfigPanel ? (lang === 'hi' ? 'कॉन्फ़िग छुपाएं' : 'Hide Config') : (lang === 'hi' ? 'कैमरे कॉन्फ़िगर करें' : 'Configure Cameras')}
               </button>
             )}
             <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
               <VideoIcon size={9} />
-              <span>REC CAM</span>
+              <span>{lang === 'hi' ? 'रिकॉर्डिंग कैम' : 'REC CAM'}</span>
             </div>
           </div>
 
           <div className="hidden shrink-0 bg-slate-950 border-l border-white/10 flex-col overflow-hidden" style={{ width: "50%" }}>
             <div className="px-3 pt-2 pb-1 border-b border-white/5 flex items-center shrink-0">
-              <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400">Product Reference</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-indigo-400">{lang === 'hi' ? 'उत्पाद संदर्भ' : 'Product Reference'}</span>
             </div>
             {phase === "ITEM_INSPECTION" ? (
               <div className="flex-1 overflow-y-auto p-2">
@@ -2307,23 +2531,23 @@ function InspectTab({
                 ) : !currentSku ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <ScanEye size={24} className="text-indigo-500 mb-1.5 animate-bounce" />
-                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{t("Scan LPN")}</p>
-                    <p className="text-[8px] text-white/30 font-bold uppercase mt-0.5">{t("Awaiting input")}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400">{lang === 'hi' ? 'LPN स्कैन करें' : 'Scan LPN'}</p>
+                    <p className="text-[8px] text-white/30 font-bold uppercase mt-0.5">{lang === 'hi' ? 'इनपुट की प्रतीक्षा' : 'Awaiting input'}</p>
                   </div>
                 ) : (
                   <div className="flex gap-2 h-full">
                     <div className="w-[45%] rounded-lg border border-indigo-800/50 bg-slate-900 flex items-center justify-center p-1 shrink-0">
                       {currentImageUrl
                         ? <img src={currentImageUrl} alt="ref" className="max-w-full max-h-full object-contain" />
-                        : <span className="text-white/20 text-[8px] uppercase font-bold">No Image</span>}
+                        : <span className="text-white/20 text-[8px] uppercase font-bold">{lang === 'hi' ? 'कोई इमेज नहीं' : 'No Image'}</span>}
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1.5">
-                      <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400">{t("Shopify Reference")}</p>
+                      <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400">{lang === 'hi' ? 'शॉपिफाई संदर्भ' : 'Shopify Reference'}</p>
                       <p className="text-[10px] font-black text-white leading-snug line-clamp-3">{currentProductName || "Product"}</p>
                       {currentSku && (
                         <p className="text-[8px] font-mono text-white/50 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded w-fit truncate">SKU: {currentSku}</p>
                       )}
-                      <p className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 px-1.5 py-0.5 rounded w-fit">{t("Visual Check Active")}</p>
+                      <p className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 px-1.5 py-0.5 rounded w-fit">{lang === 'hi' ? 'दृश्य जांच सक्रिय' : 'Visual Check Active'}</p>
                     </div>
                   </div>
                 )}
@@ -2332,7 +2556,7 @@ function InspectTab({
               <div className="flex-1 flex flex-col items-center justify-center text-center p-3">
                 <Camera size={20} className="text-white/20 mb-2" />
                 <p className="text-[8px] font-black uppercase tracking-widest text-white/20">
-                  {phase === "START" ? "Awaiting Order" : "Box Evidence Phase"}
+                  {phase === "START" ? (lang === 'hi' ? 'ऑर्डर की प्रतीक्षा' : 'Awaiting Order') : (lang === 'hi' ? 'बॉक्स साक्ष्य चरण' : 'Box Evidence Phase')}
                 </p>
               </div>
             )}
@@ -2367,7 +2591,7 @@ function InspectTab({
               className="absolute top-4 right-4 z-30 bg-gradient-to-r from-[#FF6700] to-[#ff8c3b] hover:from-[#ff8c3b] hover:to-[#FF6700] active:scale-95 text-white disabled:opacity-40 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-full shadow-lg flex items-center space-x-2 transition-all border border-[#FF6700]/30"
             >
               <SwitchCamera size={14} className={isSwitchingCameras ? "animate-spin" : ""} />
-              <span>{isSwitchingCameras ? t("Switching...") : t("Swap Cameras")}</span>
+              <span>{isSwitchingCameras ? (lang === 'hi' ? 'बदल रहे हैं...' : 'Switching...') : (lang === 'hi' ? 'कैमरे बदलें' : 'Swap Cameras')}</span>
             </button>
           )}
 
@@ -2377,7 +2601,7 @@ function InspectTab({
 
           <div className="absolute bottom-3 left-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
             <Camera size={10} />
-            <span>{dualCameraMode ? "Image Cam" : "Camera"}</span>
+            <span>{dualCameraMode ? (lang === 'hi' ? 'इमेज कैम' : 'Image Cam') : (lang === 'hi' ? 'कैमरा' : 'Camera')}</span>
           </div>
         </div>
       </div>
@@ -2393,7 +2617,7 @@ function InspectTab({
             </div>
             <div>
               <p className="text-[9px] uppercase font-bold text-[#313079]/50 tracking-widest">
-                {phase === "ITEM_INSPECTION" ? "LPN" : "Tracking ID"}
+                {phase === "ITEM_INSPECTION" ? "LPN" : (lang === 'hi' ? 'ट्रैकिंग ID' : 'Tracking ID')}
               </p>
               <p className="text-sm font-black font-mono text-[#313079]">
                 {phase === "ITEM_INSPECTION"
@@ -2405,7 +2629,7 @@ function InspectTab({
           <div className="flex items-center space-x-2 text-right">
             <div>
               <p className="text-[9px] uppercase font-bold text-[#313079]/50 tracking-widest">
-                Order ID
+                {lang === 'hi' ? 'ऑर्डर ID' : 'Order ID'}
               </p>
               <p className="text-sm font-black font-mono text-[#FF6700]">
                 {manifestId ? displayOrderId : "—"}
@@ -2419,26 +2643,26 @@ function InspectTab({
 
         {phase === "START" && (
           showConfigPanel ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300 bg-slate-950 text-white">
-              <div className="bg-[#FF6700]/10 p-4 rounded-full mb-6">
+            <div className="flex-1 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300 bg-white text-[#313079]">
+              <div className="bg-[#FF6700]/10 p-4 rounded-full mb-6 border border-[#FF6700]/25">
                 <Camera size={48} className="text-[#FF6700]" />
               </div>
-              <h2 className="text-xl font-black uppercase tracking-widest text-white mb-1 text-center">
-                Camera Configuration
+              <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
+                {lang === 'hi' ? 'कैमरा सेटअप' : 'Camera Configuration'}
               </h2>
-              <p className="text-white/60 font-bold tracking-wider mb-8 uppercase text-xs">
-                Configure Recording & Capture Feeds
+              <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
+                {lang === 'hi' ? 'रिकॉर्डिंग और कैप्चर फ़ीड सेट करें' : 'Configure Recording & Capture Feeds'}
               </p>
 
               <div className="w-full max-w-sm space-y-4">
                 <div className="flex flex-col space-y-1.5 text-left">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/50">Recording Camera</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'रिकॉर्डिंग कैमरा' : 'Recording Camera'}</label>
                   <select 
                     value={recCameraId} 
                     onChange={(e) => handleRecCameraChange(e.target.value)} 
-                    className="w-full bg-black border border-white/10 text-white text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
+                    className="w-full bg-white border border-[#313079]/25 text-[#313079] text-xs font-bold rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
                   >
-                    <option value="">-- Select Recording Camera --</option>
+                    <option value="">{lang === 'hi' ? '-- रिकॉर्डिंग कैमरा चुनें --' : '-- Select Recording Camera --'}</option>
                     {availableCameras.map((c) => (
                       <option key={c.deviceId} value={c.deviceId}>
                         {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
@@ -2448,13 +2672,13 @@ function InspectTab({
                 </div>
 
                 <div className="flex flex-col space-y-1.5 text-left">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/50">Capture Camera</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'कैप्चर कैमरा' : 'Capture Camera'}</label>
                   <select 
                     value={imgCameraId} 
                     onChange={(e) => handleImgCameraChange(e.target.value)} 
-                    className="w-full bg-black border border-white/10 text-white text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
+                    className="w-full bg-white border border-[#313079]/25 text-[#313079] text-xs font-bold rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#FF6700]"
                   >
-                    <option value="">-- Select Capture Camera --</option>
+                    <option value="">{lang === 'hi' ? '-- कैप्चर कैमरा चुनें --' : '-- Select Capture Camera --'}</option>
                     {availableCameras.map((c) => (
                       <option key={c.deviceId} value={c.deviceId}>
                         {c.label || `Camera ${availableCameras.indexOf(c) + 1}`}
@@ -2465,8 +2689,8 @@ function InspectTab({
 
                 {/* Check Hardware Status Bar */}
                 {!isCameraReady && (
-                  <div className="w-full bg-red-600/90 text-white text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-500">
-                    {hardwareStatus || "Check Hardware: Setup incomplete"}
+                  <div className="w-full bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-200">
+                    {hardwareStatus || (lang === 'hi' ? 'हार्डवेयर जांचें: सेटअप अधूरा है' : 'Check Hardware: Setup incomplete')}
                   </div>
                 )}
 
@@ -2474,9 +2698,9 @@ function InspectTab({
                   type="button"
                   disabled={!isCameraReady}
                   onClick={() => setShowConfigPanel(false)}
-                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-white/10 disabled:text-white/30 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
+                  className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-[#313079]/5 disabled:text-[#313079]/30 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
                 >
-                  <span>Proceed to Inspection</span>
+                  <span>{lang === 'hi' ? 'निरीक्षण शुरू करें' : 'Proceed to Inspection'}</span>
                   <ArrowRight size={18} />
                 </button>
               </div>
@@ -2487,15 +2711,15 @@ function InspectTab({
                 <ScanEye size={48} className="text-[#FF6700]" />
               </div>
               <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
-                Scan Order ID
+                {lang === 'hi' ? 'ऑर्डर ID स्कैन करें' : 'Scan Order ID'}
               </h2>
               <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
-                To Begin Continuous Evidence
+                {lang === 'hi' ? 'निरंतर साक्ष्य शुरू करने के लिए' : 'To Begin Continuous Evidence'}
               </p>
               <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
                 <input
                   type="text"
-                  placeholder={t("ENTER ORDER ID...")}
+                  placeholder={lang === 'hi' ? 'ऑर्डर ID डालें...' : "ENTER ORDER ID..."}
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
                   autoFocus
@@ -2504,8 +2728,8 @@ function InspectTab({
                 
                 {/* Hide Initialize button and show Check Hardware status bar if cameras fail */}
                 {!isCameraReady ? (
-                  <div className="w-full bg-red-600/90 text-white text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-500">
-                    {hardwareStatus || "Check Hardware: Setup incomplete"}
+                  <div className="w-full bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider text-center p-3 rounded-lg border border-red-200">
+                    {hardwareStatus || (lang === 'hi' ? 'हार्डवेयर जांचें: सेटअप अधूरा है' : 'Check Hardware: Setup incomplete')}
                   </div>
                 ) : (
                   <button
@@ -2513,7 +2737,7 @@ function InspectTab({
                     disabled={!orderId.trim() || !isCameraReady}
                     className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 active:scale-95 text-white disabled:bg-[#313079]/10 disabled:text-[#313079]/40 transition-all text-sm font-black uppercase tracking-[0.15em] shadow-md flex justify-center items-center space-x-2 rounded-lg"
                   >
-                    <span>Initialize</span>
+                    <span>{lang === 'hi' ? 'शुरू करें' : 'Initialize'}</span>
                     <ArrowRight size={18} />
                   </button>
                 )}
@@ -2536,19 +2760,19 @@ function InspectTab({
                   <AlertTriangle size={48} />
                 </div>
                 <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-2">
-                  {t("Confirm Missing Items")}
+                  {lang === 'hi' ? 'गायब आइटम की पुष्टि करें' : 'Confirm Missing Items'}
                 </h2>
                 <p className="text-[#313079]/70 font-bold uppercase tracking-wider text-xs max-w-sm mb-8 leading-relaxed">
-                  {t("You are ending the inspection early. You acknowledge that no more items/products are left in the box.")}
+                  {lang === 'hi' ? 'आप निरीक्षण जल्दी समाप्त कर रहे हैं। आप स्वीकार करते हैं कि बॉक्स में अब कोई आइटम/उत्पाद नहीं बचा है।' : 'You are ending the inspection early. You acknowledge that no more items/products are left in the box.'}
                 </p>
                 <div className="bg-white border border-[#313079]/10 rounded-xl p-4 w-full max-w-sm text-left mb-8 space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{t("Inspection Stats")}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50">{lang === 'hi' ? 'निरीक्षण आँकड़े' : 'Inspection Stats'}</p>
                   <div className="flex justify-between text-xs font-bold text-[#313079]">
-                    <span>{t("Scanned Items:")}</span>
+                    <span>{lang === 'hi' ? 'स्कैन किए गए आइटम:' : 'Scanned Items:'}</span>
                     <span>{itemsProcessed} / {expectedItems}</span>
                   </div>
                   <div className="flex justify-between text-xs font-bold text-[#313079]">
-                    <span>{t("Missing Items:")}</span>
+                    <span>{lang === 'hi' ? 'गायब आइटम:' : 'Missing Items:'}</span>
                     <span className="text-red-600 font-black">{expectedItems - itemsProcessed}</span>
                   </div>
                 </div>
@@ -2557,7 +2781,7 @@ function InspectTab({
                     onClick={() => setShowMissingConfirm(false)}
                     className="flex-1 min-h-12 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 text-slate-500 font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all active:scale-95 shadow-sm"
                   >
-                    {t("Cancel")}
+                    {lang === 'hi' ? 'रद्द करें' : 'Cancel'}
                   </button>
                   <button
                     onClick={() => {
@@ -2566,7 +2790,7 @@ function InspectTab({
                     }}
                     className="flex-1 min-h-12 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-black uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex justify-center items-center space-x-2 border border-red-700"
                   >
-                    <span>{t("Acknowledge & End")}</span>
+                    <span>{lang === 'hi' ? 'स्वीकार करें और समाप्त करें' : 'Acknowledge & End'}</span>
                   </button>
                 </div>
               </div>
@@ -2581,9 +2805,9 @@ function InspectTab({
           if (!activeStepObj) return null;
 
           const instructionText = phase === "BOX_EVIDENCE"
-            ? activeBoxStepObj?.desc || ""
+            ? (activeBoxStepObj?.desc as any)?.[lang] || ""
             : "instruction" in activeStepObj
-              ? translateInstruction(activeStepObj.instruction || "", preferredLanguage)
+              ? (activeStepObj as any).instruction[lang] || ""
               : "";
 
           const hideBottomRef = phase === "ITEM_INSPECTION" && [1, 2, 4, 6, 7].includes(activeStepObj.id);
@@ -2594,7 +2818,7 @@ function InspectTab({
               {/* ── PHASE HEADER & NODE PROGRESS BAR ────────────────────── */}
               <div className="px-6 pt-1 pb-4 bg-slate-50 border-b border-[#313079]/10 shrink-0 shadow-sm z-10">
                 <h3 className="text-xs uppercase font-black tracking-widest text-[#313079]">
-                  {phase === "BOX_EVIDENCE" ? t("Phase 1: Box Evidence") : t("Phase 2: Product Verification")}
+                  {phase === "BOX_EVIDENCE" ? (lang === 'hi' ? 'चरण 1: बॉक्स साक्ष्य' : 'Phase 1: Box Evidence') : (lang === 'hi' ? 'चरण 2: उत्पाद सत्यापन' : 'Phase 2: Product Verification')}
                 </h3>
 
                 <div className="mt-4 relative w-full h-2 flex items-center justify-between px-2">
@@ -2639,7 +2863,7 @@ function InspectTab({
                     {/* Items Processed Counter */}
                     {phase === "ITEM_INSPECTION" && (
                       <div className="flex justify-between items-center text-xs font-bold text-[#313079]/60 uppercase tracking-wider">
-                        <span>Items Processed:</span>
+                        <span>{lang === 'hi' ? 'संसाधित आइटम:' : 'Items Processed:'}</span>
                         <span className="font-mono text-[#313079] font-black">{itemsProcessed} / {expectedItems}</span>
                       </div>
                     )}
@@ -2654,7 +2878,7 @@ function InspectTab({
                         <div className="space-y-4 pt-2">
                           <input
                             type="text"
-                            placeholder="SCAN OR TYPE LPN..."
+                            placeholder={lang === 'hi' ? 'LPN स्कैन करें या टाइप करें...' : 'SCAN OR TYPE LPN...'}
                             value={currentLpn}
                             onChange={(e) => {
                               setCurrentLpn(e.target.value);
@@ -2668,7 +2892,7 @@ function InspectTab({
                           )}
                           {activeOrderPlatformId && (
                             <p className="text-[10px] font-black uppercase tracking-widest text-[#313079]/50 text-center">
-                              Order: {activeOrderPlatformId}
+                              {lang === 'hi' ? 'ऑर्डर:' : 'Order:'} {activeOrderPlatformId}
                             </p>
                           )}
                         </div>
@@ -2687,8 +2911,8 @@ function InspectTab({
                               </div>
                               <div className="w-1/2 min-w-0 flex flex-col justify-between py-1">
                                 <div className="space-y-2">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">{t("Product Details")}</p>
-                                  <p className="text-base font-black text-[#313079] leading-snug line-clamp-4">{currentProductName || t("Product name unavailable")}</p>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-[#FF6700]">{lang === 'hi' ? 'उत्पाद विवरण' : 'Product Details'}</p>
+                                  <p className="text-base font-black text-[#313079] leading-snug line-clamp-4">{currentProductName || (lang === 'hi' ? 'उत्पाद नाम अनुपलब्ध' : 'Product name unavailable')}</p>
                                 </div>
                                 <div className="space-y-2 mt-4">
                                   <div className="flex flex-col gap-1.5">
@@ -2696,7 +2920,7 @@ function InspectTab({
                                     <span className="px-2 py-1 rounded border border-[#313079]/10 bg-white text-[10px] font-mono font-black text-[#313079] w-fit truncate">SKU: {currentSku || "—"}</span>
                                   </div>
                                   <p className="text-xs font-bold text-[#313079]/70 uppercase tracking-wide leading-tight">
-                                    {t("Confirm the scanned product matches this expected item before continuing.")}
+                                     {lang === 'hi' ? 'जारी रखने से पहले सुनिश्चित करें कि स्कैन किया उत्पाद अपेक्षित आइटम से मेल खाता है।' : 'Confirm the scanned product matches this expected item before continuing.'}
                                   </p>
                                 </div>
                               </div>
@@ -2707,9 +2931,9 @@ function InspectTab({
 
                       {phase === "ITEM_INSPECTION" && activeStepObj.id === 4 && (
                         <ul className="text-[#313079]/80 font-bold space-y-4 text-2xl list-none pt-2 text-left uppercase tracking-wide">
-                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">1.</span><span>{t("Inspect all corners and surfaces for scratches or cracks.")}</span></li>
-                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">2.</span><span>{t("Verify all mechanical parts and buttons move/click correctly.")}</span></li>
-                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">3.</span><span>{t("Confirm all accessories listed on the slip are present.")}</span></li>
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">1.</span><span>{lang === 'hi' ? 'खरोंच या दरारों के लिए सभी कोनों और सतहों का निरीक्षण करें।' : 'Inspect all corners and surfaces for scratches or cracks.'}</span></li>
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">2.</span><span>{lang === 'hi' ? 'सभी यांत्रिक भागों और बटनों के सही चलने/क्लिक करने की जांच करें।' : 'Verify all mechanical parts and buttons move/click correctly.'}</span></li>
+                          <li className="flex items-start space-x-2"><span className="text-[#FF6700] font-black mt-1">3.</span><span>{lang === 'hi' ? 'स्लिप पर सूचीबद्ध सभी सहायक उपकरण मौजूद हैं, इसकी पुष्टि करें।' : 'Confirm all accessories listed on the slip are present.'}</span></li>
                         </ul>
                       )}
 
@@ -2718,13 +2942,13 @@ function InspectTab({
                           {!showDefectDropdown && !showRecoveryDropdown && (
                             <div className="flex flex-col space-y-3">
                               <button onClick={() => handleCategory("GOOD")} className="w-full min-h-12 bg-green-600 hover:bg-green-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
-                                <CheckCircle2 size={18} /> <span>{t("Good - Resellable")}</span>
+                                <CheckCircle2 size={18} /> <span>{lang === 'hi' ? 'अच्छा — पुनः बिक्री योग्य' : 'Good - Resellable'}</span>
                               </button>
                               <button onClick={() => handleCategory("RECOVERY")} className="w-full min-h-12 bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
-                                <AlertTriangle size={18} /> <span>{t("Recovery - Minor Damage")}</span>
+                                <AlertTriangle size={18} /> <span>{lang === 'hi' ? 'रिकवरी — मामूली क्षति' : 'Recovery - Minor Damage'}</span>
                               </button>
                               <button onClick={() => handleCategory("BAD")} className="w-full min-h-12 bg-red-600 hover:bg-red-700 text-white text-sm font-black uppercase tracking-widest rounded shadow flex items-center justify-center space-x-3 transition-transform active:scale-95">
-                                <AlertOctagon size={18} /> <span>{t("Bad - Unsalvageable")}</span>
+                                <AlertOctagon size={18} /> <span>{lang === 'hi' ? 'खराब — मरम्मत अयोग्य' : 'Bad - Unsalvageable'}</span>
                               </button>
                             </div>
                           )}
@@ -2732,21 +2956,21 @@ function InspectTab({
                           {showRecoveryDropdown && (
                             <div className="flex flex-col space-y-3 animate-in fade-in duration-200">
                               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                                <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">{t("Select Recovery Type")}</p>
-                                <p className="text-[10px] text-orange-700 leading-relaxed font-bold">{t("Select the required recovery/refurbishment process for LPN")} {currentLpn}</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-[#FF6700] mb-1">{lang === 'hi' ? 'रिकवरी प्रकार चुनें' : 'Select Recovery Type'}</p>
+                                <p className="text-[10px] text-orange-700 leading-relaxed font-bold">{lang === 'hi' ? 'LPN के लिए आवश्यक रिकवरी/नवीनीकरण प्रक्रिया चुनें:' : 'Select the required recovery/refurbishment process for LPN:'} {currentLpn}</p>
                               </div>
                               <div className="space-y-1.5">
                                 <button onClick={() => handleRecoverySelected("Barcode Damaged")} className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
-                                  <span className="flex-1 pr-2">{t("Barcode Damaged")}</span>
+                                  <span className="flex-1 pr-2">{lang === 'hi' ? 'बारकोड क्षतिग्रस्त' : 'Barcode Damaged'}</span>
                                   <ArrowRight size={14} className="text-orange-400 shrink-0" />
                                 </button>
                                 <button onClick={() => handleRecoverySelected("Packaging Damaged")} className="w-full min-h-11 bg-white border-2 border-orange-200 hover:border-[#FF6700] hover:bg-orange-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
-                                  <span className="flex-1 pr-2">{t("Packaging Damaged")}</span>
+                                  <span className="flex-1 pr-2">{lang === 'hi' ? 'पैकेजिंग क्षतिग्रस्त' : 'Packaging Damaged'}</span>
                                   <ArrowRight size={14} className="text-orange-400 shrink-0" />
                                 </button>
                               </div>
                               <button onClick={() => { setShowRecoveryDropdown(false); setCurrentCategory(null); }} className="w-full min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors">
-                                {t("Back to Grade Selection")}
+                                {lang === 'hi' ? 'ग्रेड चयन पर वापस जाएं' : 'Back to Grade Selection'}
                               </button>
                             </div>
                           )}
@@ -2754,29 +2978,29 @@ function InspectTab({
                           {showDefectDropdown && (
                             <div className="flex flex-col space-y-3">
                               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">{selectedClaimReason ? t("2) Select Claim Sub-Reason") : t("1) Select Claim Reason")}</p>
-                                <p className="text-[10px] text-red-600 leading-relaxed font-bold">{selectedClaimReason ? `${t("Selected Reason:")} ${selectedClaimReason}` : t("Select the primary claim category matching Amazon's IDR portal")}</p>
+                                <p className="text-xs font-black uppercase tracking-widest text-red-700 mb-1">{selectedClaimReason ? (lang === 'hi' ? '2) क्लेम उप-कारण चुनें' : '2) Select Claim Sub-Reason') : (lang === 'hi' ? '1) क्लेम कारण चुनें' : '1) Select Claim Reason')}</p>
+                                <p className="text-[10px] text-red-600 leading-relaxed font-bold">{selectedClaimReason ? `${lang === 'hi' ? 'चुना गया कारण:' : 'Selected Reason:'} ${translateClaimLabel(selectedClaimReason)}` : (lang === 'hi' ? 'Amazon के IDR पोर्टल से मेल खाती प्राथमिक क्लेम श्रेणी चुनें' : "Select the primary claim category matching Amazon's IDR portal")}</p>
                               </div>
                               <div className="space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar">
                                 {!selectedClaimReason
                                   ? CLAIM_REASONS.map((cr) => (
                                     <button key={cr.id} onClick={() => setSelectedClaimReason(cr.label)} className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
-                                      <span className="flex-1 pr-2">{cr.label}</span>
+                                      <span className="flex-1 pr-2">{translateClaimLabel(cr.label)}</span>
                                       <ArrowRight size={14} className="text-red-400 shrink-0" />
                                     </button>
                                   ))
                                   : CLAIM_REASONS.find((r) => r.label === selectedClaimReason)?.subReasons.map((csr) => (
                                     <button key={csr.value} onClick={() => handleDefectSelected(selectedClaimReason, csr.label)} className="w-full min-h-11 bg-white border-2 border-red-200 hover:border-red-500 hover:bg-red-50 text-[#313079] text-sm font-bold rounded flex items-center justify-between px-4 py-2 transition-all text-left active:scale-[0.98]">
-                                      <span className="flex-1 pr-2">{csr.label}</span>
+                                      <span className="flex-1 pr-2">{translateClaimLabel(csr.label)}</span>
                                       <ArrowRight size={14} className="text-red-400 shrink-0" />
                                     </button>
                                   ))}
                               </div>
                               <div className="flex space-x-2">
                                 {selectedClaimReason ? (
-                                  <button onClick={() => setSelectedClaimReason(null)} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors">{t("Back to Reasons")}</button>
+                                  <button onClick={() => setSelectedClaimReason(null)} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/85 text-xs font-bold uppercase tracking-widest rounded transition-colors">{lang === 'hi' ? 'कारणों पर वापस जाएं' : 'Back to Reasons'}</button>
                                 ) : (
-                                  <button onClick={() => { setShowDefectDropdown(false); setCurrentCategory(null); }} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors">{t("Back to Grade Selection")}</button>
+                                  <button onClick={() => { setShowDefectDropdown(false); setCurrentCategory(null); }} className="flex-1 min-h-10 bg-[#313079]/5 hover:bg-[#313079]/10 text-[#313079]/70 text-xs font-bold uppercase tracking-widest rounded transition-colors">{lang === 'hi' ? 'ग्रेड चयन पर वापस जाएं' : 'Back to Grade Selection'}</button>
                                 )}
                               </div>
                             </div>
@@ -2787,9 +3011,9 @@ function InspectTab({
                       {phase === "ITEM_INSPECTION" && activeStepObj.id === 7 && (
                         <div className="flex flex-col items-center justify-center space-y-4 py-2">
                           <div className="bg-[#FF6700]/5 p-6 rounded-xl border-2 border-[#313079]/15 text-center w-full">
-                            <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">{t("Place item in")}</p>
+                            <p className="text-sm font-bold text-[#313079]/60 uppercase tracking-widest mb-2">{lang === 'hi' ? 'आइटम यहाँ रखें:' : 'Place item in:'}</p>
                             <p className={`text-3xl font-black uppercase tracking-widest ${currentCategory === "GOOD" ? "text-green-600" : currentCategory === "RECOVERY" ? "text-[#FF6700]" : "text-red-600"}`}>
-                              {currentCategory ? `${t(currentCategory)} BIN` : ""}
+                              {currentCategory ? (lang === 'hi' ? (currentCategory === 'GOOD' ? 'अच्छा बिन' : currentCategory === 'RECOVERY' ? 'रिकवरी बिन' : 'खराब बिन') : `${currentCategory} BIN`) : ""}
                             </p>
                           </div>
                         </div>
@@ -2811,20 +3035,20 @@ function InspectTab({
                         <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-[#313079]/10 bg-white flex items-center justify-center">
                           <img src={activeStepObj.sampleImg} alt="Reference sample" className="max-w-full max-h-full object-contain" />
                           <div className="absolute bottom-0 left-0 right-0 bg-[#FF6700]/80 text-white text-[9px] font-bold uppercase tracking-widest text-center py-1">
-                            {t("Reference Sample")}
+                            {lang === 'hi' ? 'संदर्भ नमूना' : 'Reference Sample'}
                           </div>
                         </div>
                       ) : currentImageUrl ? (
                         <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-[#313079]/10 bg-white flex items-center justify-center p-2">
                           <img src={currentImageUrl} alt="Product reference" className="max-w-full max-h-full object-contain" />
                           <div className="absolute bottom-0 left-0 right-0 bg-indigo-600/80 text-white text-[9px] font-bold uppercase tracking-widest text-center py-1">
-                            {t("Product Ref Image")}
+                            {lang === 'hi' ? 'उत्पाद संदर्भ इमेज' : 'Product Ref Image'}
                           </div>
                         </div>
                       ) : (
                         <div className="relative w-full h-full max-w-sm mx-auto rounded-lg overflow-hidden border border-dashed border-[#313079]/20 bg-slate-100 flex flex-col items-center justify-center p-4 text-center">
                           <Box size={24} className="text-[#313079]/30 mb-2" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#313079]/40">{t("No Reference Image")}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#313079]/40">{lang === 'hi' ? 'कोई संदर्भ इमेज नहीं' : 'No Reference Image'}</span>
                         </div>
                       )
                     )}
@@ -2842,28 +3066,28 @@ function InspectTab({
                       onClick={resetProcess}
                       className="w-full h-full bg-red-50 hover:bg-red-100 text-red-600 font-extrabold uppercase tracking-widest text-xs rounded-xl transition-all border border-red-200 flex items-center justify-center space-x-2 active:scale-95"
                     >
-                      <X size={16} /> <span>{t("Cancel Inspection")}</span>
+                      <X size={16} /> <span>{lang === 'hi' ? 'निरीक्षण रद्द करें' : 'Cancel Inspection'}</span>
                     </button>
                   ) : previewDataUrl ? (
                     <button
                       onClick={handleRetakePreview}
                       className="w-full h-full bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 rounded-xl font-extrabold uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all active:scale-95 shadow-sm"
                     >
-                      <RefreshCw size={16} /> <span>{t("Retake")}</span>
+                      <RefreshCw size={16} /> <span>{lang === 'hi' ? 'दोबारा लें' : 'Retake'}</span>
                     </button>
                   ) : (phase === "ITEM_INSPECTION" && activeStepObj.id === 1) ? (
                     <button
                       onClick={() => setShowMissingConfirm(true)}
                       className="w-full h-full bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-extrabold uppercase tracking-widest text-[10px] flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm"
                     >
-                      <AlertTriangle size={14} /> <span>{t("No Item Left")}</span>
+                      <AlertTriangle size={14} /> <span>{lang === 'hi' ? 'कोई आइटम शेष नहीं' : 'No Item Left'}</span>
                     </button>
                   ) : (
                     <button
                       onClick={handleBack}
                       className="w-full h-full bg-white border-2 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-extrabold uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all active:scale-95 shadow-sm"
                     >
-                      <ArrowLeft size={16} /> <span>{t("Back")}</span>
+                      <ArrowLeft size={16} /> <span>{lang === 'hi' ? 'वापस' : 'Back'}</span>
                     </button>
                   )}
                 </div>
@@ -2875,7 +3099,7 @@ function InspectTab({
                       onClick={handleConfirmPreview}
                       className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white rounded-xl font-black uppercase tracking-widest text-sm shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2"
                     >
-                      <CheckCircle2 size={18} /> <span>{t("Confirm & Next")}</span>
+                      <CheckCircle2 size={18} /> <span>{lang === 'hi' ? 'पुष्टि करें और आगे बढ़ें' : 'Confirm & Next'}</span>
                     </button>
                   ) : (
                     (() => {
@@ -2883,13 +3107,13 @@ function InspectTab({
                         if (activeStepObj.id === 6 && boxStep6Part === 1) {
                           return (
                             <button onClick={() => setBoxStep6Part(2)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
-                              <span>{t("Next Rotation ->")}</span>
+                              <span>{lang === 'hi' ? 'अगला रोटेशन →' : 'Next Rotation ->'}</span>
                             </button>
                           );
                         }
                         return (
                           <button onClick={() => captureImage("box")} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
-                            <Camera size={16} /> <span>{t("Capture Image")}</span>
+                            <Camera size={16} /> <span>{lang === 'hi' ? 'तस्वीर लें' : 'Capture Image'}</span>
                           </button>
                         );
                       } else {
@@ -2897,45 +3121,45 @@ function InspectTab({
                         if (activeStepObj.id === 1) {
                           return (
                             <button onClick={nextItemStep} disabled={!currentLpn.trim() || isValidatingLpn} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest disabled:bg-[#313079]/10 disabled:text-[#313079]/40 rounded-xl shadow-md transition-colors flex items-center justify-center space-x-2 active:scale-95">
-                              {isValidatingLpn ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <span>{t("LPN Confirmed ->")}</span>}
+                              {isValidatingLpn ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <span>{lang === 'hi' ? 'LPN पुष्टि हुई →' : 'LPN Confirmed ->'}</span>}
                             </button>
                           );
                         } else if (activeStepObj.id === 2) {
                           return (
                             <button onClick={nextItemStep} disabled={!currentLpn.trim() || !currentSku} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest disabled:bg-[#313079]/10 disabled:text-[#313079]/40 rounded-xl shadow-md transition-colors flex items-center justify-center space-x-2 active:scale-95">
-                              <CheckCircle2 size={16} /> <span>{t("Product Verified ->")}</span>
+                              <CheckCircle2 size={16} /> <span>{lang === 'hi' ? 'उत्पाद सत्यापित →' : 'Product Verified ->'}</span>
                             </button>
                           );
                         } else if (activeStepObj.id === 3) {
                           return (
                             <button onClick={() => captureImage("lpn", currentLpn)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
-                              <Camera size={16} /> <span>{t("Capture LPN Photo")}</span>
+                              <Camera size={16} /> <span>{lang === 'hi' ? 'LPN फोटो लें' : 'Capture LPN Photo'}</span>
                             </button>
                           );
                         } else if (activeStepObj.id === 4) {
                           return (
                             <button onClick={nextItemStep} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md transition-all active:scale-95">
-                              {t("Testing Done ->")}
+                              {lang === 'hi' ? 'परीक्षण पूर्ण →' : 'Testing Done ->'}
                             </button>
                           );
                         } else if (activeStepObj.id === 5) {
                           return (
                             <button onClick={() => captureImage("product", currentLpn)} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
-                              <Camera size={16} /> <span>{t("Capture Product Image")}</span>
+                              <Camera size={16} /> <span>{lang === 'hi' ? 'उत्पाद की तस्वीर लें' : 'Capture Product Image'}</span>
                             </button>
                           );
                         } else if (activeStepObj.id === 6) {
                           return (
                             <div className="w-full h-full bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center px-4">
                               <span className="text-xs font-bold uppercase tracking-wider text-[#313079]/40 text-center leading-normal">
-                                {showRecoveryDropdown ? t("Grade: Recovery Selected") : showDefectDropdown ? t("Grade: Bad (Claim Setup)") : t("Awaiting Grade Selection")}
+                                {showRecoveryDropdown ? (lang === 'hi' ? 'ग्रेड: रिकवरी चयनित' : 'Grade: Recovery Selected') : showDefectDropdown ? (lang === 'hi' ? 'ग्रेड: खराब (क्लेम सेटअप)' : 'Grade: Bad (Claim Setup)') : (lang === 'hi' ? 'ग्रेड चयन की प्रतीक्षा' : 'Awaiting Grade Selection')}
                               </span>
                             </div>
                           );
                         } else if (activeStepObj.id === 7) {
                           return (
                             <button onClick={handleBinning} className="w-full h-full bg-[#FF6700] hover:bg-[#FF6700]/90 text-white text-sm font-black uppercase tracking-widest rounded-xl shadow-md flex justify-center items-center space-x-2 transition-all active:scale-95">
-                              <span>{t("Confirm Binning")}</span> <ArrowRight size={18} />
+                              <span>{lang === 'hi' ? 'बिनिंग पुष्टि करें' : 'Confirm Binning'}</span> <ArrowRight size={18} />
                             </button>
                           );
                         }
@@ -2953,15 +3177,15 @@ function InspectTab({
             <div className="bg-green-100 p-6 rounded-full mb-6 shadow-inner border-4 border-green-200">
               <CheckCircle2 size={64} className="text-green-600" />
             </div>
-            <h2 className="text-2xl font-black text-green-700 uppercase tracking-widest mb-3">Order Complete</h2>
+            <h2 className="text-2xl font-black text-green-700 uppercase tracking-widest mb-3">{lang === 'hi' ? 'ऑर्डर पूर्ण' : 'Order Complete'}</h2>
             <p className={`text-xs font-bold tracking-widest uppercase mb-10 bg-white px-4 py-2 rounded-full shadow-sm ${isUploading ? "text-amber-600 border border-amber-200" : "text-green-600 border border-green-200"}`}>
-              {isUploading ? "Uploading evidence to Drive..." : "Evidence successfully uploaded"}
+              {isUploading ? (lang === 'hi' ? 'Drive पर साक्ष्य अपलोड हो रहा है...' : 'Uploading evidence to Drive...') : (lang === 'hi' ? 'साक्ष्य सफलतापूर्वक अपलोड हुआ' : 'Evidence successfully uploaded')}
             </p>
 
             {missingAcknowledged && (
               <div className="bg-[#FFF700]/15 border border-[#FFF700]/50 text-[#313079] p-4 rounded-lg mb-8 flex items-center space-x-3 w-full justify-center text-left">
                 <AlertTriangle size={20} className="shrink-0 text-[#FF6700]" />
-                <span className="font-bold uppercase tracking-wider text-xs">Missing items flagged for claims</span>
+                <span className="font-bold uppercase tracking-wider text-xs">{lang === 'hi' ? 'गायब आइटम क्लेम के लिए फ्लैग किए गए' : 'Missing items flagged for claims'}</span>
               </div>
             )}
 
@@ -2971,9 +3195,9 @@ function InspectTab({
               className={`w-full max-w-xs min-h-14 text-sm font-black uppercase tracking-[0.15em] rounded-lg shadow-lg flex items-center justify-center space-x-3 transition-all ${isUploading ? "bg-gray-400 cursor-not-allowed text-gray-200" : "bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-transform active:scale-95"}`}
             >
               {isUploading ? (
-                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div><span>Uploading Evidence...</span></>
+                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div><span>{lang === 'hi' ? 'साक्ष्य अपलोड हो रहा है...' : 'Uploading Evidence...'}</span></>
               ) : (
-                <><span>Process Next Order</span><ArrowRight size={18} /></>
+                <><span>{lang === 'hi' ? 'अगला ऑर्डर प्रोसेस करें' : 'Process Next Order'}</span><ArrowRight size={18} /></>
               )}
             </button>
           </div>
@@ -2988,18 +3212,18 @@ function InspectTab({
               <AlertOctagon size={48} />
             </div>
             <div>
-              <h3 className="text-xl font-black uppercase tracking-wider text-slate-900">{t("Camera Offline")}</h3>
+              <h3 className="text-xl font-black uppercase tracking-wider text-slate-900">{lang === 'hi' ? 'कैमरा ऑफलाइन' : 'Camera Offline'}</h3>
               <p className="text-[#313079]/80 font-bold text-xs mt-3 leading-relaxed uppercase tracking-wider">
                 {dualCameraMode
-                  ? (cameraConnectionError === "BOTH_DISCONNECTED" ? t("Warning: Both cameras are inactive. Please restart the inspection.") : t("Warning: Recording camera is inactive. Please restart the inspection."))
-                  : t("Warning: Camera is inactive. Please restart the inspection.")}
+                  ? (cameraConnectionError === "BOTH_DISCONNECTED" ? (lang === 'hi' ? 'चेतावनी: दोनों कैमरे निष्क्रिय हैं। कृपया निरीक्षण पुनः शुरू करें।' : 'Warning: Both cameras are inactive. Please restart the inspection.') : (lang === 'hi' ? 'चेतावनी: रिकॉर्डिंग कैमरा निष्क्रिय है। कृपया निरीक्षण पुनः शुरू करें।' : 'Warning: Recording camera is inactive. Please restart the inspection.'))
+                  : (lang === 'hi' ? 'चेतावनी: कैमरा निष्क्रिय है। कृपया निरीक्षण पुनः शुरू करें।' : 'Warning: Camera is inactive. Please restart the inspection.')}
               </p>
             </div>
             <button
               onClick={() => { resetProcess(); setCameraConnectionError(null); }}
               className="w-full min-h-12 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold uppercase tracking-widest text-xs rounded-lg transition-all shadow-md flex justify-center items-center space-x-2 border border-red-700"
             >
-              <RefreshCw size={14} /><span>{t("Restart Inspection")}</span>
+              <RefreshCw size={14} /><span>{lang === 'hi' ? 'निरीक्षण पुनः शुरू करें' : 'Restart Inspection'}</span>
             </button>
           </div>
         </div>
