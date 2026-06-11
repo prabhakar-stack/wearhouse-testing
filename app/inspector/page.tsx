@@ -39,6 +39,7 @@ import Link from "next/link";
 import AccessDenied from "@/app/components/AccessDenied";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
+import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
 
 type ProductCondition =
   | "GOOD_SELLABLE"
@@ -701,6 +702,8 @@ function InspectorDashboard({ role }: { role: string }) {
     return false;
   });
 
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const handleLogout = async () => {
     localStorage.removeItem("userRole");
     try {
@@ -729,14 +732,7 @@ function InspectorDashboard({ role }: { role: string }) {
       if (activeTabRef.current !== "home") {
         setActiveTab("home");
       } else {
-        const confirmLogout = window.confirm(
-          preferredLanguageRef.current === "hi"
-            ? "क्या आप लॉगआउट करना चाहते हैं?"
-            : "Do you want to logout?"
-        );
-        if (confirmLogout) {
-          handleLogout();
-        }
+        setShowLogoutConfirm(true);
       }
     };
 
@@ -834,6 +830,14 @@ function InspectorDashboard({ role }: { role: string }) {
         <ProfileModal
           user={{ name: displayName, email: userData?.email || "", role }}
           onClose={() => setShowProfile(false)}
+          preferredLanguage={preferredLanguage}
+        />
+      )}
+
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleLogout}
           preferredLanguage={preferredLanguage}
         />
       )}
@@ -1055,7 +1059,7 @@ function InspectorDashboard({ role }: { role: string }) {
             </button>
 
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className={`w-full ${
                 isSidebarMinimized ? "flex justify-center p-2.5" : "px-3 py-2 text-center"
               } bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}

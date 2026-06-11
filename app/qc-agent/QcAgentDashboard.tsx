@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
+import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
 
 interface QcAgentDashboardProps {
   userId: string;
@@ -142,6 +143,8 @@ export default function QcAgentDashboard({
     return () => clearInterval(interval);
   }, []);
 
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const handleLogout = async () => {
     localStorage.removeItem("userRole");
     try {
@@ -172,14 +175,7 @@ export default function QcAgentDashboard({
       if (activeTabRef.current !== "home") {
         setActiveTab("home");
       } else {
-        const confirmLogout = window.confirm(
-          preferredLanguageRef.current === "hi"
-            ? "क्या आप लॉगआउट करना चाहते हैं?"
-            : "Do you want to logout?"
-        );
-        if (confirmLogout) {
-          handleLogout();
-        }
+        setShowLogoutConfirm(true);
       }
     };
 
@@ -193,6 +189,13 @@ export default function QcAgentDashboard({
 
   return (
     <div className="h-screen w-screen bg-white text-[#313079] font-sans flex flex-col lg:flex-row overflow-hidden relative select-none">
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleLogout}
+          preferredLanguage={preferredLanguage}
+        />
+      )}
       {/* Mobile Top Header */}
       <header className="lg:hidden bg-black text-white shrink-0 shadow-lg z-20 flex items-center justify-between px-6 h-14 border-b border-white/10 w-full">
         <div className="flex items-center space-x-3">
@@ -399,7 +402,7 @@ export default function QcAgentDashboard({
           </button>
 
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className={`w-full ${isSidebarMinimized ? 'flex justify-center p-2.5' : 'px-3 py-2 text-center'} bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}
             title={preferredLanguage === 'hi' ? 'लॉगआउट' : 'Logout'}
           >
@@ -612,7 +615,7 @@ export default function QcAgentDashboard({
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
             >
               {preferredLanguage === 'hi' ? 'लॉगआउट' : 'Logout'}

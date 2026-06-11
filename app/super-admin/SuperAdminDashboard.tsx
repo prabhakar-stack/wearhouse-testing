@@ -7,6 +7,7 @@ import Link from 'next/link';
 import SettingsTab from './SettingsTab';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
+import LogoutConfirmModal from '@/app/components/LogoutConfirmModal';
 
 const HINDI_ALERT_DESCRIPTIONS: Record<string, string> = {
   DELIVERY_ETA_BREACH_48H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 48 घंटे अधिक विलंबित है। कूरियर के साथ तुरंत फॉलो-अप की आवश्यकता है।",
@@ -187,6 +188,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
   const [activeSopAlertId, setActiveSopAlertId] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedRole, setSelectedRole] = useState(role);
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
 
@@ -218,14 +220,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
       if (activeTabRef.current !== "alerts") {
         setActiveTab("alerts");
       } else {
-        const confirmLogout = window.confirm(
-          preferredLanguageRef.current === "hi"
-            ? "क्या आप लॉगआउट करना चाहते हैं?"
-            : "Do you want to logout?"
-        );
-        if (confirmLogout) {
-          handleLogout();
-        }
+        setShowLogoutConfirm(true);
       }
     };
 
@@ -316,6 +311,14 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
         <ProfileModal
           user={{ name: displayName, email, role }}
           onClose={() => setShowProfile(false)}
+          preferredLanguage={preferredLanguage}
+        />
+      )}
+
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleLogout}
           preferredLanguage={preferredLanguage}
         />
       )}
@@ -578,7 +581,7 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
           </button>
 
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className={`w-full ${isSidebarMinimized ? 'flex justify-center p-2.5' : 'px-3 py-2 text-center'} bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}
             title={lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           >

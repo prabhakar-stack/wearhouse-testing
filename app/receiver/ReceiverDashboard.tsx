@@ -31,6 +31,7 @@ import Link from "next/link";
 import Image from "next/image";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
+import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
 
 // ─── Marketplace → tape image map ─────────────────────────────────────────────
 const TAPE_IMAGES: Record<string, { good: string; bad: string }> = {
@@ -139,6 +140,8 @@ export default function ReceiverDashboard({
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const handleLogout = async () => {
     localStorage.removeItem("userRole");
     try {
@@ -157,7 +160,6 @@ export default function ReceiverDashboard({
   useEffect(() => {
     preferredLanguageRef.current = preferredLanguage;
   }, [preferredLanguage]);
-
   useEffect(() => {
     window.history.pushState(null, "", window.location.href);
 
@@ -167,14 +169,7 @@ export default function ReceiverDashboard({
       if (activeTabRef.current !== "home") {
         setActiveTab("home");
       } else {
-        const confirmLogout = window.confirm(
-          preferredLanguageRef.current === "hi"
-            ? "क्या आप लॉगआउट करना चाहते हैं?"
-            : "Do you want to logout?"
-        );
-        if (confirmLogout) {
-          handleLogout();
-        }
+        setShowLogoutConfirm(true);
       }
     };
 
@@ -322,6 +317,13 @@ export default function ReceiverDashboard({
 
   return (
     <div className="h-screen w-screen bg-white text-[#313079] font-sans flex flex-col lg:flex-row overflow-hidden relative select-none">
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onClose={() => setShowLogoutConfirm(false)}
+          onConfirm={handleLogout}
+          preferredLanguage={preferredLanguage}
+        />
+      )}
       {/* Mobile Top Header */}
       <header className="lg:hidden bg-black text-white shrink-0 shadow-lg z-20 flex items-center justify-between px-6 h-14 border-b border-white/10 w-full">
         <div className="flex items-center space-x-3">
@@ -498,7 +500,7 @@ export default function ReceiverDashboard({
           </button>
 
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className={`w-full ${isSidebarMinimized ? 'flex justify-center p-2.5' : 'px-3 py-2 text-center'} bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}
             title={lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           >
@@ -746,7 +748,7 @@ export default function ReceiverDashboard({
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
             >
               {lang === 'hi' ? 'साइन आउट' : 'Sign Out'}
