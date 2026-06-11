@@ -18,6 +18,14 @@ import {
   Bell,
   X,
   Activity,
+  Menu,
+  Home,
+  ChevronRight,
+  ChevronLeft,
+  LogOut,
+  ShieldAlert,
+  Info,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -44,6 +52,66 @@ function getTapeImages(marketplace: string) {
   return TAPE_IMAGES[marketplace?.toUpperCase()] ?? TAPE_IMAGES.DEFAULT;
 }
 
+// ─── Hindi Alert Translations ────────────────────────────────────────────────
+const HINDI_ALERT_DESCRIPTIONS: Record<string, string> = {
+  DELIVERY_ETA_BREACH_48H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 48 घंटे अधिक विलंबित है। कूरियर के साथ तुरंत फॉलो-अप की आवश्यकता है।",
+  DELIVERY_ETA_BREACH_72H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 72 घंटे अधिक विलंबित है। मौजूदा थ्रेड में एस्केलेशन मेल भेज दिया गया है।",
+  DELIVERY_ETA_BREACH_96H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि से 96 घंटे अधिक विलंबित है। प्रबंधन को सूचित कर दिया गया है। त्वरित समाधान आवश्यक है।",
+  GHOST_DELIVERY_T1_6H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। डिलीवरी मार्क के 6 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T1_12H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। 12 घंटे बीत जाने के बाद भी क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T1_24H: "पैकेज {trackingId} को कूरियर द्वारा डिलीवर चिह्नित किया गया है लेकिन रिसीवर द्वारा स्कैन नहीं किया गया है। 24 घंटे बीत जाने के बाद भी क्लेम दायर नहीं किया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  GHOST_DELIVERY_T2_6H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। कूरियर द्वारा इसे डिलीवर/अनडिलीवर चिह्नित किया गया है। 6 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है।",
+  GHOST_DELIVERY_T2_12H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। 12 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है। मौजूदा थ्रेड में एस्केलेशन भेजा गया है।",
+  GHOST_DELIVERY_T2_24H: "पैकेज {trackingId} रिसीवर द्वारा QC में फेल हो गया था। 24 घंटे के भीतर कोई क्लेम दायर नहीं किया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  RECEIVE_UPDATE_PENDING_2H: "पैकेज {trackingId} का QC पास हो चुका है लेकिन 2 घंटे से अधिक समय से सिस्टम में डिलीवरी की पुष्टि नहीं की गई है।",
+  RECEIVE_UPDATE_PENDING_6H: "पैकेज {trackingId} का QC पास हो चुका है लेकिन 6 घंटे से अधिक समय से डिलीवरी की पुष्टि नहीं की गई है। एडमिन को सूचित कर दिया गया है।",
+  RECV_INSP_HANDSHAKE_10AM: "कल प्राप्त एक या अधिक पैकेजों को आज सुबह 10 बजे तक इंस्पेक्टर को नहीं सौंपा गया है।",
+  RECV_INSP_HANDSHAKE_12PM: "कल प्राप्त पैकेजों को दोपहर 12 बजे तक इंस्पेक्टर को नहीं सौंपा गया है। एडमिन को सूचित कर दिया गया है।",
+  RECV_INSP_HANDSHAKE_3PM: "कल प्राप्त पैकेजों को दोपहर 3 बजे तक भी इंस्पेक्टर को नहीं सौंपा गया है। एस्केलेशन शुरू किया गया है।",
+  RECV_INSP_HANDSHAKE_NEXT_DAY: "पैकेज बिना निरीक्षण हैंडओवर के एक पूरा दिन अतिरिक्त बीत चुके हैं। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSPECTION_PENDING_6H: "पैकेज {trackingId} को 6+ घंटे पहले इंस्पेक्टर को सौंपा गया था लेकिन निरीक्षण अभी तक पूरा नहीं हुआ है।",
+  INSPECTION_PENDING_12H: "पैकेज {trackingId} 12+ घंटे से इंस्पेक्टर के पास लंबित है। एडमिन को सूचित कर दिया गया है।",
+  INSPECTION_PENDING_18H: "पैकेज {trackingId} का निरीक्षण 18 घंटे बाद भी लंबित है। एस्केलेशन ईमेल भेज दिया गया है।",
+  INSPECTION_PENDING_24H: "पैकेज {trackingId} का 24+ घंटे से निरीक्षण नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSPECTION_QC_FAILED_6H: "पैकेज {trackingId} निरीक्षण QC में फेल हो गया। निरीक्षण विफलता के 6 घंटे बाद भी कोई क्लेम दायर नहीं किया गया है।",
+  INSPECTION_QC_FAILED_12H: "पैकेज {trackingId} निरीक्षण QC में फेल हो गया। विफलता के 12 घंटे बाद भी कोई क्लेम दायर नहीं किया गया है। मौजूदा थ्रेड में एस्केलेशन भेजा गया है।",
+  INSPECTION_QC_FAILED_24H: "पैकेज {trackingId} 24+ घंटे पहले QC में फेल हुआ था और कोई क्लेम नहीं उठाया गया है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INSP_RECOVERY_HANDSHAKE_12H: "निरीक्षण के बाद {trackingId} से प्राप्त SKU को रिकवरी के लिए चिह्नित किया गया था लेकिन 12 घंटे के भीतर रिकवरी टीम को नहीं सौंपा गया है।",
+  INSP_RECOVERY_HANDSHAKE_18H: "निरीक्षण के बाद {trackingId} से प्राप्त SKU को रिकवरी के लिए चिह्नित किया गया था लेकिन 18 घंटे बाद भी नहीं सौंपा गया है। एडमिन को सूचित किया गया है।",
+  RECOVERY_REJECTION_1_REALTIME: "रिकवरी टीम को सौंपा गया {trackingId} का एक SKU क्षतिग्रस्त चिह्नित किया गया है। एडमिन कार्रवाई आवश्यक है।",
+  RECOVERY_REJECTION_1_6H: "रिकवरी में SKU {trackingId} को 6+ घंटे पहले क्षतिग्रस्त चिह्नित किया गया था। कोई एडमिन कार्रवाई नहीं की गई है। एस्केलेशन शुरू किया गया है।",
+  RECOVERY_REJECTION_2_1H: "एडमिन ने {trackingId} के लिए रिकवरी क्षति को स्वीकार कर लिया है लेकिन 1 घंटे के भीतर क्लेम नहीं उठाया गया है।",
+  RECOVERY_REJECTION_2_6H: "एडमिन ने 6+ घंटे पहले {trackingId} के लिए रिकवरी क्षति स्वीकार की थी लेकिन कोई क्लेम दायर नहीं हुआ है। एस्केलेशन शुरू किया गया है।",
+  RECOVERY_REJECTION_2_12H: "स्वीकृत रिकवरी क्षति {trackingId} के लिए 12 घंटे बाद भी क्लेम दायर नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  RECOVERY_QC_HANDSHAKE_24H: "एक पुनःप्राप्ति योग्य SKU {trackingId} रिकवरी टीम के पास 24+ घंटे से है और इसे इन्वेंटराइजेशन के लिए QC को नहीं सौंपा गया है।",
+  RECOVERY_QC_HANDSHAKE_36H: "पुनर्याप्त करने योग्य SKU {trackingId} को 36+ घंटे से QC को नहीं सौंपा गया है। एडमिन को सूचित कर दिया गया है।",
+  INSP_QC_HANDSHAKE_24H: "निरीक्षण के बाद इन्वेंटराइजेशन के लिए चिह्नित SKU {trackingId} को 24 घंटे के भीतर QC टीम को नहीं सौंपा गया है।",
+  INSP_QC_HANDSHAKE_36H: "QC को इन्वेंटराइजेशन हैंडओवर {trackingId} 36+ घंटे से विलंबित है। एडमिन को सूचित कर दिया गया है।",
+  QC_REJECTION_1_REALTIME: "QC टीम को सौंपा गया {trackingId} का SKU क्षतिग्रस्त पाया गया है। तत्काल एडमिन कार्रवाई आवश्यक है।",
+  INSP_QC_DAMAGE_REALTIME: "QC टीम को सौंपा गया {trackingId} का SKU क्षतिग्रस्त पाया गया है। तत्काल एडमिन कार्रवाई आवश्यक है।",
+  QC_REJECTION_1_24H: "QC में SKU {trackingId} को 24+ घंटे पहले क्षतिग्रस्त चिह्नित किया गया था। कोई एडमिन कार्रवाई नहीं हुई। एस्केलेशन शुरू किया गया है।",
+  QC_REJECTION_2_1H: "एडमिन ने {trackingId} के लिए QC क्षति स्वीकार की लेकिन 1 घंटे के भीतर क्लेम दायर नहीं किया।",
+  QC_REJECTION_2_6H: "एडमिन ने 6+ घंटे पहले {trackingId} के लिए QC क्षति स्वीकार की थी। क्लेम अभी भी दायर नहीं हुआ। एस्केलेशन शुरू किया गया है।",
+  QC_REJECTION_2_24H: "स्वीकृत QC क्षति {trackingId} के लिए 24 घंटे बाद भी क्लेम दायर नहीं हुआ है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  INVENTORISATION_PENDING_12H: "SKU {trackingId} को QC टीम के पास 12+ घंटे से रखा गया है और अभी तक इन्वेंटराइजेशन नहीं हुआ है।",
+  INVENTORISATION_PENDING_18H: "SKU {trackingId} को QC में 18+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। एडमिन को सूचित कर दिया गया है।",
+  INVENTORISATION_PENDING_24H: "SKU {trackingId} को QC में 24+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। एस्केलेशन शुरू किया गया है।",
+  INVENTORISATION_PENDING_48H: "SKU {trackingId} को QC में 48+ घंटे बीत चुके हैं और इन्वेंटराइजेशन लंबित है। नेतृत्व को एस्केलेट कर दिया गया है।",
+  ORDER_NOT_SHIPPED_5D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन Amazon ने 5 दिनों के बाद भी इस शिपमेंट को डिस्पैच नहीं किया है। रिम्बर्समेंट विंडो ~9 दिनों में बंद हो जाएगी।",
+  ORDER_NOT_SHIPPED_10D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन 10 दिनों के बाद भी कोई डिस्पैच नहीं हुआ है। Amazon रिम्बर्समेंट विंडो ~4-5 दिनों में बंद हो जाएगी। तत्काल कार्रवाई आवश्यक है।",
+  ORDER_NO_TRACKING_ID: "रिमूवल ऑर्डर {orderId} का Amazon डेटा में शिपमेंट रिकॉर्ड है लेकिन कोई ट्रैकिंग नंबर असाइन नहीं किया गया है।",
+  RO_DISPATCH_BREACH_5D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन Amazon ने 5 दिनों के बाद भी इस शिपमेंट को डिस्पैच नहीं किया है। रिम्बर्समेंट विंडो ~9 दिनों में बंद हो जाएगी।",
+  RO_DISPATCH_BREACH_10D: "रिमूवल ऑर्डर {orderId} के लिए अनुरोध भेजा गया था लेकिन 10 दिनों के बाद भी कोई डिस्पैच नहीं हुआ है। Amazon रिम्बर्समेंट विंडो ~4-5 दिनों में बंद हो जाएगी। तत्काल कार्रवाई आवश्यक है।",
+  RO_TRACKING_NO_ASSIGNED: "रिमूवल ऑर्डर {orderId} का Amazon डेटा में शिपमेंट रिकॉर्ड है लेकिन कोई ट्रैकिंग नंबर असाइन नहीं किया गया है।"
+};
+
+const LEVEL_CONFIG: Record<string, { color: string; bgColor: string; borderColor: string; icon: any; label: string; action: string }> = {
+  L4: { color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-300', icon: <ShieldAlert size={18} className="text-red-600" />, label: 'CRITICAL', action: 'Phone + WhatsApp' },
+  L3: { color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-300', icon: <AlertTriangle size={18} className="text-orange-600" />, label: 'HIGH', action: 'Dashboard Banner' },
+  L2: { color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-300', icon: <Bell size={18} className="text-amber-600" />, label: 'MEDIUM', action: 'Email / Push' },
+  L1: { color: 'text-slate-600', bgColor: 'bg-slate-50', borderColor: 'border-slate-300', icon: <Info size={18} className="text-slate-500" />, label: 'LOW', action: 'In-app only' },
+};
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type CheckState = "null" | "good" | "damaged";
 type Marketplace = "AMAZON" | "SHOPIFY" | string;
@@ -68,11 +136,70 @@ export default function ReceiverDashboard({
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleLogout = async () => {
+    localStorage.removeItem("userRole");
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {}
+    router.push("/login");
+  };
+
+  const activeTabRef = useRef(activeTab);
+  const preferredLanguageRef = useRef(preferredLanguage);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    preferredLanguageRef.current = preferredLanguage;
+  }, [preferredLanguage]);
+
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+
+      if (activeTabRef.current !== "home") {
+        setActiveTab("home");
+      } else {
+        const confirmLogout = window.confirm(
+          preferredLanguageRef.current === "hi"
+            ? "क्या आप लॉगआउट करना चाहते हैं?"
+            : "Do you want to logout?"
+        );
+        if (confirmLogout) {
+          handleLogout();
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  const toggleSidebarMinimized = () => {
+    setIsSidebarMinimized((prev) => {
+      const next = !prev;
+      localStorage.setItem("isSidebarMinimized", String(next));
+      return next;
+    });
+  };
+
   useEffect(() => {
     setPreferredLanguage(getStoredLanguage());
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
+    if (typeof window !== 'undefined') {
+      setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
+    }
     return () => {
       window.removeEventListener("preferred-language-changed", syncLanguage);
       window.removeEventListener("storage", syncLanguage);
@@ -194,259 +321,366 @@ export default function ReceiverDashboard({
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white text-[#313079] select-none font-sans overflow-hidden relative">
-      <header className="p-4 border-b border-[#313079]/10 shrink-0 bg-white flex items-center justify-between shadow-sm z-20">
-        <div className="flex items-center">
-          {activeTab !== "home" && (
-            <button
-              onClick={() => setActiveTab("home")}
-              className="mr-4 text-[#313079]/70 hover:text-[#313079]"
-            >
-              <ArrowLeft size={24} />
-            </button>
-          )}
+    <div className="h-screen w-screen bg-white text-[#313079] font-sans flex flex-col lg:flex-row overflow-hidden relative select-none">
+      {/* Mobile Top Header */}
+      <header className="lg:hidden bg-black text-white shrink-0 shadow-lg z-20 flex items-center justify-between px-6 h-14 border-b border-white/10 w-full">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-[#FF6700] rounded-lg flex items-center justify-center shadow-lg shadow-black/20 shrink-0">
+            <QrCode className="text-white" size={16} />
+          </div>
           <div>
-            <h1 className="text-xl font-bold uppercase tracking-widest text-[#FF6700]">
-              {activeTab === "home"
-                ? (lang === 'hi' ? 'रिसीवर हब' : 'Receiver Hub')
-                : activeTab === "receive"
-                  ? (lang === 'hi' ? 'पैकेज प्राप्ति' : 'Package Intake')
-                  : activeTab === "profile"
-                    ? (lang === 'hi' ? 'प्रोफ़ाइल' : 'Profile')
-                    : activeTab === "expected"
-                      ? (lang === 'hi' ? 'अपेक्षित' : 'Expected')
-                      : activeTab === "alerts"
-                        ? (lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts')
-                        : (lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger')}
-            </h1>
-            <p className="text-[10px] uppercase text-[#313079]/60 tracking-wider mt-1 font-bold">
-              {resolvedName} &bull; {role.replace("_", " ")}
-            </p>
+            <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none truncate max-w-[120px]" title={resolvedName}>{resolvedName}</h1>
+            <p className="text-[#FF6700] text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5">{role.replace(/_/g, ' ')}</p>
           </div>
         </div>
-
+        
         <div className="flex items-center space-x-4">
-          {(role === 'ADMIN' || role === 'SUPER_ACCESS') && (
-            <div className="relative">
-              <select
-                value={typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'RECEIVER') : 'RECEIVER'}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  localStorage.setItem('userRole', val);
-                  if (val === 'SUPER_ACCESS') {
-                    window.location.href = '/super-admin';
-                  } else if (val === 'ADMIN') {
-                    window.location.href = '/admin';
-                  } else if (val === 'RECEIVER') {
-                    window.location.href = '/receiver';
-                  } else if (val === 'CLAIMS_SPECIALIST') {
-                    window.location.href = '/claims-specialist';
-                  } else if (val === 'RECOVERER') {
-                    window.location.href = '/recoverer';
-                  } else if (val === 'QC_AGENT') {
-                    window.location.href = '/qc-agent';
-                  } else {
-                    window.location.href = '/inspector';
-                  }
-                }}
-                className="bg-slate-100 text-[#313079] text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-200 focus:outline-none cursor-pointer appearance-none pr-6"
-              >
-                <option value="SUPER_ACCESS">{lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}</option>
-                <option value="ADMIN">{lang === 'hi' ? 'एडमिन' : 'Admin'}</option>
-                <option value="RECEIVER">{lang === 'hi' ? 'रिसीवर' : 'Receiver'}</option>
-                <option value="INSPECTOR">{lang === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}</option>
-                <option value="CLAIMS_SPECIALIST">{lang === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}</option>
-                <option value="RECOVERER">{lang === 'hi' ? 'रिकवरर' : 'Recoverer'}</option>
-                <option value="QC_AGENT">{lang === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-slate-500">
-                <ChevronDown size={12} />
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className={`relative p-1 hover:text-[#313079] transition-colors ${showNotifications ? "text-[#313079]" : "text-[#FF6700]"}`}
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)} 
+            className={`relative p-1 hover:text-white transition-colors ${showNotifications ? 'text-white' : 'text-slate-400'}`}
             title="Notifications & Alerts"
           >
-            <Bell size={26} />
+            <Bell size={22} />
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-white animate-pulse">
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border border-black animate-pulse">
                 {alertCount}
               </span>
             )}
           </button>
-
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`p-1 hover:text-[#313079] transition-colors ${activeTab === "profile" ? "text-[#313079]" : "text-[#FF6700]"}`}
-            title="Profile"
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            className="p-1 text-white/70 hover:text-white focus:outline-none"
           >
-            <User size={26} />
+            <Menu size={22} />
           </button>
         </div>
       </header>
 
-      {showNotifications && (
-        <div className="absolute right-4 top-16 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] flex flex-col max-h-[500px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
-            <div className="flex items-center space-x-2">
-              <Bell className="text-[#FF6700]" size={16} />
-              <span className="text-xs font-black uppercase tracking-widest text-[#313079]">
-                {lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}
-              </span>
-              {alerts.length > 0 && (
-                <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">
-                  {alerts.length}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                setShowNotifications(false);
-                setActiveSopAlertId(null);
-              }}
-              className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar max-h-[440px] bg-slate-50/30">
-            {alerts.length === 0 ? (
-              <div className="text-center py-12 flex flex-col items-center">
-                <CheckCircle2
-                  size={36}
-                  className="text-green-500 mb-2 opacity-50"
-                />
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                  {lang === 'hi' ? 'सब ठीक है — कोई अलर्ट नहीं' : 'All Clear — No Pending Alerts'}
-                </p>
-              </div>
-            ) : (
-              alerts.map((alert) => {
-                return (
-                  <div
-                    key={alert.id}
-                    className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-1 relative pl-4 text-left"
-                  >
-                    <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
-                    <div className="flex justify-between items-start">
-                      <div className="min-w-0 flex-1">
-                        <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
-                          {alert.level} - {alert.type}
-                        </span>
-                        <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">
-                          {alert.title}
-                        </h4>
-                        <p className="text-[10px] text-slate-500 mt-1 leading-normal">
-                          {alert.description}
-                        </p>
-                        {alert.manifest?.trackingId && (
-                          <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
-                            AWB: {alert.manifest.trackingId}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+      {/* Mobile Sidebar Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300"
+        />
       )}
 
-      <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FF6700]/5 p-4 pb-10 relative">
-        {activeTab === "home" && (
-          <div className="max-w-lg mx-auto space-y-4 pt-6 px-2">
-            <button
-              onClick={() => setActiveTab("expected")}
-              className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                  {lang === 'hi' ? 'अपेक्षित डिलीवरी' : 'Expected Deliveries'}
-                  <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
-                    {expectedCount}
-                  </span>
-                </h3>
-                <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {lang === 'hi' ? 'आज के अपेक्षित पैकेज' : 'Packages expected today'}
+      {/* Left Navigation Sidebar */}
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 lg:z-20 ${
+          isSidebarMinimized ? 'lg:w-16 w-64' : 'w-64'
+        } bg-black text-white flex flex-col border-r border-black/10 transform transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Brand */}
+        <div className={`flex items-center ${isSidebarMinimized ? 'justify-center' : 'justify-between'} px-6 h-16 border-b border-white/10 shrink-0`}>
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-[#FF6700] rounded-lg flex items-center justify-center shadow-lg shadow-black/20 shrink-0">
+              <QrCode className="text-white" size={16} />
+            </div>
+            {!isSidebarMinimized && (
+              <div className="text-left animate-in fade-in duration-200">
+                <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none">
+                  {lang === 'hi' ? 'रिसीवर' : 'RECEIVER'}
+                </h1>
+              </div>
+            )}
+          </div>
+          {/* Collapse toggle (only desktop) */}
+          <button
+            onClick={toggleSidebarMinimized}
+            className="hidden lg:block text-white/50 hover:text-white p-1 hover:bg-white/10 rounded transition-colors"
+            title={
+              isSidebarMinimized
+                ? lang === 'hi' ? 'नेविगेशन विस्तृत करें' : 'Expand Sidebar'
+                : lang === 'hi' ? 'नेविगेशन छोटा करें' : 'Collapse Sidebar'
+            }
+          >
+            {isSidebarMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+          <button 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="lg:hidden text-white/50 hover:text-white p-1"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+          <TabButton id="home"     icon={<Home size={14} />}        label={lang === 'hi' ? 'होम' : 'Home'}                  activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
+          <TabButton id="expected" icon={<FileText size={14} />}    label={lang === 'hi' ? 'अपेक्षित डिलीवरी' : 'Expected Deliveries'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={expectedCount > 0 ? expectedCount : undefined} isMinimized={isSidebarMinimized} />
+          <TabButton id="receive"  icon={<QrCode size={14} />}      label={lang === 'hi' ? 'पैकेज प्राप्त करें' : 'Receive Package'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
+          <TabButton id="ledger"   icon={<Box size={14} />}         label={lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={ledgerCount > 0 ? ledgerCount : undefined} isMinimized={isSidebarMinimized} />
+          <TabButton id="alerts"   icon={<Bell size={14} />}        label={lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'} activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} isMinimized={isSidebarMinimized} />
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className={`p-4 border-t border-white/10 shrink-0 ${isSidebarMinimized ? 'flex flex-col items-center space-y-4' : 'space-y-3'}`}>
+          {!isSidebarMinimized && (role === 'ADMIN' || role === 'SUPER_ACCESS') && (
+            <div className="flex flex-col space-y-1.5 px-2 w-full animate-in fade-in duration-200">
+              <label className="text-[10px] uppercase tracking-wider text-white/40 font-bold">
+                {lang === 'hi' ? 'भूमिका बदलें' : 'Switch Role'}
+              </label>
+              <div className="relative">
+                <select
+                  value={typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'RECEIVER') : 'RECEIVER'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    localStorage.setItem('userRole', val);
+                    if (val === 'SUPER_ACCESS') {
+                      window.location.href = '/super-admin';
+                    } else if (val === 'ADMIN') {
+                      window.location.href = '/admin';
+                    } else if (val === 'RECEIVER') {
+                      window.location.href = '/receiver';
+                    } else if (val === 'CLAIMS_SPECIALIST') {
+                      window.location.href = '/claims-specialist';
+                    } else if (val === 'RECOVERER') {
+                      window.location.href = '/recoverer';
+                    } else if (val === 'QC_AGENT') {
+                      window.location.href = '/qc-agent';
+                    } else {
+                      window.location.href = '/inspector';
+                    }
+                  }}
+                  className="w-full bg-white/10 text-white/90 text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-1 focus:ring-[#FF6700] hover:bg-white/20 transition-all cursor-pointer appearance-none pr-8"
+                >
+                  <option value="SUPER_ACCESS" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}
+                  </option>
+                  <option value="ADMIN" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'एडमिन' : 'Admin'}
+                  </option>
+                  <option value="RECEIVER" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'रिसीवर' : 'Receiver'}
+                  </option>
+                  <option value="INSPECTOR" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}
+                  </option>
+                  <option value="CLAIMS_SPECIALIST" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}
+                  </option>
+                  <option value="RECOVERER" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'रिकवरर' : 'Recoverer'}
+                  </option>
+                  <option value="QC_AGENT" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}
+                  </option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white/60">
+                  <ChevronDown size={14} />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {!isSidebarMinimized && (role === 'ADMIN' || role === 'SUPER_ACCESS') && <div className="h-px bg-white/10 w-full"></div>}
+
+          {/* Clickable Profile Section */}
+          <button
+            onClick={() => setActiveTab("profile")}
+            className={`w-full flex items-center ${isSidebarMinimized ? 'justify-center' : 'space-x-3 px-3'} py-2.5 rounded-lg hover:bg-white/10 transition-colors group text-left ${activeTab === 'profile' ? 'bg-white/10 font-bold' : ''}`}
+            title={lang === 'hi' ? 'प्रोफ़ाइल देखें' : 'View Profile'}
+          >
+            <div className="shrink-0 w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black">
+              {initials}
+            </div>
+            {!isSidebarMinimized && (
+              <div className="min-w-0 flex-1 animate-in fade-in duration-200">
+                <p className="text-xs font-bold text-white leading-tight break-words">{resolvedName}</p>
+                <p className="text-[9px] uppercase tracking-widest text-[#FF6700] font-bold mt-0.5">
+                  {role.replace(/_/g, ' ')}
                 </p>
               </div>
-              <FileText
-                size={32}
-                className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
-              />
-            </button>
+            )}
+            {!isSidebarMinimized && <User size={12} className="text-[#FF6700]/70 group-hover:text-white transition-colors shrink-0" />}
+          </button>
 
-            <button
-              onClick={() => setActiveTab("receive")}
-              className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
-                  {lang === 'hi' ? 'पैकेज प्राप्त करें' : 'Receive Package'}
-                </h3>
-                <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {lang === 'hi' ? 'कैमरा स्कैनर चालू करें' : 'Launch camera scanner sequence'}
-                </p>
-              </div>
-              <QrCode
-                size={32}
-                className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
-              />
-            </button>
+          <button
+            onClick={handleLogout}
+            className={`w-full ${isSidebarMinimized ? 'flex justify-center p-2.5' : 'px-3 py-2 text-center'} bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}
+            title={lang === 'hi' ? 'लॉगआउट' : 'Logout'}
+          >
+            {isSidebarMinimized ? <LogOut size={16} /> : lang === 'hi' ? 'लॉगआउट' : 'Logout'}
+          </button>
+        </div>
+      </aside>
 
-            <button
-              onClick={() => setActiveTab("ledger")}
-              className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
-                  {lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger'}
-                  <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
-                    {ledgerCount}
-                  </span>
-                </h3>
-                <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {lang === 'hi' ? 'सक्रिय कस्टडी स्टैक देखें' : 'View active custody stack'}
-                </p>
-              </div>
-              <Box
-                size={32}
-                className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
-              />
-            </button>
-
-            <button
-              onClick={() => setActiveTab("alerts")}
-              className="w-full relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] transition-all p-6 text-left flex items-center justify-between overflow-hidden rounded-xl shadow-sm"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative z-10">
-                <h3 className="text-lg font-bold uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-hidden flex flex-col bg-white">
+        {showNotifications && (
+          <div className="absolute right-4 top-16 w-[calc(100vw-32px)] sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] flex flex-col max-h-[500px] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 backdrop-blur-sm">
+              <div className="flex items-center space-x-2">
+                <Bell className="text-[#FF6700]" size={16} />
+                <span className="text-xs font-black uppercase tracking-widest text-[#313079]">
                   {lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}
-                  {alertCount > 0 && (
-                    <span className="ml-2.5 bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0 animate-pulse">
-                      {alertCount}
-                    </span>
-                  )}
-                </h3>
-                <p className="text-xs text-[#313079]/60 mt-1 font-mono uppercase tracking-wider">
-                  {lang === 'hi' ? 'परिचालन एस्केलेशन और अलर्ट' : 'Operational escalations & alerts'}
-                </p>
+                </span>
+                {alerts.length > 0 && (
+                  <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black">
+                    {alerts.length}
+                  </span>
+                )}
               </div>
-              <Bell
-                size={32}
-                className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10"
-              />
-            </button>
+              <button
+                onClick={() => {
+                  setShowNotifications(false);
+                  setActiveSopAlertId(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar max-h-[440px] bg-slate-50/30">
+              {alerts.length === 0 ? (
+                <div className="text-center py-12 flex flex-col items-center">
+                  <CheckCircle2
+                    size={36}
+                    className="text-green-500 mb-2 opacity-50"
+                  />
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                    {lang === 'hi' ? 'सब ठीक है — कोई अलर्ट नहीं' : 'All Clear — No Pending Alerts'}
+                  </p>
+                </div>
+              ) : (
+                alerts.map((alert) => {
+                  return (
+                    <div
+                      key={alert.id}
+                      className="bg-white border border-[#313079]/10 p-3 rounded-xl shadow-sm flex flex-col space-y-1 relative pl-4 text-left"
+                    >
+                      <div className="absolute inset-y-0 left-0 w-1 bg-[#FF6700] rounded-l-xl" />
+                      <div className="flex justify-between items-start">
+                        <div className="min-w-0 flex-1">
+                          <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
+                            {alert.level} - {alert.type}
+                          </span>
+                          <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">
+                            {alert.title}
+                          </h4>
+                          <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                            {alert.description}
+                          </p>
+                          {alert.manifest?.trackingId && (
+                            <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
+                              AWB: {alert.manifest.trackingId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className={`flex-1 custom-scrollbar bg-slate-50 ${activeTab === "alerts" ? "overflow-hidden p-0" : "overflow-y-auto p-6"}`}>
+        {activeTab === "home" && (
+          <div className="max-w-4xl mx-auto p-4 space-y-8 animate-in fade-in slide-in-from-bottom duration-300">
+            {/* Header Banner */}
+            <div className="flex flex-col space-y-2 text-left border-b border-[#313079]/10 pb-4">
+              <h2 className="text-2xl font-black tracking-widest uppercase text-[#313079]">
+                {lang === 'hi' ? 'रिसीवर कंट्रोल सेंटर' : 'Receiver Control Center'}
+              </h2>
+              <p className="text-xs font-mono uppercase tracking-widest text-[#313079]/50">
+                {lang === 'hi' ? 'इनबाउंड लॉजिस्टिक्स और पैकेज अंतर्ग्रहण संचालन' : 'Inbound Logistics & Package Intake Operations'}
+              </p>
+            </div>
+
+            {/* Grid of Action Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <button
+                onClick={() => setActiveTab("expected")}
+                className="relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 text-left flex items-center justify-between overflow-hidden rounded-2xl shadow-sm transform"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative z-10 flex-1 pr-4">
+                  <h3 className="text-lg font-black uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                    {lang === 'hi' ? 'अपेक्षित डिलीवरी' : 'Expected Deliveries'}
+                    <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                      {expectedCount}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#313079]/65 mt-2 tracking-wide font-medium">
+                    {lang === 'hi' ? 'आज प्राप्त होने वाले शिपमेंट की अपेक्षित सूची देखें।' : 'Check scheduled returns and shipments expected at the loading dock today.'}
+                  </p>
+                </div>
+                <FileText
+                  size={36}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10 shrink-0"
+                />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("receive")}
+                className="relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 text-left flex items-center justify-between overflow-hidden rounded-2xl shadow-sm transform"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative z-10 flex-1 pr-4">
+                  <h3 className="text-lg font-black uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors">
+                    {lang === 'hi' ? 'पैकेज प्राप्त करें' : 'Receive Package'}
+                  </h3>
+                  <p className="text-xs text-[#313079]/65 mt-2 tracking-wide font-medium">
+                    {lang === 'hi' ? 'शिपमेंट बारकोड को स्कैन करने और स्थिति सत्यापन दर्ज करने के लिए कैमरा चालू करें।' : 'Launch camera scanning sequence to scan return codes and inspect packaging tape.'}
+                  </p>
+                </div>
+                <QrCode
+                  size={36}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10 shrink-0"
+                />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("ledger")}
+                className="relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 text-left flex items-center justify-between overflow-hidden rounded-2xl shadow-sm transform"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative z-10 flex-1 pr-4">
+                  <h3 className="text-lg font-black uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                    {lang === 'hi' ? 'हैंडओवर बही' : 'Handover Ledger'}
+                    <span className="ml-2.5 bg-[#FF6700]/10 text-[#FF6700] border border-[#FF6700]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0">
+                      {ledgerCount}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#313079]/65 mt-2 tracking-wide font-medium">
+                    {lang === 'hi' ? 'प्राप्त पैकेजों को इंस्पेक्टरों को सौंपने के लिए वर्तमान बही सूची का प्रबंधन करें।' : 'View items in custody stack and prepare them for standard handover protocols.'}
+                  </p>
+                </div>
+                <Box
+                  size={36}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10 shrink-0"
+                />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("alerts")}
+                className="relative group border border-[#313079]/10 bg-white hover:border-[#FF6700] hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 text-left flex items-center justify-between overflow-hidden rounded-2xl shadow-sm transform"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FF6700]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative z-10 flex-1 pr-4">
+                  <h3 className="text-lg font-black uppercase tracking-widest text-[#313079] group-hover:text-[#FF6700] transition-colors flex items-center">
+                    {lang === 'hi' ? 'सक्रिय अलर्ट' : 'Active Alerts'}
+                    {alertCount > 0 && (
+                      <span className="ml-2.5 bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-mono font-black shrink-0 animate-pulse">
+                        {alertCount}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-[#313079]/65 mt-2 tracking-wide font-medium">
+                    {lang === 'hi' ? 'महत्वपूर्ण विसंगतियों, समय सीमा के उल्लंघन और एस्केलेशन की समीक्षा करें।' : 'Monitor operational bottlenecks, delivery SLA breaches, and SLA escalations.'}
+                  </p>
+                </div>
+                <Bell
+                  size={36}
+                  className="text-[#313079]/30 group-hover:text-[#FF6700] transition-colors relative z-10 shrink-0"
+                />
+              </button>
+            </div>
           </div>
         )}
 
@@ -512,13 +746,7 @@ export default function ReceiverDashboard({
             </div>
 
             <button
-              onClick={async () => {
-                localStorage.removeItem("userRole");
-                try {
-                  await fetch("/api/auth/logout", { method: "POST" });
-                } catch (e) {}
-                router.push("/login");
-              }}
+              onClick={handleLogout}
               className="w-full py-4 border border-red-400 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold uppercase tracking-widest text-xs rounded-xl"
             >
               {lang === 'hi' ? 'साइन आउट' : 'Sign Out'}
@@ -542,6 +770,7 @@ export default function ReceiverDashboard({
         {activeTab === "ledger" && (
           <LedgerTab preferredLanguage={preferredLanguage} />
         )}
+        </div>
       </main>
     </div>
   );
@@ -1844,275 +2073,668 @@ function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
 
 // ─── Alerts Tab ─────────────────────────────────────────────────────────────
 function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: PreferredLanguage }) {
-  const t = (text: string) => translateInstruction(text, preferredLanguage);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [stats, setStats] = useState<any>({
-    resolvedToday: 0,
-    sopFollowedToday: 0,
-    adherenceRate: 100,
-  });
+  const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
+  const t = (text: string) => translateInstruction(text, preferredLanguage);
+
+  const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
+  const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
+  const [sopChecked, setSopChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [resolutionText, setResolutionText] = useState("");
-  const [sopChecked, setSopChecked] = useState(false);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [resolutionText, setResolutionText] = useState('');
   const [resolving, setResolving] = useState(false);
-  const [resolveError, setResolveError] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
 
-  const fetchAlerts = async () => {
+  const [editingSopType, setEditingSopType] = useState<string | null>(null);
+  const [editingSopSteps, setEditingSopSteps] = useState<{ stepOrder: number; instruction: string }[]>([]);
+  const [savingSop, setSavingSop] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkResolutionText, setBulkResolutionText] = useState('');
+  const [bulkResolving, setBulkResolving] = useState(false);
+  const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
+  const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
+  const [resolveError, setResolveError] = useState('');
+
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/alerts?dashboard=true", {
-        headers: { "x-user-language": preferredLanguage }
+      const res = await fetch(`/api/alerts?resolved=${showResolved}&dashboard=true`, {
+        headers: { "x-user-language": preferredLanguage },
       });
       const data = await res.json();
       if (res.ok) {
         setAlerts(data.alerts || []);
         setSopMap(data.sopMap || {});
+        if (data.counts) setCounts(data.counts);
         if (data.stats) setStats(data.stats);
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+    } finally { setLoading(false); }
+  }, [showResolved, preferredLanguage]);
 
   useEffect(() => {
-    fetchAlerts();
-    const iv = setInterval(fetchAlerts, 10000);
-    return () => clearInterval(iv);
-  }, []);
+    queueMicrotask(() => { fetchAlerts(); });
+  }, [fetchAlerts]);
+
+  useEffect(() => {
+    if (alerts.length > 0) {
+      if (!alerts.some((a) => a.id === selectedAlertId)) {
+        setSelectedAlertId(alerts[0].id);
+      }
+    } else {
+      setSelectedAlertId(null);
+    }
+  }, [alerts, selectedAlertId]);
 
   const handleResolve = async (alertId: string) => {
-    setResolveError("");
+    setResolveError('');
     if (!resolutionText.trim()) {
-      setResolveError("Resolution notes are required.");
+      setResolveError('Resolution notes are required.');
       return;
     }
     if (!sopChecked) {
-      setResolveError("You must acknowledge following the SOP.");
+      setResolveError('You must acknowledge following the SOP.');
       return;
     }
     setResolving(true);
     try {
-      const res = await fetch("/api/alerts", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alertId,
-          resolution: resolutionText,
-          sopAcknowledged: true,
-        }),
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId, resolution: resolutionText, sopAcknowledged: true }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setResolveError(data.error || "Failed to resolve");
+        setResolveError(data.error || 'Failed to resolve');
         return;
       }
       setExpandedId(null);
-      setResolutionText("");
+      setSelectedAlertId(null);
+      setResolutionText('');
       setSopChecked(false);
       fetchAlerts();
+    } finally { setResolving(false); }
+  };
+
+  const startEditSop = (alertType: string) => {
+    const existing = sopMap[alertType] || [];
+    setEditingSopSteps(existing.length > 0
+      ? existing.map(s => ({ stepOrder: s.stepOrder, instruction: s.instruction }))
+      : [{ stepOrder: 1, instruction: '' }]
+    );
+    setEditingSopType(alertType);
+  };
+
+  const saveSop = async () => {
+    if (!editingSopType) return;
+    setSavingSop(true);
+    try {
+      await fetch('/api/alerts/sop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertType: editingSopType, steps: editingSopSteps }),
+      });
+      setEditingSopType(null);
+      fetchAlerts();
+    } finally { setSavingSop(false); }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(alerts.map((a: any) => a.id)));
+  const selectNone = () => setSelectedIds(new Set());
+  const selectNext10 = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      alerts.filter((a: any) => !next.has(a.id)).slice(0, 10).forEach((a: any) => next.add(a.id));
+      return next;
+    });
+  };
+
+  const handleBulkResolve = async () => {
+    if (selectedIds.size === 0) return;
+    if (!bulkResolutionText.trim() && !confirm(`Resolve ${selectedIds.size} alert${selectedIds.size > 1 ? 's' : ''} without notes?`)) return;
+    setBulkResolving(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(alertId =>
+          fetch('/api/alerts', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alertId, resolution: bulkResolutionText.trim() || 'Bulk resolved by receiver', forceResolve: false }),
+          })
+        )
+      );
+      setSelectedIds(new Set());
+      setBulkResolutionText('');
+      fetchAlerts();
     } finally {
-      setResolving(false);
+      setBulkResolving(false);
     }
   };
 
-  return (
-    <div className="max-w-lg mx-auto pb-10 px-2">
-      <div className="mb-6 flex items-center justify-between border-b border-[#313079]/10 pb-4">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-          {t("Active Alerts")}
-        </h2>
-        <span className="bg-white border border-red-200 text-red-600 px-3 py-1 font-mono text-xs rounded-full shadow-sm font-bold">
-          {alerts.length} {t("ALERTS")}
-        </span>
-      </div>
+  const handleQuickResolve = async (alertId: string) => {
+    setQuickResolvingId(alertId);
+    setResolveDataErrors(prev => { const next = { ...prev }; delete next[alertId]; return next; });
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId, resolution: 'Resolved by receiver', forceResolve: false }),
+      });
+      const data = await res.json();
+      if (res.status === 422 && data.dataIssue) {
+        setResolveDataErrors(prev => ({ ...prev, [alertId]: data.error }));
+      } else if (res.ok) {
+        setExpandedId(null);
+        setSelectedAlertId(null);
+        fetchAlerts();
+      } else {
+        setResolveDataErrors(prev => ({ ...prev, [alertId]: data.error || 'Failed to resolve alert.' }));
+      }
+    } catch {
+      setResolveDataErrors(prev => ({ ...prev, [alertId]: 'Network error. Please try again.' }));
+    } finally {
+      setQuickResolvingId(null);
+    }
+  };
 
-      {/* SOP Compliance stats bar */}
-      <div className="mb-4 bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 text-white rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-lg bg-[#FF6700]/15 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700]">
-            <Activity size={18} />
-          </div>
-          <div className="text-left">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">
-              {t("SOP Compliance Score")}
-            </h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-              {t("Real-time daily adherence stack")}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-6 text-center">
-          <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-              {t("Resolved Today")}
-            </p>
-            <p className="text-lg font-mono font-black text-white mt-0.5">
-              {stats.resolvedToday}
-            </p>
-          </div>
-          <div className="h-6 w-px bg-slate-800" />
-          <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-              {t("SOP Followed")}
-            </p>
-            <p className="text-lg font-mono font-black text-green-400 mt-0.5">
-              {stats.sopFollowedToday}
-            </p>
-          </div>
-          <div className="h-6 w-px bg-slate-800" />
-          <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-              {t("Adherence Rate")}
-            </p>
-            <p
-              className={`text-lg font-mono font-black mt-0.5 ${stats.adherenceRate >= 90 ? "text-green-400" : stats.adherenceRate >= 75 ? "text-amber-400" : "text-red-400"}`}
-            >
-              {stats.adherenceRate}%
-            </p>
-          </div>
-        </div>
-      </div>
+  const getSeverityLabel = (level: string) => {
+    if (lang === 'hi') {
+      if (level === 'L4') return 'गंभीर';
+      if (level === 'L3') return 'उच्च';
+      if (level === 'L2') return 'मध्यम';
+      if (level === 'L1') return 'निम्न';
+      return level;
+    } else {
+      if (level === 'L4') return 'CRITICAL';
+      if (level === 'L3') return 'HIGH';
+      if (level === 'L2') return 'MEDIUM';
+      if (level === 'L1') return 'LOW';
+      return level;
+    }
+  };
 
-      {loading && alerts.length === 0 ? (
-        <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">
-          {t("Syncing Alerts...")}
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-xl">
-          <CheckCircle2
-            size={48}
-            className="mx-auto text-green-500 mb-4 opacity-50"
-          />
-          <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
-            {t("All Clear")}
-          </h3>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {alerts.map((alert) => {
-            const isExpanded = expandedId === alert.id;
-            const steps = sopMap[alert.type] || [];
-            return (
-              <div
-                key={alert.id}
-                className="bg-white border border-[#313079]/10 p-4 flex flex-col space-y-3 relative overflow-hidden rounded-xl shadow-sm"
-              >
-                <div className="absolute inset-y-0 left-0 w-1.5 rounded-l-xl bg-red-500" />
+  const timeAgo = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (lang === 'hi') {
+      if (mins < 1) return 'अभी-अभी';
+      if (mins < 60) return `${mins} मिनट पहले`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs} घंटे पहले`;
+      return `${Math.floor(hrs / 24)} दिन पहले`;
+    } else {
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    }
+  };
+
+  const renderAlertDetail = (alert: any) => {
+    if (!alert) return null;
+    const sopSteps = sopMap[alert.type] || [];
+    return (
+      <div className="space-y-4 text-left">
+        <p className="text-xs text-slate-600 leading-relaxed text-left">
+          {lang === 'hi' ? (
+            HINDI_ALERT_DESCRIPTIONS[alert.type]
+              ? HINDI_ALERT_DESCRIPTIONS[alert.type]
+                  .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
+                  .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
+              : translateInstruction(alert.description, 'hi')
+          ) : alert.description}
+        </p>
+
+        {editingSopType === alert.type ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
+            <div className="flex justify-between items-center">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-700">{lang === 'hi' ? 'समाधान चरण संपादित करें' : 'Edit Resolution Steps'}</h4>
+              <div className="flex space-x-2">
+                <button onClick={() => setEditingSopType(null)} className="text-[9px] uppercase font-bold text-slate-500">{lang === 'hi' ? 'रद्द' : 'Cancel'}</button>
+                <button onClick={saveSop} disabled={savingSop} className="text-[9px] uppercase font-bold text-[#FF6700]">{savingSop ? (lang === 'hi' ? 'सेव हो रहा है...' : 'Saving...') : (lang === 'hi' ? 'सेव करें' : 'Save')}</button>
+              </div>
+            </div>
+            {editingSopSteps.map((step, i) => (
+              <div key={i} className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-slate-400 w-5">{i + 1}.</span>
+                <input value={step.instruction} onChange={e => { const u = [...editingSopSteps]; u[i] = { ...u[i], instruction: e.target.value }; setEditingSopSteps(u); }} className="flex-1 bg-white border border-slate-300 px-2 py-1 text-xs rounded focus:border-[#FF6700] focus:outline-none text-slate-950" placeholder="Step instruction..." />
+                <button onClick={() => setEditingSopSteps(editingSopSteps.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 p-1"><X size={12} /></button>
+              </div>
+            ))}
+            <button onClick={() => setEditingSopSteps([...editingSopSteps, { stepOrder: editingSopSteps.length + 1, instruction: '' }])} className="text-[9px] uppercase font-bold text-[#FF6700] tracking-widest">+ Add Step</button>
+          </div>
+        ) : sopSteps.length > 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-left">
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-700">{lang === 'hi' ? 'समाधान SOP' : 'Resolution SOP'}</h4>
+              <button onClick={() => startEditSop(alert.type)} className="text-[9px] uppercase font-bold text-[#FF6700] flex items-center space-x-1"><Pencil size={9} /><span>{lang === 'hi' ? 'संपादित' : 'Edit'}</span></button>
+            </div>
+            <ol className="space-y-1.5 text-left">
+              {sopSteps.map((step: any, i: number) => (
+                <li key={step.id || i} className="flex items-start space-x-2">
+                  <span className="shrink-0 w-5 h-5 bg-[#FF6700]/10 text-[#FF6700] rounded-full flex items-center justify-center text-[10px] font-bold">{i + 1}</span>
+                  <p className="text-[11px] text-slate-700 leading-snug">{step.instruction}</p>
+                </li>
+              ))}
+            </ol>
+            {!alert.resolved && (
+              <div className="mt-3 pt-2 border-t border-slate-200 flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id={`sop-check-${alert.id}`}
+                  checked={sopChecked}
+                  onChange={(e) => setSopChecked(e.target.checked)}
+                  className="w-4 h-4 accent-green-600 rounded cursor-pointer shrink-0"
+                />
+                <label htmlFor={`sop-check-${alert.id}`} className="text-[10px] font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider">
+                  {lang === 'hi' ? 'मैंने उपर दिए गए सभी SOP चरणों को पढ़ा और उनका पालन किया है' : 'I have read and followed all standard operating procedure steps above'}
+                </label>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-3 text-center">
+            <p className="text-[10px] text-slate-400 mb-1">{lang === 'hi' ? 'इस अलर्ट प्रकार के लिए कोई SOP कॉन्फ़िगर नहीं है।' : 'No SOP configured.'}</p>
+            <button onClick={() => startEditSop(alert.type)} className="text-[9px] uppercase font-bold text-[#FF6700] tracking-widest">+ Create SOP Steps</button>
+          </div>
+        )}
+
+        {!alert.resolved && (
+          <div className="space-y-2 text-left">
+            <div className="flex flex-col space-y-2 pt-1 border-t border-slate-100">
+              <div className="flex items-center space-x-2">
+                <input
+                  value={resolutionText}
+                  onChange={e => setResolutionText(e.target.value)}
+                  placeholder={t("RESOLVE NOTES (REQUIRED)")}
+                  className="flex-1 bg-white border border-slate-300 px-3 py-1.5 text-xs rounded focus:border-[#FF6700] focus:outline-none text-slate-950"
+                />
                 <button
-                  onClick={() => {
-                    setExpandedId(isExpanded ? null : alert.id);
-                    setResolutionText("");
-                    setResolveError("");
-                    setSopChecked(false);
-                  }}
-                  className="w-full flex justify-between items-start pl-3 text-left focus:outline-none"
+                  onClick={() => handleResolve(alert.id)}
+                  disabled={resolving || !sopChecked || !resolutionText.trim()}
+                  className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-[10px] uppercase font-bold tracking-widest rounded transition-colors shadow-sm shrink-0"
                 >
-                  <div className="min-w-0 flex-1">
-                    <span className="inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-slate-100 text-slate-700">
-                      {alert.level} - {alert.type}
-                    </span>
-                    <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">
-                      {alert.title}
-                    </h4>
-                    <p className="text-[10px] text-slate-500 mt-1 leading-normal truncate">
-                      {alert.description}
-                    </p>
-                  </div>
-                  <ChevronDown
-                    size={16}
-                    className={`text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                  />
+                  {resolving ? '···' : t("Confirm")}
                 </button>
+              </div>
+              {!sopChecked && (
+                <p className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">
+                  {lang === 'hi' ? 'समाधान से पहले आपको उपर दिए गए SOP चरणों को मानना आवश्यक है।' : 'You must check "I have read and followed all standard operating procedure steps above" before resolving.'}
+                </p>
+              )}
+            </div>
+            {resolveError && <p className="text-xs text-red-600 font-medium">{resolveError}</p>}
+          </div>
+        )}
 
-                {isExpanded && (
-                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-3 pl-3 animate-in fade-in duration-200">
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {alert.description}
-                    </p>
+        {alert.resolved && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-left">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-green-700 mb-1">{lang === 'hi' ? 'समाधानित' : 'Resolved'}</p>
+            <p className="text-xs text-green-800">{alert.resolution || 'No notes'}</p>
+            <p className="text-[8px] text-green-600 mt-2">By: {alert.resolvedBy?.name || alert.resolvedBy?.email || 'System'} • {alert.resolvedAt ? new Date(alert.resolvedAt).toLocaleString() : ''}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
 
-                    {steps.length > 0 ? (
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2 text-left">
-                        <p className="text-[8px] font-black uppercase tracking-wider text-[#FF6700]">
-                          {t("Resolution SOP Steps:")}
-                        </p>
-                        <ol className="space-y-1.5">
-                          {steps.map((step: any, idx: number) => (
-                            <li
-                              key={step.id || idx}
-                              className="text-[10px] text-[#313079]/90 font-medium flex items-start space-x-1.5"
-                            >
-                              <span className="font-mono font-bold text-[#FF6700]">
-                                {step.stepOrder}.
-                              </span>
-                              <span className="leading-snug">
-                                {step.instruction}
-                              </span>
-                            </li>
-                          ))}
-                        </ol>
-                        <div className="mt-2 pt-2 border-t border-slate-200 flex items-center space-x-2">
+  return (
+    <div className="flex flex-col h-full overflow-hidden w-full bg-slate-50">
+      {/* Header section */}
+      <div className="shrink-0 p-4 lg:p-6 border-b border-[#313079]/10 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm text-left">
+        <div>
+          <h2 className="text-sm lg:text-base font-black uppercase tracking-widest text-[#313079]">
+            {t("Active Alerts")}
+          </h2>
+          <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+            {t("Operational discrepancies and escalation warnings requiring attention.")}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowResolved(!showResolved)}
+          className={`px-3 py-1.5 text-[9px] uppercase font-bold tracking-widest border rounded transition-colors self-start sm:self-auto ${
+            showResolved ? 'bg-slate-100 border-slate-300 text-slate-600' : 'bg-white border-slate-200 text-slate-500 hover:border-[#FF6700] hover:text-[#FF6700]'
+          }`}
+        >
+          {showResolved ? (lang === 'hi' ? 'सक्रिय दिखाएं' : 'Show Active') : (lang === 'hi' ? 'समाधानित दिखाएं' : 'Show Resolved')}
+        </button>
+      </div>
+
+      {/* Stats bar */}
+      <div className="shrink-0 px-4 lg:px-6 py-3 border-b border-[#313079]/5 bg-white">
+        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 border border-slate-800 text-white rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-[#FF6700]/15 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700]">
+              <Activity size={18} />
+            </div>
+            <div className="text-left">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">
+                {t("SOP Compliance Score")}
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                {t("Real-time daily adherence stack")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-6 text-center">
+            <div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                {t("Resolved Today")}
+              </p>
+              <p className="text-lg font-mono font-black text-white mt-0.5">
+                {stats.resolvedToday}
+              </p>
+            </div>
+            <div className="h-6 w-px bg-slate-800" />
+            <div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                {t("SOP Followed")}
+              </p>
+              <p className="text-lg font-mono font-black text-green-400 mt-0.5">
+                {stats.sopFollowedToday}
+              </p>
+            </div>
+            <div className="h-6 w-px bg-slate-800" />
+            <div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                {t("Adherence Rate")}
+              </p>
+              <p
+                className={`text-lg font-mono font-black mt-0.5 ${stats.adherenceRate >= 90 ? "text-green-400" : stats.adherenceRate >= 75 ? "text-amber-400" : "text-red-400"}`}
+              >
+                {stats.adherenceRate}%
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bulk actions and severity grid (active alerts only) */}
+      {!showResolved && alerts.length > 0 && (
+        <div className="shrink-0 p-4 border-b border-[#313079]/5 bg-white text-left">
+          {/* Bulk select bar */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            {selectedIds.size > 0 ? (
+              <>
+                <span className="text-[10px] font-black text-[#FF6700] shrink-0">
+                  {selectedIds.size} / {alerts.length} selected
+                </span>
+                <input
+                  value={bulkResolutionText}
+                  onChange={e => setBulkResolutionText(e.target.value)}
+                  placeholder="Bulk resolution note (optional)..."
+                  className="flex-1 min-w-[150px] bg-slate-50 border border-slate-200 px-2.5 py-1 text-xs rounded focus:border-[#FF6700] focus:outline-none text-slate-900"
+                />
+                <button
+                  onClick={handleBulkResolve}
+                  disabled={bulkResolving}
+                  className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-[9px] font-black uppercase tracking-widest rounded transition-colors shadow-sm shrink-0"
+                >
+                  {bulkResolving ? '···' : `✓ ${t("Resolve")} ${selectedIds.size}`}
+                </button>
+                <button
+                  onClick={selectNone}
+                  className="px-2 py-1 border border-slate-200 text-slate-500 text-[9px] font-bold uppercase tracking-widest rounded hover:border-slate-300 transition-colors shrink-0"
+                >
+                  {lang === 'hi' ? 'सभी चयन हटाएं' : 'Deselect All'}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">{lang === 'hi' ? 'बल्क चयन:' : 'Bulk Select:'}</span>
+                <button
+                  onClick={() => selectNext10()}
+                  className="px-2 py-1 border border-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-widest rounded hover:border-[#FF6700] hover:text-[#FF6700] transition-colors"
+                >
+                  + 10 Alerts
+                </button>
+                <button
+                  onClick={selectAll}
+                  className="px-2 py-1 border border-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-widest rounded hover:border-[#FF6700] hover:text-[#FF6700] transition-colors"
+                >
+                  Select All ({alerts.length})
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Severity Counts grid */}
+          <div className="grid grid-cols-4 gap-2">
+            {(['L1', 'L2', 'L3', 'L4'] as const).map(level => {
+              const cfg = LEVEL_CONFIG[level];
+              return (
+                <div key={level} className={`${cfg.bgColor} border ${cfg.borderColor} rounded-lg p-2.5 flex items-center justify-between shadow-xs`}>
+                  <div>
+                    <p className={`text-lg font-mono font-black leading-none ${cfg.color}`}>{counts[level] || 0}</p>
+                    <p className={`text-[8px] uppercase tracking-widest font-black ${cfg.color} mt-1`}>{getSeverityLabel(level)}</p>
+                  </div>
+                  <div className="shrink-0">{cfg.icon}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main split-pane content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left column: List of Alerts */}
+        <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-[#313079]/10 bg-white flex flex-col h-full overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+            {loading && alerts.length === 0 ? (
+              <div className="text-center py-12 text-[#313079]/60 text-xs uppercase tracking-widest animate-pulse font-bold">
+                {t("Syncing Alerts...")}
+              </div>
+            ) : alerts.length === 0 ? (
+              <div className="text-center py-20 border border-dashed border-[#313079]/20 bg-white rounded-xl">
+                <CheckCircle2
+                  size={48}
+                  className="mx-auto text-green-500 mb-4 opacity-50"
+                />
+                <h3 className="text-sm font-bold uppercase tracking-widest text-[#313079]">
+                  {showResolved ? (lang === 'hi' ? 'कोई समाधानित अलर्ट नहीं' : 'No resolved alerts') : (lang === 'hi' ? 'सब ठीक है' : 'All Clear')}
+                </h3>
+              </div>
+            ) : (
+              alerts.map((alert) => {
+                const isSelected = selectedAlertId === alert.id;
+                const isExpanded = expandedId === alert.id;
+                const cfg = LEVEL_CONFIG[alert.level] || LEVEL_CONFIG.L1;
+                return (
+                  <div
+                    key={alert.id}
+                    className={`bg-white border rounded-xl shadow-sm transition-all relative overflow-hidden flex flex-col cursor-pointer ${
+                      isSelected
+                        ? "border-[#FF6700] ring-2 ring-[#FF6700]/10 bg-orange-50/5"
+                        : `${cfg.borderColor} hover:border-[#FF6700]/50`
+                    }`}
+                    onClick={() => {
+                      setSelectedAlertId(alert.id);
+                      setExpandedId(isExpanded ? null : alert.id);
+                      setResolutionText("");
+                      setResolveError("");
+                      setSopChecked(false);
+                    }}
+                  >
+                    <div className="flex items-stretch">
+                      {/* Checkbox for bulk resolve (active only) */}
+                      {!showResolved && (
+                        <div
+                          className="flex items-center pl-3 pr-1.5 shrink-0 border-r border-black/5"
+                          onClick={e => { e.stopPropagation(); toggleSelect(alert.id); }}
+                        >
                           <input
                             type="checkbox"
-                            id={`sop-check-${alert.id}`}
-                            checked={sopChecked}
-                            onChange={(e) => setSopChecked(e.target.checked)}
-                            className="w-4 h-4 accent-green-600 rounded cursor-pointer shrink-0"
+                            checked={selectedIds.has(alert.id)}
+                            onChange={() => toggleSelect(alert.id)}
+                            className="w-3.5 h-3.5 cursor-pointer accent-[#FF6700] rounded"
+                            onClick={e => e.stopPropagation()}
                           />
-                          <label
-                            htmlFor={`sop-check-${alert.id}`}
-                            className="text-[10px] font-bold text-slate-700 cursor-pointer select-none uppercase tracking-wider"
-                          >
-                            {t("I have read and followed this SOP")}
-                          </label>
+                        </div>
+                      )}
+
+                      {/* Header block */}
+                      <div className="flex-1 flex justify-between items-start p-3 pl-4 text-left">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center space-x-1.5">
+                            <span className={`text-[8px] font-black uppercase tracking-widest ${cfg.color}`}>{getSeverityLabel(alert.level)}</span>
+                            {alert.resolved && <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">RESOLVED</span>}
+                          </div>
+                          <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">
+                            {alert.title}
+                          </h4>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0 ml-2">
+                          <span className="text-[9px] text-slate-400 font-bold">{timeAgo(alert.createdAt)}</span>
+                          <ChevronDown
+                            size={14}
+                            className={`text-slate-400 transition-transform lg:hidden ${isExpanded ? "rotate-180" : ""}`}
+                          />
                         </div>
                       </div>
-                    ) : (
-                      <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-center">
-                        <p className="text-[10px] text-slate-400">
-                          {t("No SOP configured for this alert type.")}
-                        </p>
+
+                      {/* Quick Resolve Button */}
+                      {!alert.resolved && !showResolved && (
+                        <div
+                          className="flex items-center px-2.5 shrink-0 border-l border-black/5"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => handleQuickResolve(alert.id)}
+                            disabled={quickResolvingId === alert.id}
+                            className="text-[9px] font-black uppercase text-green-600 hover:text-green-800 disabled:opacity-50 border border-green-200 bg-green-50 hover:bg-green-100 px-2 py-0.5 rounded transition-all whitespace-nowrap"
+                          >
+                            {quickResolvingId === alert.id ? '···' : (lang === 'hi' ? '✓ समाधान' : '✓ Resolve')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Data error checking inline */}
+                    {resolveDataErrors[alert.id] && (
+                      <div className="px-3 py-1.5 bg-amber-50 border-t border-amber-200 flex items-center gap-1.5 text-left" onClick={e => e.stopPropagation()}>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-amber-600 shrink-0">⚠ Data Check:</span>
+                        <p className="text-[9px] text-amber-700 flex-1 leading-snug">{resolveDataErrors[alert.id]}</p>
+                        <button
+                          onClick={() => setResolveDataErrors(prev => { const next = { ...prev }; delete next[alert.id]; return next; })}
+                          className="text-amber-400 hover:text-amber-600 shrink-0"
+                        >
+                          <X size={10} />
+                        </button>
                       </div>
                     )}
 
-                    <div className="flex flex-col space-y-2 pt-1 border-t border-slate-50 text-left">
-                      <div className="flex space-x-1.5 items-center">
-                        <input
-                          type="text"
-                          placeholder={t("RESOLVE NOTES (REQUIRED)")}
-                          value={resolutionText}
-                          onChange={(e) => setResolutionText(e.target.value)}
-                          className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] uppercase font-bold focus:outline-none focus:border-[#FF6700] text-slate-900"
-                        />
-                        <button
-                          onClick={() => handleResolve(alert.id)}
-                          disabled={
-                            !resolutionText.trim() || !sopChecked || resolving
-                          }
-                          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 text-[9px] font-black uppercase rounded-md shrink-0 animate-in fade-in duration-200"
-                        >
-                          {resolving ? "..." : t("Confirm")}
-                        </button>
-                      </div>
-                      {!sopChecked && (
-                        <p className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">
-                          ⚠ {t("You must check \"I have read and followed this SOP\" before resolving.")}
-                        </p>
-                      )}
-                      {resolveError && (
-                        <p className="text-[9px] text-red-600 font-medium">
-                          {t(resolveError)}
-                        </p>
+                    {/* Mobile inline detail (Accordion style) */}
+                    <div className="lg:hidden" onClick={(e) => e.stopPropagation()}>
+                      {isExpanded && (
+                        <div className="px-4 pb-4 border-t border-slate-100 pt-3">
+                          {renderAlertDetail(alert)}
+                        </div>
                       )}
                     </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Right column: Desktop Detail Viewer (hidden on mobile) */}
+        <div className="hidden lg:flex flex-1 flex-col h-full bg-slate-50/50 overflow-hidden">
+          {selectedAlertId ? (
+            (() => {
+              const selectedAlert = alerts.find((a) => a.id === selectedAlertId);
+              if (!selectedAlert) return null;
+              return (
+                <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
+                  <div className="bg-white p-6 border-b border-[#313079]/10 text-left shrink-0">
+                    <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase rounded bg-red-100 text-red-700">
+                      {selectedAlert.level} - {selectedAlert.type}
+                    </span>
+                    <h3 className="text-base font-black text-[#313079] mt-2">
+                      {selectedAlert.title}
+                    </h3>
+                    {selectedAlert.manifest?.trackingId && (
+                      <div className="mt-2 text-xs font-mono text-slate-500 bg-slate-100 inline-block px-2.5 py-1 rounded border border-slate-200 uppercase">
+                        AWB: {selectedAlert.manifest.trackingId}
+                      </div>
+                    )}
+                  </div>
+                  {resolveDataErrors[selectedAlert.id] && (
+                    <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-left">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-amber-600 shrink-0">⚠ Data Check:</span>
+                      <p className="text-[10px] text-amber-700 flex-1 leading-snug">{resolveDataErrors[selectedAlert.id]}</p>
+                      <button
+                        onClick={() => setResolveDataErrors(prev => { const next = { ...prev }; delete next[selectedAlert.id]; return next; })}
+                        className="text-amber-400 hover:text-amber-600 shrink-0"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white">
+                    {renderAlertDetail(selectedAlert)}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                <Bell size={24} className="text-slate-400" />
+              </div>
+              <p className="text-xs font-bold uppercase tracking-wider">
+                {t("Select an alert to view resolution guidelines")}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1 max-w-xs leading-normal">
+                {t("Click on any warning card in the left sidebar to execute Standard Operating Procedure (SOP) validations.")}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function TabButton({ id, icon, label, activeTab, setActive, badge, isMinimized = false }: any) {
+  const isActive = activeTab === id;
+  return (
+    <button
+      onClick={() => setActive(id)}
+      title={label}
+      className={`w-full flex items-center ${
+        isMinimized ? "justify-center" : "justify-between"
+      } px-3 py-2.5 text-sm font-semibold transition-all group overflow-hidden relative rounded-lg ${
+        isActive
+          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-extrabold'
+          : 'text-white/70 hover:text-white hover:bg-white/10'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span className={isActive ? 'text-[#FFF700]' : 'text-[#FF6700]/70 shrink-0'}>{icon}</span>
+        {!isMinimized && <span className="truncate">{label}</span>}
+      </div>
+      {!isMinimized && badge !== undefined && badge > 0 && (
+        <span className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold shrink-0">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+      {isMinimized && badge !== undefined && badge > 0 && (
+        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-black" />
+      )}
+    </button>
   );
 }

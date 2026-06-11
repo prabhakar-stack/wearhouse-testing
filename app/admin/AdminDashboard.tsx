@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
+import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, ChevronLeft, LogOut, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
@@ -189,6 +189,60 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
   const [selectedRole, setSelectedRole] = useState(role);
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+
+  const handleLogout = async () => {
+    localStorage.removeItem("userRole");
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {}
+    router.push("/login");
+  };
+
+  const activeTabRef = useRef(activeTab);
+  const preferredLanguageRef = useRef(preferredLanguage);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    preferredLanguageRef.current = preferredLanguage;
+  }, [preferredLanguage]);
+
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+
+      if (activeTabRef.current !== "alerts") {
+        setActiveTab("alerts");
+      } else {
+        const confirmLogout = window.confirm(
+          preferredLanguageRef.current === "hi"
+            ? "क्या आप लॉगआउट करना चाहते हैं?"
+            : "Do you want to logout?"
+        );
+        if (confirmLogout) {
+          handleLogout();
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  const toggleSidebarMinimized = () => {
+    setIsSidebarMinimized((prev) => {
+      const next = !prev;
+      localStorage.setItem("isSidebarMinimized", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -196,6 +250,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
       if (stored) {
         setSelectedRole(stored);
       }
+      setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
     }
   }, []);
 
@@ -380,21 +435,37 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
 
       {/* Left Navigation Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-50 lg:z-20 w-64 bg-black text-white flex flex-col border-r border-black/10 transform transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 lg:z-20 ${
+          isSidebarMinimized ? 'lg:w-16 w-64' : 'w-64'
+        } bg-black text-white flex flex-col border-r border-black/10 transform transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-6 h-16 border-b border-white/10 shrink-0">
+        <div className={`flex items-center ${isSidebarMinimized ? 'justify-center' : 'justify-between'} px-6 h-16 border-b border-white/10 shrink-0`}>
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-[#FF6700] rounded-lg flex items-center justify-center shadow-lg shadow-black/20 shrink-0">
               <ShieldAlert className="text-white" size={16} />
             </div>
-            <div>
-              <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none truncate max-w-[160px]" title={displayName}>{displayName}</h1>
-              <p className="text-[#FF6700] text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5">{role.replace(/_/g, ' ')}</p>
-            </div>
+            {!isSidebarMinimized && (
+              <div className="text-left animate-in fade-in duration-200">
+                <h1 className="text-sm font-black tracking-widest uppercase text-white leading-none truncate max-w-[120px]" title={displayName}>{displayName}</h1>
+                <p className="text-[#FF6700] text-[9px] tracking-[0.15em] uppercase font-bold mt-0.5">{role.replace(/_/g, ' ')}</p>
+              </div>
+            )}
           </div>
+          {/* Collapse toggle (only desktop) */}
+          <button
+            onClick={toggleSidebarMinimized}
+            className="hidden lg:block text-white/50 hover:text-white p-1 hover:bg-white/10 rounded transition-colors"
+            title={
+              isSidebarMinimized
+                ? preferredLanguage === 'hi' ? 'नेविगेशन विस्तृत करें' : 'Expand Sidebar'
+                : preferredLanguage === 'hi' ? 'नेविगेशन छोटा करें' : 'Collapse Sidebar'
+            }
+          >
+            {isSidebarMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
           <button 
             onClick={() => setIsMobileMenuOpen(false)}
             className="lg:hidden text-white/50 hover:text-white p-1"
@@ -405,111 +476,112 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
 
         {/* Navigation Tabs */}
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-          <TabButton id="users"    icon={<Users size={14} />}       label="Users"    activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
-          <TabButton id="alerts"   icon={<Bell size={14} />}        label="Alerts"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} />
-          <TabButton id="claims"   icon={<FileWarning size={14} />} label="Claims"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+          <TabButton id="users"    icon={<Users size={14} />}       label="Users"    activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
+          <TabButton id="alerts"   icon={<Bell size={14} />}        label="Alerts"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} badge={alertCount > 0 ? alertCount : undefined} isMinimized={isSidebarMinimized} />
+          <TabButton id="claims"   icon={<FileWarning size={14} />} label="Claims"   activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           {canAccessTriage && (
-            <TabButton id="triage" icon={<FileWarning size={14} />} label="Claims Triage" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="triage" icon={<FileWarning size={14} />} label="Claims Triage" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           )}
           {canAccessSmartFiling && (
-            <TabButton id="smart-filing" icon={<Activity size={14} />} label="Smart Filing Monitor" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="smart-filing" icon={<Activity size={14} />} label="Smart Filing Monitor" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           )}
           {canAccessRecovery && (
-            <TabButton id="recovery" icon={<PackageSearch size={14} />} label="Recovery Hub" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="recovery" icon={<PackageSearch size={14} />} label="Recovery Hub" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           )}
           {canAccessQC && (
-            <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} />
+            <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           )}
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-white/10 shrink-0 space-y-3">
-          <div className="flex flex-col space-y-1.5 px-2">
-            <label className="text-[10px] uppercase tracking-wider text-white/40 font-bold">
-              {lang === 'hi' ? 'भूमिका बदलें' : 'Switch Role'}
-            </label>
-            <div className="relative">
-              <select
-                value={selectedRole}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedRole(val);
-                  localStorage.setItem('userRole', val);
-                  if (val === 'SUPER_ACCESS') {
-                    window.location.href = '/super-admin';
-                  } else if (val === 'ADMIN') {
-                    window.location.href = '/admin';
-                  } else if (val === 'RECEIVER') {
-                    window.location.href = '/receiver';
-                  } else if (val === 'CLAIMS_SPECIALIST') {
-                    window.location.href = '/claims-specialist';
-                  } else if (val === 'RECOVERER') {
-                    window.location.href = '/recoverer';
-                  } else if (val === 'QC_AGENT') {
-                    window.location.href = '/qc-agent';
-                  } else {
-                    window.location.href = '/inspector';
-                  }
-                }}
-                className="w-full bg-white/10 text-white/90 text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-1 focus:ring-[#FF6700] hover:bg-white/20 transition-all cursor-pointer appearance-none pr-8"
-              >
-                <option value="SUPER_ACCESS" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}
-                </option>
-                <option value="ADMIN" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'एडमिन' : 'Admin'}
-                </option>
-                <option value="RECEIVER" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'रिसीवर' : 'Receiver'}
-                </option>
-                <option value="INSPECTOR" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}
-                </option>
-                <option value="CLAIMS_SPECIALIST" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}
-                </option>
-                <option value="RECOVERER" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'रिकवरर' : 'Recoverer'}
-                </option>
-                <option value="QC_AGENT" className="bg-[#1e1d4b] text-white">
-                  {lang === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}
-                </option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white/60">
-                <ChevronDown size={14} />
+        <div className={`p-4 border-t border-white/10 shrink-0 ${isSidebarMinimized ? 'flex flex-col items-center space-y-4' : 'space-y-3'}`}>
+          {!isSidebarMinimized && (
+            <div className="flex flex-col space-y-1.5 px-2 w-full animate-in fade-in duration-200">
+              <label className="text-[10px] uppercase tracking-wider text-white/40 font-bold">
+                {lang === 'hi' ? 'भूमिका बदलें' : 'Switch Role'}
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedRole}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedRole(val);
+                    localStorage.setItem('userRole', val);
+                    if (val === 'SUPER_ACCESS') {
+                      window.location.href = '/super-admin';
+                    } else if (val === 'ADMIN') {
+                      window.location.href = '/admin';
+                    } else if (val === 'RECEIVER') {
+                      window.location.href = '/receiver';
+                    } else if (val === 'CLAIMS_SPECIALIST') {
+                      window.location.href = '/claims-specialist';
+                    } else if (val === 'RECOVERER') {
+                      window.location.href = '/recoverer';
+                    } else if (val === 'QC_AGENT') {
+                      window.location.href = '/qc-agent';
+                    } else {
+                      window.location.href = '/inspector';
+                    }
+                  }}
+                  className="w-full bg-white/10 text-white/90 text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-1 focus:ring-[#FF6700] hover:bg-white/20 transition-all cursor-pointer appearance-none pr-8"
+                >
+                  <option value="SUPER_ACCESS" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}
+                  </option>
+                  <option value="ADMIN" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'एडमिन' : 'Admin'}
+                  </option>
+                  <option value="RECEIVER" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'रिसीवर' : 'Receiver'}
+                  </option>
+                  <option value="INSPECTOR" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'इंस्पेक्टर' : 'Inspector'}
+                  </option>
+                  <option value="CLAIMS_SPECIALIST" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'क्लेम्स स्पेशलिस्ट' : 'Claims Specialist'}
+                  </option>
+                  <option value="RECOVERER" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'रिकवरर' : 'Recoverer'}
+                  </option>
+                  <option value="QC_AGENT" className="bg-[#1e1d4b] text-white">
+                    {lang === 'hi' ? 'क्यूसी एजेंट' : 'QC Agent'}
+                  </option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white/60">
+                  <ChevronDown size={14} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
           
-          <div className="h-px bg-white/10"></div>
+          {!isSidebarMinimized && <div className="h-px bg-white/10 w-full"></div>}
 
           {/* Clickable Profile Section */}
           <button
             onClick={() => setShowProfile(true)}
-            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors group text-left"
-            title="View Profile"
+            className={`w-full flex items-center ${isSidebarMinimized ? 'justify-center' : 'space-x-3 px-3'} py-2.5 rounded-lg hover:bg-white/10 transition-colors group text-left`}
+            title={lang === 'hi' ? 'प्रोफ़ाइल देखें' : 'View Profile'}
           >
             <div className="shrink-0 w-8 h-8 rounded-full bg-[#FF6700]/10 border border-[#FF6700]/30 flex items-center justify-center text-[#FF6700] text-xs font-black">
               {initials}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white leading-tight break-words">{displayName}</p>
-              <p className="text-[9px] uppercase tracking-widest text-[#FF6700] font-bold mt-0.5">
-                {role.replace(/_/g, ' ')}
-              </p>
-            </div>
-            <User size={12} className="text-[#FF6700]/70 group-hover:text-white transition-colors shrink-0" />
+            {!isSidebarMinimized && (
+              <div className="min-w-0 flex-1 animate-in fade-in duration-200">
+                <p className="text-xs font-bold text-white leading-tight break-words">{displayName}</p>
+                <p className="text-[9px] uppercase tracking-widest text-[#FF6700] font-bold mt-0.5">
+                  {role.replace(/_/g, ' ')}
+                </p>
+              </div>
+            )}
+            {!isSidebarMinimized && <User size={12} className="text-[#FF6700]/70 group-hover:text-white transition-colors shrink-0" />}
           </button>
 
           <button
-            onClick={async () => {
-              localStorage.removeItem("userRole");
-              try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
-              router.push('/login');
-            }}
-            className="w-full px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md"
+            onClick={handleLogout}
+            className={`w-full ${isSidebarMinimized ? 'flex justify-center p-2.5' : 'px-3 py-2 text-center'} bg-red-500 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all shadow-md`}
+            title={lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           >
-            {lang === 'hi' ? 'लॉगआउट' : 'Logout'}
+            {isSidebarMinimized ? <LogOut size={16} /> : lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           </button>
         </div>
       </aside>
@@ -548,25 +620,31 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
 
 // --- TABS COMPONENTS ---
 
-function TabButton({ id, icon, label, activeTab, setActive, badge }: any) {
+function TabButton({ id, icon, label, activeTab, setActive, badge, isMinimized = false }: any) {
   const isActive = activeTab === id;
   return (
     <button
       onClick={() => setActive(id)}
-      className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold transition-all group overflow-hidden relative rounded-lg ${
+      title={label}
+      className={`w-full flex items-center ${
+        isMinimized ? "justify-center" : "justify-between"
+      } px-3 py-2.5 text-sm font-semibold transition-all group overflow-hidden relative rounded-lg ${
         isActive
           ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-extrabold'
           : 'text-white/70 hover:text-white hover:bg-white/10'
       }`}
     >
       <div className="flex items-center gap-3">
-        <span className={isActive ? 'text-[#FFF700]' : 'text-[#FF6700]/70'}>{icon}</span>
-        <span>{label}</span>
+        <span className={isActive ? 'text-[#FFF700]' : 'text-[#FF6700]/70 shrink-0'}>{icon}</span>
+        {!isMinimized && <span className="truncate">{label}</span>}
       </div>
-      {badge !== undefined && badge > 0 && (
-        <span className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold">
+      {!isMinimized && badge !== undefined && badge > 0 && (
+        <span className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold shrink-0">
           {badge > 99 ? '99+' : badge}
         </span>
+      )}
+      {isMinimized && badge !== undefined && badge > 0 && (
+        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-black" />
       )}
     </button>
   );
