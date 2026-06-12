@@ -127,7 +127,7 @@ export default function QCAuditTab() {
       const res = await fetch('/api/qc/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: cleanSku, scannedAt: new Date().toISOString() })
+        body: JSON.stringify({ sku: cleanSku })
       });
 
       if (res.ok) {

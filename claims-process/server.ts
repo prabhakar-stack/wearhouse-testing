@@ -55,7 +55,7 @@ async function setupDatabaseSchema(db: pg.Pool) {
     await db.query(`
       CREATE TABLE IF NOT EXISTS "claims_status" (
         id SERIAL PRIMARY KEY,
-        "orderId" text UNIQUE NOT NULL,
+        "orderId" text,
         "trackingId" text,
         "claimId" text DEFAULT '',
         status text DEFAULT 'unclaimed',
@@ -68,6 +68,18 @@ async function setupDatabaseSchema(db: pg.Pool) {
     try {
       await db.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "trackingId" text;`);
       await db.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now();`);
+      await db.query(`ALTER TABLE "claims_status" ALTER COLUMN "orderId" DROP NOT NULL;`);
+      
+      // Drop key constraint if any
+      await db.query(`ALTER TABLE "claims_status" DROP CONSTRAINT IF EXISTS "claims_status_orderId_key" CASCADE;`);
+      await db.query(`DROP INDEX IF EXISTS "claims_status_orderId_key";`);
+      
+      // Add filtered unique index on trackingId (ignoring null and empty strings to prevent conflicts)
+      await db.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "claims_status_trackingId_unique_idx" 
+        ON "claims_status" ("trackingId") 
+        WHERE "trackingId" IS NOT NULL AND "trackingId" != '';
+      `);
     } catch (e: any) {
       console.warn("Backwards compatibility Alter check on claims_status warning:", e.message);
     }
@@ -1489,27 +1501,52 @@ async function startServer() {
       if (result.success) {
         const db = getDbPool();
         if (db) {
-          // 1. Insert or update claims_status to reflect 'Claimed'
-          db.query(
-            `INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status)
-             VALUES ($1, $2, $3, 'Claimed')
-             ON CONFLICT ("orderId") 
-             DO UPDATE SET 
-               status = 'Claimed', 
-               "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", ''), 
-               "trackingId" = COALESCE("claims_status"."trackingId", EXCLUDED."trackingId")`,
-            [claimData.orderId || '', claimData.trackingId || '', result.caseId || '']
-          ).then(() => {
-            console.log(`[DB SUCCESS] Recorded claimed status in claims_status for Order ID: ${claimData.orderId}`);
-          }).catch(dbErr => {
-            console.error(`[DB ERROR] Failed to record status in claims_status:`, dbErr);
-          });
+          const tid = claimData.trackingId || '';
+          const oid = claimData.orderId || '';
           
-          // 2. Also try to update status directly in the fallback table claims_all if it's not a view
-          db.query(
-            `UPDATE "claims_all" SET status = 'Claimed' WHERE lpn = $1 OR "orderId" = $2`,
-            [claimData.lpn || '', claimData.orderId || '']
-          ).catch(() => {});
+          if (tid) {
+            // 1. Insert or update claims_status to reflect 'Claimed' strictly by trackingId
+            db.query(
+              `INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status)
+               VALUES ($1, $2, $3, 'Claimed')
+               ON CONFLICT ("trackingId") 
+               DO UPDATE SET 
+                 status = 'Claimed', 
+                 "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", ''), 
+                 "orderId" = COALESCE("claims_status"."orderId", EXCLUDED."orderId")`,
+              [oid, tid, result.caseId || '']
+            ).then(() => {
+              console.log(`[DB SUCCESS] Recorded claimed status in claims_status for Tracking ID: ${tid}`);
+            }).catch(dbErr => {
+              console.error(`[DB ERROR] Failed to record status in claims_status:`, dbErr);
+            });
+            
+            // 2. Update status in claims_all strictly by trackingId
+            db.query(
+              `UPDATE "claims_all" SET status = 'Claimed' WHERE "trackingId" = $1`,
+              [tid]
+            ).catch(() => {});
+          } else {
+            // Fallback to orderId if trackingId is missing (backwards compatibility)
+            db.query(
+              `INSERT INTO "claims_status" ("orderId", "claimId", status)
+               VALUES ($1, $2, 'Claimed')
+               ON CONFLICT ("orderId") 
+               DO UPDATE SET 
+                 status = 'Claimed', 
+                 "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", '')`,
+              [oid, result.caseId || '']
+            ).then(() => {
+              console.log(`[DB SUCCESS] Recorded claimed status in claims_status for Order ID: ${oid}`);
+            }).catch(dbErr => {
+              console.error(`[DB ERROR] Failed to record status in claims_statusFallback:`, dbErr);
+            });
+            
+            db.query(
+              `UPDATE "claims_all" SET status = 'Claimed' WHERE lpn = $1 OR "orderId" = $2`,
+              [claimData.lpn || '', oid]
+            ).catch(() => {});
+          }
 
           // 3. Conditional Evidence table type update
           handleEvidenceTypeClaimedUpdate(db, claimData.orderId, 'Claimed');
@@ -2240,28 +2277,39 @@ async function startServer() {
 
   app.post("/api/qc/claims/update-status", async (req, res, next) => {
     try {
-      const { orderId, status } = req.body;
+      const { orderId, trackingId, status } = req.body;
       const db = getDbPool();
       if (db) {
-        // Update claims_status table
-        await db.query(`
-          INSERT INTO "claims_status" ("orderId", status)
-          VALUES ($1, $2)
-          ON CONFLICT ("orderId")
-          DO UPDATE SET status = $2
-        `, [orderId, status]);
+        if (trackingId) {
+          await db.query(`
+            INSERT INTO "claims_status" ("trackingId", "orderId", status)
+            VALUES ($1, $2, $3)
+            ON CONFLICT ("trackingId")
+            DO UPDATE SET status = $3, "orderId" = COALESCE("claims_status"."orderId", EXCLUDED."orderId")
+          `, [trackingId, orderId || '', status]);
 
-        // Try updating physical claims_all if it is a physical table rather than a read-only view
-        try {
-          await db.query(`UPDATE "claims_all" SET status = $1 WHERE "orderId" = $2`, [status, orderId]);
-        } catch (e) {
-          // Suppress error since it might be a read-only view
+          try {
+            await db.query(`UPDATE "claims_all" SET status = $1 WHERE "trackingId" = $2`, [status, trackingId]);
+          } catch (e) {}
+        } else {
+          await db.query(`
+            INSERT INTO "claims_status" ("orderId", status)
+            VALUES ($1, $2)
+            ON CONFLICT ("orderId")
+            DO UPDATE SET status = $2
+          `, [orderId, status]);
+
+          try {
+            await db.query(`UPDATE "claims_all" SET status = $1 WHERE "orderId" = $2`, [status, orderId]);
+          } catch (e) {}
         }
 
         // Conditional Evidence table type update
-        await handleEvidenceTypeClaimedUpdate(db, orderId, status);
+        if (orderId) {
+          await handleEvidenceTypeClaimedUpdate(db, orderId, status);
+        }
       } else {
-        const item = mockClaims.find((c: any) => c.orderId === orderId);
+        const item = mockClaims.find((c: any) => (trackingId && c.trackingId === trackingId) || c.orderId === orderId);
         if (item) {
           item.status = status;
         }

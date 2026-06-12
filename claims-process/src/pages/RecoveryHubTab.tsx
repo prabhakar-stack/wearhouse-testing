@@ -234,8 +234,7 @@ export default function RecoveryHubTab() {
           sku: activeItem.sku,
           damageType: activeItem.damageType,
           isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
-          status: 'recovered',
-          scannedAt: new Date().toISOString()
+          status: 'recovered'
         })
       });
 
@@ -282,8 +281,7 @@ export default function RecoveryHubTab() {
           sku: activeItem.sku,
           damageType: activeItem.damageType,
           isRefurbished: activeItem.damageType === 'Packaging Damaged' ? usingRefurbishedBox : false,
-          status: 'requires review at recovery',
-          scannedAt: new Date().toISOString()
+          status: 'requires review at recovery'
         })
       });
 
