@@ -79,7 +79,9 @@ export default function Triage() {
       }
     };
 
-    fetchClaimsAndLocks();
+    requestAnimationFrame(() => {
+      fetchClaimsAndLocks();
+    });
     const intervalBot = setInterval(fetchBotStatus, 10000); // Check every 10s
     const intervalLocks = setInterval(async () => {
       try {

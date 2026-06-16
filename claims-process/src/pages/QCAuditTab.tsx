@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ShieldCheck, 
   Search, 
@@ -72,13 +72,13 @@ export default function QCAuditTab() {
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // Toast notification helper — defined first so fetchData (below) can call it
-  const triggerToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
+  const triggerToast = useCallback((text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   // Initial Fetch Function
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoadingSku(true);
       setLoadingRecovered(true);
@@ -110,11 +110,13 @@ export default function QCAuditTab() {
       setLoadingRecovered(false);
       setLoadingRejected(false);
     }
-  };
+  }, [triggerToast]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    requestAnimationFrame(() => {
+      fetchData();
+    });
+  }, [fetchData]);
 
   // Section 1 Handlers
   const handleScanSubmit = async (e: React.FormEvent) => {

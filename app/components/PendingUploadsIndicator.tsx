@@ -83,7 +83,9 @@ export default function PendingUploadsIndicator({
   };
 
   useEffect(() => {
-    fetchUploads();
+    requestAnimationFrame(() => {
+      fetchUploads();
+    });
 
     // Listen for changes dispatched from dashboards
     const handleChanged = () => {

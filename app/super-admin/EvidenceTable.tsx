@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ExternalLink, Video, Image as ImageIcon, AlertTriangle, Folder, FileText, Search, CheckCircle } from 'lucide-react';
 
 export default function EvidenceTable() {
   const [evidenceList, setEvidenceList] = useState<any[]>([]);
-  const [filteredList, setFilteredList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
@@ -16,14 +15,13 @@ export default function EvidenceTable() {
       .then(data => {
         if (data.evidence) {
           setEvidenceList(data.evidence);
-          setFilteredList(data.evidence);
         }
         setLoading(false);
       })
       .catch(console.error);
   }, []);
 
-  useEffect(() => {
+  const filteredList = useMemo(() => {
     let list = [...evidenceList];
     
     // Search filter
@@ -46,7 +44,7 @@ export default function EvidenceTable() {
       list = list.filter(item => item.type === typeFilter);
     }
 
-    setFilteredList(list);
+    return list;
   }, [searchTerm, typeFilter, evidenceList]);
 
   if (loading) {

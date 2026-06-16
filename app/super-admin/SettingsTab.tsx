@@ -27,7 +27,9 @@ export default function SettingsTab() {
   };
 
   useEffect(() => {
-    fetchConfig();
+    requestAnimationFrame(() => {
+      fetchConfig();
+    });
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {

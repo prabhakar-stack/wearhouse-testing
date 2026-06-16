@@ -244,10 +244,13 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('userRole');
-      if (stored) {
-        setSelectedRole(stored);
-      }
-      setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
+      const minimized = localStorage.getItem("isSidebarMinimized") === "true";
+      requestAnimationFrame(() => {
+        if (stored) {
+          setSelectedRole(stored);
+        }
+        setIsSidebarMinimized(minimized);
+      });
     }
   }, []);
 
@@ -1012,7 +1015,7 @@ function UsersTab({ role, currentUserId }: { role: string; currentUserId?: strin
               
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Type the user's email to verify:
+                  {"Type the user's email to verify:"}
                 </label>
                 <input 
                   type="text" 
@@ -1173,6 +1176,17 @@ function AlertsTab({ userRole }: { userRole: string }) {
   const [bulkResolving, setBulkResolving] = useState(false);
   const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
   const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -1343,7 +1357,8 @@ function AlertsTab({ userRole }: { userRole: string }) {
   };
 
   const timeAgo = (date: string) => {
-    const diff = Date.now() - new Date(date).getTime();
+    const current = now || new Date(date).getTime();
+    const diff = current - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
     if (lang === 'hi') {
       if (mins < 1) return 'अभी-अभी';

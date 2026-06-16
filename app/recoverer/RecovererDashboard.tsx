@@ -111,7 +111,10 @@ export default function RecovererDashboard({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
+      const minimized = localStorage.getItem("isSidebarMinimized") === "true";
+      requestAnimationFrame(() => {
+        setIsSidebarMinimized(minimized);
+      });
     }
   }, []);
 
@@ -683,6 +686,17 @@ function AlertsTab({ preferredLanguage: propLanguage = "en" }: { preferredLangua
   const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
   const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
   const [resolveError, setResolveError] = useState('');
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -702,7 +716,9 @@ function AlertsTab({ preferredLanguage: propLanguage = "en" }: { preferredLangua
 
   useEffect(() => {
     if (propLanguage) {
-      setPreferredLanguage(propLanguage);
+      requestAnimationFrame(() => {
+        setPreferredLanguage(propLanguage);
+      });
     }
   }, [propLanguage]);
 
@@ -852,7 +868,8 @@ function AlertsTab({ preferredLanguage: propLanguage = "en" }: { preferredLangua
   };
 
   const timeAgo = (date: string) => {
-    const diff = Date.now() - new Date(date).getTime();
+    const current = now || new Date(date).getTime();
+    const diff = current - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
     if (lang === 'hi') {
       if (mins < 1) return 'अभी-अभी';

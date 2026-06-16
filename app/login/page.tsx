@@ -21,7 +21,10 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    setPreferredLanguage(getStoredLanguage());
+    const lang = getStoredLanguage();
+    requestAnimationFrame(() => {
+      setPreferredLanguage(lang);
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);

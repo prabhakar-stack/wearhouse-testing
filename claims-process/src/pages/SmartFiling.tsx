@@ -44,7 +44,7 @@ export default function SmartFiling() {
     coolingRemainingMs: 0,
     isAvailable: false
   });
-  const [screenshotTimestamp, setScreenshotTimestamp] = useState(Date.now());
+  const [screenshotTimestamp, setScreenshotTimestamp] = useState(0);
   const [testOrderId, setTestOrderId] = useState('');
 
   const fetchConfig = async () => {
@@ -173,8 +173,11 @@ export default function SmartFiling() {
   };
 
   useEffect(() => {
-    fetchConfig();
-    fetchLogs();
+    requestAnimationFrame(() => {
+      fetchConfig();
+      fetchLogs();
+      setScreenshotTimestamp(Date.now());
+    });
     const interval = setInterval(() => {
       fetchLogs();
       fetchConfig();

@@ -756,7 +756,9 @@ function InspectorDashboard({ role }: { role: string }) {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("userRole");
       if (stored) {
-        setSelectedRole(stored);
+        requestAnimationFrame(() => {
+          setSelectedRole(stored);
+        });
       }
     }
   }, []);
@@ -1628,8 +1630,12 @@ function InspectTab({
   // Hydrate camera IDs from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setRecCameraId(localStorage.getItem("recording_camera_id") || "");
-      setImgCameraId(localStorage.getItem("capture_camera_id") || "");
+      const recId = localStorage.getItem("recording_camera_id") || "";
+      const imgId = localStorage.getItem("capture_camera_id") || "";
+      requestAnimationFrame(() => {
+        setRecCameraId(recId);
+        setImgCameraId(imgId);
+      });
     }
   }, []);
 
@@ -1655,7 +1661,10 @@ function InspectTab({
   const [dualCameraMode, setDualCameraMode] = useState(true);
   useEffect(() => {
     if (recCameraId && imgCameraId) {
-      setDualCameraMode(recCameraId !== imgCameraId);
+      const isDual = recCameraId !== imgCameraId;
+      requestAnimationFrame(() => {
+        setDualCameraMode(isDual);
+      });
     }
   }, [recCameraId, imgCameraId]);
 
@@ -1682,7 +1691,9 @@ function InspectTab({
   // Force back to configuration panel if cameras disconnect during Awaiting Order phase
   useEffect(() => {
     if (!isCameraReady && phase === "START") {
-      setShowConfigPanel(true);
+      requestAnimationFrame(() => {
+        setShowConfigPanel(true);
+      });
     }
   }, [isCameraReady, phase]);
   const [isSwitchingCameras, setIsSwitchingCameras] = useState(false);
@@ -2400,7 +2411,9 @@ function InspectTab({
       try {
         chunksRef.current = [];
         mediaRecorderRef.current.start(1000);
-        setIsRecording(true);
+        requestAnimationFrame(() => {
+          setIsRecording(true);
+        });
       } catch (e) { }
     }
   }, [phase]);
@@ -2420,8 +2433,15 @@ function InspectTab({
 
   // ✅ FIX: Removed the "devicechange" listener to prevent the infinite WebRTC crash loop
   useEffect(() => {
-    if (!isCameraActive) { setCameraConnectionError(null); return; }
-    checkCameraStreams();
+    if (!isCameraActive) {
+      requestAnimationFrame(() => {
+        setCameraConnectionError(null);
+      });
+      return;
+    }
+    requestAnimationFrame(() => {
+      checkCameraStreams();
+    });
     const interval = setInterval(() => { checkCameraStreams(); }, 1000);
     return () => {
       clearInterval(interval);
@@ -3784,6 +3804,17 @@ function NotificationsTab() {
   const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
   const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
   const [resolveError, setResolveError] = useState('');
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -3947,7 +3978,8 @@ function NotificationsTab() {
   };
 
   const timeAgo = (date: string) => {
-    const diff = Date.now() - new Date(date).getTime();
+    const current = now || new Date(date).getTime();
+    const diff = current - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
     if (lang === 'hi') {
       if (mins < 1) return 'अभी-अभी';

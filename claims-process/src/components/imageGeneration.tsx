@@ -462,7 +462,9 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   // Synchronize ref nodes in sync with render cycles
   React.useEffect(() => { 
     activeLpnRef.current = activeLpn; 
-    setSelectedId(null); // Clear active item focus on LPN swap
+    requestAnimationFrame(() => {
+      setSelectedId(null); // Clear active item focus on LPN swap
+    });
   }, [activeLpn]);
   React.useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   React.useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
@@ -896,7 +898,7 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const currentClaimForLpn = matchingClaims.find(c => c.lpn === activeLpn) || sampleClaim;
   const rawFolderLink = currentClaimForLpn?.driveLink || sampleClaim?.driveLink;
 
-  const loadDriveFiles = async () => {
+  const loadDriveFiles = React.useCallback(async () => {
     if (!rawFolderLink) {
       setDriveError("No Google Drive folder URL linked to this claim or order.");
       return;
@@ -932,13 +934,15 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
     } finally {
       setLoadingDriveFiles(false);
     }
-  };
+  }, [rawFolderLink, accessToken, googleClientId, googleClientSecret, googleRefreshToken]);
 
   React.useEffect(() => {
-    if (isModalOpen && rawFolderLink) {
-      loadDriveFiles();
+    if (isModalOpen) {
+      requestAnimationFrame(() => {
+        loadDriveFiles();
+      });
     }
-  }, [isModalOpen, accessToken, googleClientId, googleClientSecret, googleRefreshToken, rawFolderLink, activeLpn]);
+  }, [isModalOpen, loadDriveFiles]);
 
   const handleSelectDriveFile = (file: any) => {
     let fileProxyUrl = `/api/drive/file/${file.id}?`;

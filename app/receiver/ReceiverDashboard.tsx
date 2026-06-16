@@ -141,6 +141,17 @@ export default function ReceiverDashboard({
 
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -190,13 +201,21 @@ export default function ReceiverDashboard({
   };
 
   useEffect(() => {
-    setPreferredLanguage(getStoredLanguage());
+    const lang = getStoredLanguage();
+    if (typeof window !== 'undefined') {
+      const minimized = localStorage.getItem("isSidebarMinimized") === "true";
+      requestAnimationFrame(() => {
+        setPreferredLanguage(lang);
+        setIsSidebarMinimized(minimized);
+      });
+    } else {
+      requestAnimationFrame(() => {
+        setPreferredLanguage(lang);
+      });
+    }
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
-    if (typeof window !== 'undefined') {
-      setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
-    }
     return () => {
       window.removeEventListener("preferred-language-changed", syncLanguage);
       window.removeEventListener("storage", syncLanguage);
@@ -851,8 +870,9 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
               etaDate = fallbackComputedDate;
             }
 
+            const currentNow = now || (etaDate ? etaDate.getTime() : 0);
             const hoursOverdue = etaDate
-              ? (Date.now() - etaDate.getTime()) / 3600000
+              ? (currentNow - etaDate.getTime()) / 3600000
               : null;
             // Status: future ETA = ON TIME, past ETA within 7 days = OVERDUE, beyond 7 days = OVERDUE
             const deliveryStatus =
@@ -1018,9 +1038,13 @@ function ReceiveTab({
   // Derive marketplace from trackingIdMarketplaceMap as soon as trackingId is scanned
   useEffect(() => {
     if (scannedTrackingId && trackingIdMarketplaceMap[scannedTrackingId]) {
-      setMarketplace(trackingIdMarketplaceMap[scannedTrackingId]);
+      requestAnimationFrame(() => {
+        setMarketplace(trackingIdMarketplaceMap[scannedTrackingId]);
+      });
     } else {
-      setMarketplace("AMAZON"); // default
+      requestAnimationFrame(() => {
+        setMarketplace("AMAZON"); // default
+      });
     }
   }, [scannedTrackingId, trackingIdMarketplaceMap]);
 
@@ -2131,6 +2155,17 @@ function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
   const [quickResolvingId, setQuickResolvingId] = useState<string | null>(null);
   const [resolveDataErrors, setResolveDataErrors] = useState<Record<string, string>>({});
   const [resolveError, setResolveError] = useState('');
+  const [subcomponentNow, setSubcomponentNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setSubcomponentNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setSubcomponentNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -2155,10 +2190,15 @@ function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
   useEffect(() => {
     if (alerts.length > 0) {
       if (!alerts.some((a) => a.id === selectedAlertId)) {
-        setSelectedAlertId(alerts[0].id);
+        const firstId = alerts[0].id;
+        requestAnimationFrame(() => {
+          setSelectedAlertId(firstId);
+        });
       }
     } else {
-      setSelectedAlertId(null);
+      requestAnimationFrame(() => {
+        setSelectedAlertId(null);
+      });
     }
   }, [alerts, selectedAlertId]);
 
@@ -2299,7 +2339,8 @@ function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
   };
 
   const timeAgo = (date: string) => {
-    const diff = Date.now() - new Date(date).getTime();
+    const current = subcomponentNow || new Date(date).getTime();
+    const diff = current - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
     if (lang === 'hi') {
       if (mins < 1) return 'अभी-अभी';
