@@ -387,7 +387,7 @@ model QcStatus {
   targetCount   Int     @map("target_count")
   quantityCount Int     @default(0) @map("quantity_count")
   status        String?
-
+  scannedAt     DateTime? 
   @@map("qc_status")
 }
 
@@ -397,7 +397,7 @@ model SampleRecovery {
   damageType    String  @map("damage_type")
   status        String  @default("recovery")
   isRefurbished Boolean @default(false) @map("is_refurbished")
-
+  scannedAt     DateTime? 
   @@map("sample_recovery")
 }
 

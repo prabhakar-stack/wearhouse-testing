@@ -47,8 +47,8 @@ export default function Triage() {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [botAvailable, setBotAvailable] = useState(true);
-  const [lockedOrderIds, setLockedOrderIds] = useState<string[]>([]);
-  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [lockedTrackingIds, setLockedTrackingIds] = useState<string[]>([]);
+  const [activeTrackingId, setActiveTrackingId] = useState<string | null>(null);
   const [isImageGenTabActive, setIsImageGenTabActive] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -60,7 +60,7 @@ export default function Triage() {
       
       const locksRes = await fetch('/api/claims/locked-sessions');
       const locksData = await locksRes.json();
-      setLockedOrderIds(locksData.lockedOrderIds || []);
+      setLockedTrackingIds(locksData.lockedTrackingIds || locksData.lockedOrderIds || []);
       
       setLoading(false);
     } catch (err) {
@@ -85,7 +85,7 @@ export default function Triage() {
       try {
         const res = await fetch('/api/claims/locked-sessions');
         const data = await res.json();
-        setLockedOrderIds(data.lockedOrderIds || []);
+        setLockedTrackingIds(data.lockedTrackingIds || data.lockedOrderIds || []);
       } catch (e) {}
     }, 5000); // Check locks every 5s
 
@@ -113,8 +113,8 @@ Evidence: ${claim.driveLink || 'N/A'}
 
   // Grouped Claims Logic
   const groupedClaimsRaw = claims.reduce((acc, c) => {
-    // Group strictly by orderId as requested
-    const key = c.orderId || c.lpn || c.trackingId || 'N/A';
+    // Group strictly by trackingId as requested
+    const key = c.trackingId || c.orderId || c.lpn || 'N/A';
     const normalizedKey = key.toLowerCase();
     
     if (!acc[normalizedKey]) {
@@ -222,13 +222,14 @@ Evidence: ${claim.driveLink || 'N/A'}
 
   const handleRowSelect = async (claim: GroupedClaim) => {
     const status = (claim.status || "").trim().toLowerCase();
+    const trkId = claim.trackingId || claim.orderId || claim.uniqueKey;
     if (status === "ready for claim") {
-      alert(`⚠️ Already Ready for Claim\n\nThis order (${claim.orderId}) has already been triaged and is marked as 'Ready for claim'. The Image Generation workspace is locked for completed orders.`);
+      alert(`⚠️ Already Ready for Claim\n\nThis shipment (${trkId}) has already been triaged and is marked as 'Ready for claim'. The Image Generation workspace is locked for completed orders.`);
       return;
     }
 
-    if (lockedOrderIds.includes(claim.orderId)) {
-      alert(`⚠️ CONCURRENT WORKSPACE LOCK\n\nOrder ${claim.orderId} is currently being triaged in another Image Generation session. Concurrent edits are locked to prevent overwrite conflicts.`);
+    if (lockedTrackingIds.includes(trkId)) {
+      alert(`⚠️ CONCURRENT WORKSPACE LOCK\n\nShipment tracking ID ${trkId} is currently being triaged in another Image Generation session. Concurrent edits are locked to prevent overwrite conflicts.`);
       return;
     }
 
@@ -237,11 +238,11 @@ Evidence: ${claim.driveLink || 'N/A'}
       await fetch('/api/claims/lock-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: claim.orderId })
+        body: JSON.stringify({ trackingId: trkId, orderId: claim.orderId })
       });
       
       // Open Workspace
-      setActiveOrderId(claim.orderId);
+      setActiveTrackingId(trkId);
       setIsImageGenTabActive(true);
     } catch (e: any) {
       console.error(e);
@@ -249,32 +250,32 @@ Evidence: ${claim.driveLink || 'N/A'}
     }
   };
 
-  if (isImageGenTabActive && activeOrderId) {
+  if (isImageGenTabActive && activeTrackingId) {
     return (
       <ImageGenerationWorkspace 
-        orderId={activeOrderId} 
+        trackingId={activeTrackingId} 
         claims={claims} 
         onClose={async (exitType) => {
           if (exitType === 'partial') {
             await fetch('/api/claims/partial-save', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ orderId: activeOrderId })
+              body: JSON.stringify({ trackingId: activeTrackingId })
             });
           } else {
             await fetch('/api/claims/ready-for-claim', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ orderId: activeOrderId })
+              body: JSON.stringify({ trackingId: activeTrackingId })
             });
           }
           await fetch('/api/claims/release-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId: activeOrderId })
+            body: JSON.stringify({ trackingId: activeTrackingId })
           });
           setIsImageGenTabActive(false);
-          setActiveOrderId(null);
+          setActiveTrackingId(null);
           fetchClaimsAndLocks();
         }}
       />
@@ -344,7 +345,8 @@ Evidence: ${claim.driveLink || 'N/A'}
                   </tr>
                 ))
               ) : filteredClaims.map((claim) => {
-                const isLocked = lockedOrderIds.includes(claim.orderId);
+                const trkId = claim.trackingId || claim.orderId || claim.uniqueKey;
+                const isLocked = lockedTrackingIds.includes(trkId);
                 return (
                   <tr 
                     key={claim.uniqueKey} 
@@ -376,9 +378,9 @@ Evidence: ${claim.driveLink || 'N/A'}
                             </span>
                           )}
                         </div>
-                        <span className="text-xs font-mono font-bold text-[#313079] tracking-tighter">{claim.orderId}</span>
+                        <span className="text-xs font-mono font-bold text-[#313079] tracking-tighter">TRK: {claim.trackingId || 'N/A'}</span>
                         <div className="flex flex-col gap-0.5 mt-1">
-                          <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 rounded-sm w-fit">TRK: {claim.trackingId}</span>
+                          <span className="text-[8px] font-bold text-slate-500 bg-slate-100 px-1 rounded-sm w-fit">ORDER: {claim.orderId}</span>
                           <span className="text-[8px] font-bold text-indigo-600">GROUPED QTY: {claim.qty}</span>
                         </div>
                       </div>
@@ -495,6 +497,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ 
+                                          trackingId: claim.trackingId || claim.uniqueKey,
                                           orderId: claim.orderId,
                                           claimId: claim.claimId,
                                           lpn: claim.lpn
@@ -502,7 +505,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                                       });
                                       const data = await res.json();
                                       if (res.ok) {
-                                        alert(`Bot triggered for Order ${claim.orderId}! Check Smart Filing Hub.`);
+                                        alert(`Bot triggered for Tracking ID ${claim.trackingId || claim.uniqueKey}! Check Smart Filing Hub.`);
                                       } else {
                                         alert(data.message || "Bot unavailable");
                                       }

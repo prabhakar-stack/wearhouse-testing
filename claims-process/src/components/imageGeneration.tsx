@@ -19,7 +19,7 @@ import { cn } from '../lib/utils';
 import { Claim } from '../types';
 
 export interface ImageGenerationWorkspaceProps {
-  orderId: string;
+  trackingId: string;
   claims: Claim[];
   onClose: (exitType: 'complete' | 'partial') => void;
 }
@@ -344,8 +344,8 @@ const createCombinedImage = (compositionBase64: string): Promise<string> => {
   });
 };
 
-export default function ImageGenerationWorkspace({ orderId, claims, onClose }: ImageGenerationWorkspaceProps) {
-  const matchingClaims = claims.filter(c => c.orderId === orderId);
+export default function ImageGenerationWorkspace({ trackingId, claims, onClose }: ImageGenerationWorkspaceProps) {
+  const matchingClaims = claims.filter(c => c.trackingId === trackingId);
   const sampleClaim = matchingClaims[0] || {} as Claim;
 
   const orderLpns = React.useMemo(() => {
@@ -1057,7 +1057,7 @@ export default function ImageGenerationWorkspace({ orderId, claims, onClose }: I
           </button>
           <div className="h-6 w-[1px] bg-slate-200" />
           <div className="flex flex-col gap-0.5">
-            <h2 className="text-sm font-black font-mono text-slate-900 tracking-widest uppercase">ORDER TRIAGE WORKSPACE: {orderId}</h2>
+            <h2 className="text-sm font-black font-mono text-slate-900 tracking-widest uppercase">SHIPMENT TRIAGE WORKSPACE: {trackingId}</h2>
             <p className="text-[10px] text-slate-500 font-bold">Image Generation Checkpoint — Product Damages Quality Review</p>
           </div>
         </div>
