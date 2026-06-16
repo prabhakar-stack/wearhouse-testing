@@ -279,9 +279,11 @@ async function stageCustomerReturns(rows) {
       removalOrderType:    pick(raw["removal-order-type"]),
     };
     try {
-      const existing = await prisma.aMZCustomerReturn.findFirst({ where: { lpn } });
-      if (existing) await prisma.aMZCustomerReturn.update({ where: { id: existing.id }, data });
-      else await prisma.aMZCustomerReturn.create({ data: { lpn, ...data } });
+      await prisma.aMZCustomerReturn.upsert({
+        where: { lpn },
+        update: data,
+        create: { lpn, ...data },
+      });
       count++;
     } catch (e) { console.error(`  [ERROR] AMZCustomerReturn ${lpn}:`, e.message); }
   }

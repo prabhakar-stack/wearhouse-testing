@@ -1,5 +1,4 @@
-import { PrismaClient, PackageState } from '@prisma/client';
-import { randomUUID } from "crypto";
+import { PrismaClient, PackageState, Marketplace } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -9,100 +8,64 @@ async function main() {
     where: { orderId: { not: null } }
   });
 
-  console.log(`Found ${shipments.length} shipments. Grouping by order ID...`);
+  console.log(`Found ${shipments.length} shipments. Grouping by tracking number...`);
 
-  // Group in memory
-  const grouped = {};
-  for (const s of shipments) {
-    const orderId = s.orderId;
-    if (!orderId) continue;
-    if (!grouped[orderId]) {
-      grouped[orderId] = {
-        orderId,
-        shippedQuantity: 0,
-        requestDate: null,
-        trackingNumber: null,
-      };
+  // Group by trackingNumber
+  const shipmentsByTrackingId = {};
+  for (const item of shipments) {
+    if (!item.trackingNumber) continue;
+    if (!shipmentsByTrackingId[item.trackingNumber]) {
+      shipmentsByTrackingId[item.trackingNumber] = [];
     }
-    
-    grouped[orderId].shippedQuantity += s.shippedQuantity ?? 0;
-    
-    if (s.requestDate) {
-      const sDate = new Date(s.requestDate);
-      if (!grouped[orderId].requestDate || sDate < grouped[orderId].requestDate) {
-        grouped[orderId].requestDate = sDate;
-      }
-    }
-    
-    if (!grouped[orderId].trackingNumber && s.trackingNumber) {
-      grouped[orderId].trackingNumber = s.trackingNumber;
-    }
+    shipmentsByTrackingId[item.trackingNumber].push(item);
   }
 
-  const groupedArray = Object.values(grouped);
-  console.log(`Grouped into ${groupedArray.length} unique orders. Processing...`);
+  let processed = 0;
+  for (const [trackingNumber, group] of Object.entries(shipmentsByTrackingId)) {
+    const orderId = group[0]?.orderId || null;
+    const totalQuantity = group.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
+    const firstItem = group[0];
 
-  for (const g of groupedArray) {
-    const orderId = g.orderId;
-
-    // Check if manifest already exists for this removalOrderId
-    let manifest = await prisma.manifest.findFirst({
-      where: { removalOrderId: orderId }
-    });
-
-    if (!manifest) {
-      // Find a tracking ID, fallback to random UUID if none
-      const trackingId = g.trackingNumber || randomUUID();
-
-      // Check if trackingId is already used to avoid unique constraint violations
-      let existingManifestWithTracking = await prisma.manifest.findUnique({
-        where: { trackingId }
-      });
-
-      if (existingManifestWithTracking) {
-        manifest = existingManifestWithTracking;
-        // Optionally update it to link the removalOrderId
-        if (!manifest.removalOrderId) {
-          manifest = await prisma.manifest.update({
-            where: { id: manifest.id },
-            data: { removalOrderId: orderId }
-          });
-        }
-      } else {
-        manifest = await prisma.manifest.create({
-          data: {
-            trackingId,
-            status: PackageState.EXPECTED,
-            removalOrderId: orderId,
-          },
-        });
-      }
-    }
-
-    // Upsert the Order and link it to the Manifest
-    await prisma.order.upsert({
-      where: { platformOrderId: orderId },
+    // Create or update Manifest keyed by trackingNumber (idempotent unique key)
+    const manifest = await prisma.manifest.upsert({
+      where: { trackingId: trackingNumber },
       update: {
-        requestDate: g.requestDate,
-        totalQuantity: g.shippedQuantity || undefined,
-        trackingNumber: g.trackingNumber,
-        fulfillmentId: orderId,
-        manifestId: manifest.id,
+        marketplace: Marketplace.AMAZON,
+        removalOrderId: orderId || null,
       },
       create: {
-        platformOrderId: orderId,
-        marketplace: "AMAZON",
-        requestDate: g.requestDate,
-        totalQuantity: g.shippedQuantity || undefined,
-        trackingNumber: g.trackingNumber,
-        fulfillmentId: orderId,
-        manifestId: manifest.id,
+        trackingId: trackingNumber,
+        status: PackageState.EXPECTED,
+        marketplace: Marketplace.AMAZON,
+        removalOrderId: orderId || null,
+        expectedDate: null,
       },
     });
 
-    console.log(`Processed Order ${orderId}`);
+    // Upsert Order (independent metadata lookup table)
+    if (orderId) {
+      await prisma.order.upsert({
+        where: { platformOrderId: orderId },
+        update: {
+          marketplace: Marketplace.AMAZON,
+          requestDate: firstItem.requestDate,
+          totalQuantity: totalQuantity,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+        create: {
+          marketplace: Marketplace.AMAZON,
+          platformOrderId: orderId,
+          requestDate: firstItem.requestDate,
+          totalQuantity: totalQuantity,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+      });
+    }
+
+    processed++;
+    console.log(`Processed Manifest trackingId=${trackingNumber} (Order=${orderId})`);
   }
-  console.log("All orders and manifests successfully populated.");
+  console.log(`All ${processed} orders and manifests successfully populated.`);
 }
 
 main()

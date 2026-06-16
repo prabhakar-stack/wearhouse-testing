@@ -32,33 +32,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const partFilePath = path.join(chunksDir, `${idx}.part`);
-    const writeStream  = fs.createWriteStream(partFilePath);
-
-    // Stream the chunk body directly to disk — no in-memory buffering
     if (req.body) {
-      const reader = req.body.getReader();
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-
-        (async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                writeStream.end();
-                break;
-              }
-              writeStream.write(Buffer.from(value));
-            }
-          } catch (err) {
-            writeStream.destroy(err as Error);
-            reject(err);
-          }
-        })();
-      });
+      const arrayBuffer = await req.arrayBuffer();
+      fs.writeFileSync(partFilePath, Buffer.from(arrayBuffer));
     } else {
-      writeStream.end();
+      fs.writeFileSync(partFilePath, Buffer.alloc(0));
     }
 
     const stats = fs.statSync(partFilePath);

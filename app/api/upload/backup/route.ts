@@ -18,32 +18,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const filePath = path.join(backupDir, filename);
-    const writeStream = fs.createWriteStream(filePath);
-
     if (req.body) {
-      const reader = req.body.getReader();
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-
-        (async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                writeStream.end();
-                break;
-              }
-              writeStream.write(Buffer.from(value));
-            }
-          } catch (err) {
-            writeStream.destroy(err as Error);
-            reject(err);
-          }
-        })();
-      });
+      const arrayBuffer = await req.arrayBuffer();
+      fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
     } else {
-      writeStream.end();
+      fs.writeFileSync(filePath, Buffer.alloc(0));
     }
 
     const stats = fs.statSync(filePath);

@@ -1,76 +1,72 @@
 import { PrismaClient, PackageState, Marketplace } from "@prisma/client";
-import { randomUUID } from "crypto";
 
 const prisma = new PrismaClient();
 
 /**
- * Materialize Order records directly from AMZRemovalShipment data.
- * - Groups shipments by orderId.
- * - Sums shippedQuantity for each order.
- * - Creates a Manifest (if not exists) and links it via manifestId.
- * - Upserts Order with required fields and foreign key.
+ * Materialize Order & Manifest records directly from AMZRemovalShipment data.
+ * groups shipments by trackingNumber (tracking-first box architecture).
+ * links removalOrderId as metadata on Manifest.
  */
 export async function materializeOrdersFromShipments() {
-  // Group shipments by orderId, capture earliest requestDate and a trackingNumber via _min aggregation
-  const grouped = await prisma.aMZRemovalShipment.groupBy({
-    by: ["orderId"],
-    where: { orderId: { not: null } },
-    _sum: { shippedQuantity: true },
-    _min: { requestDate: true, trackingNumber: true },
-  });
+  console.log("Staging shipments to Manifest & Order (tracking-first)...");
+  const rawShipments = await prisma.aMZRemovalShipment.findMany();
+
+  // Group by trackingNumber
+  const shipmentsByTrackingId = {};
+  for (const item of rawShipments) {
+    if (!item.trackingNumber) continue;
+    if (!shipmentsByTrackingId[item.trackingNumber]) {
+      shipmentsByTrackingId[item.trackingNumber] = [];
+    }
+    shipmentsByTrackingId[item.trackingNumber].push(item);
+  }
 
   let processed = 0;
+  for (const [trackingNumber, group] of Object.entries(shipmentsByTrackingId)) {
+    const orderId = group[0]?.orderId || null;
+    const totalQuantity = group.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
+    const firstItem = group[0];
 
-  for (const g of grouped) {
-    const orderId = g.orderId;
-    if (!orderId) continue;
-
-    // Ensure a Manifest exists for this order (idempotent)
-    const manifest = await prisma.manifest.upsert({
-      where: { orderId: orderId },
-      update: {},
-      create: {
-        trackingId: randomUUID(),
-        status: PackageState.PENDING,
-        marketplace: Marketplace.AMAZON,
-        removalOrderId: orderId,
-        orderId,
-      },
-    });
-
-    // Fetch a representative tracking number (earliest requestDate)
-    const shipment = await prisma.aMZRemovalShipment.findFirst({
-      where: { orderId, trackingNumber: { not: null } },
-      orderBy: { requestDate: 'asc' },
-    });
-    const trackingNumber = shipment?.trackingNumber ?? null;
-
-    // Upsert Order and link to Manifest
-    await prisma.order.upsert({
-      where: { platformOrderId: orderId },
+    // Create or update Manifest keyed by trackingNumber (idempotent unique key)
+    await prisma.manifest.upsert({
+      where: { trackingId: trackingNumber },
       update: {
         marketplace: Marketplace.AMAZON,
-        requestDate: g._min?.requestDate,
-        totalQuantity: g._sum?.shippedQuantity ?? undefined,
-        trackingNumber,
-        fulfillmentId: orderId,
-        manifestId: manifest.id,
+        removalOrderId: orderId || null,
       },
       create: {
+        trackingId: trackingNumber,
+        status: PackageState.EXPECTED,
         marketplace: Marketplace.AMAZON,
-        platformOrderId: orderId,
-        requestDate: g._min?.requestDate,
-        totalQuantity: g._sum?.shippedQuantity ?? undefined,
-        trackingNumber,
-        fulfillmentId: orderId,
-        manifestId: manifest.id,
+        removalOrderId: orderId || null,
+        expectedDate: null,
       },
     });
+
+    // Upsert Order (independent metadata lookup table)
+    if (orderId) {
+      await prisma.order.upsert({
+        where: { platformOrderId: orderId },
+        update: {
+          marketplace: Marketplace.AMAZON,
+          requestDate: firstItem.requestDate,
+          totalQuantity: totalQuantity,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+        create: {
+          marketplace: Marketplace.AMAZON,
+          platformOrderId: orderId,
+          requestDate: firstItem.requestDate,
+          totalQuantity: totalQuantity,
+          fulfillmentChannel: "AMAZON_REMOVAL",
+        },
+      });
+    }
 
     processed++;
   }
 
-  console.log(`🛒 materializeOrdersFromShipments processed ${processed} orders`);
+  console.log(`🛒 materializeOrdersFromShipments processed ${processed} tracking IDs`);
 }
 
 // If run directly

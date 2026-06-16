@@ -30,31 +30,11 @@ export async function PUT(req: NextRequest) {
 
     // 1. Write incoming stream to local disk first.
     //    This is a staging buffer — the real destination is always Google Drive.
-    const writeStream = fs.createWriteStream(localFilePath);
     if (req.body) {
-      const reader = req.body.getReader();
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-
-        (async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                writeStream.end();
-                break;
-              }
-              writeStream.write(Buffer.from(value));
-            }
-          } catch (err) {
-            writeStream.destroy(err as Error);
-            reject(err);
-          }
-        })();
-      });
+      const arrayBuffer = await req.arrayBuffer();
+      fs.writeFileSync(localFilePath, Buffer.from(arrayBuffer));
     } else {
-      writeStream.end();
+      fs.writeFileSync(localFilePath, Buffer.alloc(0));
     }
     console.log(`[Local Disk Storage] Staged file to disk: ${localFilePath}`);
 
