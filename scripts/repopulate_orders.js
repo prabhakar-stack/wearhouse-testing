@@ -68,8 +68,6 @@ async function main() {
         totalAmount,
         totalQuantity,
         fulfillmentChannel: 'AMAZON_REMOVAL',
-        manifestId: manifest.id,
-        trackingNumber: trackingNumber,
       },
       create: {
         platformOrderId: orderId,
@@ -78,60 +76,8 @@ async function main() {
         totalAmount,
         totalQuantity,
         fulfillmentChannel: 'AMAZON_REMOVAL',
-        manifestId: manifest.id,
-        trackingNumber: trackingNumber,
       }
     });
-
-    // Create virtual LPN return items
-    for (const shipment of shipments) {
-      const qty = shipment.shippedQuantity || 1;
-      const skuVal = shipment.sku || 'UNKNOWN_SKU';
-
-      for (let i = 0; i < qty; i++) {
-        const virtualLpn = `LPN-${trackingNumber}-${skuVal}-${i}`.toUpperCase();
-
-        const rawReturn = await prisma.aMZCustomerReturn.findFirst({
-          where: {
-            OR: [
-              { lpn: virtualLpn },
-              { orderId: orderId, sku: skuVal }
-            ]
-          }
-        });
-
-        const customerOrderId = rawReturn?.orderId || 'UNKNOWN_CUSTOMER_ORDER';
-
-        await prisma.returnItem.upsert({
-          where: { lpn: virtualLpn },
-          update: {
-            orderId: customerOrderId,
-            sku: skuVal,
-            asin: rawReturn?.asin || null,
-            fnsku: shipment.fnsku || rawReturn?.fnsku || null,
-            productName: rawReturn?.productName || `SKU: ${skuVal}`,
-            reason: rawReturn?.reason || 'Removal Order Shipment',
-            customerComments: rawReturn?.customerComments || null,
-            detailedDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-            returnDate: rawReturn?.returnDate || null,
-            fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
-          },
-          create: {
-            lpn: virtualLpn,
-            orderId: customerOrderId,
-            sku: skuVal,
-            asin: rawReturn?.asin || null,
-            fnsku: shipment.fnsku || rawReturn?.fnsku || null,
-            productName: rawReturn?.productName || `SKU: ${skuVal}`,
-            reason: rawReturn?.reason || 'Removal Order Shipment',
-            customerComments: rawReturn?.customerComments || null,
-            detailedDisposition: rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-            returnDate: rawReturn?.returnDate || null,
-            fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
-          }
-        });
-      }
-    }
 
     count++;
     console.log(`[${count}/${orderIds.length}] Repopulated Order ${orderId}: Quantity ${totalQuantity}, Fee ${totalAmount}, Tracking: ${trackingNumber}`);

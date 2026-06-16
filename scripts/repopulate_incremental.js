@@ -125,61 +125,7 @@ async function main(batchSize = 100) {
         });
       }
 
-      // ── Upsert virtual ReturnItem records per SKU in this shipment ─────────────
-      // Virtual LPN is scoped to the tracking number (not the order), so items
-      // from different shipments of the same order don't collide.
-      for (const shipment of shipments) {
-        const qty = shipment.shippedQuantity || 1;
-        const skuVal = shipment.sku || 'UNKNOWN_SKU';
 
-        for (let i = 0; i < qty; i++) {
-          const virtualLpn = `LPN-${trackingNumber}-${skuVal}-${i}`.toUpperCase();
-
-          // Try to match real customer return data by LPN or by (orderId, sku)
-          const rawReturn = await prisma.aMZCustomerReturn.findFirst({
-            where: {
-              OR: [
-                { lpn: virtualLpn },
-                ...(orderId && skuVal ? [{ orderId, sku: skuVal }] : []),
-              ],
-            },
-          });
-
-          const customerOrderId =
-            rawReturn?.orderId || orderId || 'UNKNOWN_CUSTOMER_ORDER';
-
-          await prisma.returnItem.upsert({
-            where: { lpn: virtualLpn },
-            update: {
-              orderId: customerOrderId,
-              sku: skuVal,
-              asin: rawReturn?.asin || null,
-              fnsku: shipment.fnsku || rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${skuVal}`,
-              reason: rawReturn?.reason || 'Removal Order Shipment',
-              customerComments: rawReturn?.customerComments || null,
-              detailedDisposition:
-                rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-              returnDate: rawReturn?.returnDate || null,
-              fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
-            },
-            create: {
-              lpn: virtualLpn,
-              orderId: customerOrderId,
-              sku: skuVal,
-              asin: rawReturn?.asin || null,
-              fnsku: shipment.fnsku || rawReturn?.fnsku || null,
-              productName: rawReturn?.productName || `SKU: ${skuVal}`,
-              reason: rawReturn?.reason || 'Removal Order Shipment',
-              customerComments: rawReturn?.customerComments || null,
-              detailedDisposition:
-                rawReturn?.detailedDisposition || shipment.disposition || 'SELLABLE',
-              returnDate: rawReturn?.returnDate || null,
-              fulfillmentCenterId: rawReturn?.fulfillmentCenterId || null,
-            },
-          });
-        }
-      }
 
       // Collect IDs to mark as processed in a single batch call at the end
       processedIds.push(...shipments.map(s => s.id));
