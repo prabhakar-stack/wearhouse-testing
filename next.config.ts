@@ -3,7 +3,7 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   typescript: {
     ignoreBuildErrors: false,
@@ -21,9 +21,6 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ['motion'],
   experimental: {
-    serverActions: {
-      bodySizeLimit: '500mb',
-    },
     // Adding a comment here to force the Next.js dev server to restart.
     // This ensures it detects the newly created /api/upload API routes.
   },

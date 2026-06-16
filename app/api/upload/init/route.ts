@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 60 upload initiations per IP per minute
+  const ip = getClientIp(req as unknown as Request);
+  const rl = checkRateLimit(ip, 'upload:init', 60, 60_000);
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
   try {
     const body = await req.json();
     const { orderId, type, filesMetaData } = body;

@@ -400,10 +400,18 @@ export async function runExpectedTrackingJob() {
     return new Date(snap.fetchedAt || Date.now());
   }
 
-  // 2. Iterate sequentially over the flat tracking array (always refresh when job is run)
-  let taskIndex = 0;
-  for (const task of trackingTasks) {
-    taskIndex++;
+  // 2. Process tracking tasks in parallel with a concurrency cap.
+  //    Each fetchTrackingSnapshot call launches its own Playwright browser and
+  //    closes it when done — they are fully independent and safe to parallelise.
+  //    TRACKING_CONCURRENCY caps simultaneous browser instances to avoid OOM on Render.
+  const TRACKING_CONCURRENCY = 4;
+
+  /**
+   * Process a single tracking task: fetch snapshot → DB upsert → alert logic.
+   * This is the same logic as the old sequential loop body, now in a named function
+   * so it can be dispatched by the concurrency runner below.
+   */
+  async function processTrackingTask(task: typeof trackingTasks[0], taskIndex: number) {
     // Obtain carrier from shipment table (fallback to Bluedart)
     const carrierFromShipment = await getCarrierByTracking(task.trackingNumber);
     console.log(`Fetched carrier for ${task.trackingNumber}: ${carrierFromShipment}`);
@@ -585,6 +593,19 @@ export async function runExpectedTrackingJob() {
       console.error(`[Tracking Sync] [${taskIndex}/${trackingTasks.length}] ❌ Failed to refresh tracking ID ${task.trackingNumber}: ${error.message || error}`);
     }
   }
+
+  // Concurrency runner: slice trackingTasks into batches of TRACKING_CONCURRENCY
+  // and await each batch with Promise.allSettled before starting the next.
+  // Promise.allSettled (not Promise.all) ensures one failure doesn't abort others.
+  console.log(`[Tracking Sync] Starting parallel tracking refresh. Tasks: ${trackingTasks.length}, Concurrency: ${TRACKING_CONCURRENCY}`);
+  for (let i = 0; i < trackingTasks.length; i += TRACKING_CONCURRENCY) {
+    const batch = trackingTasks.slice(i, i + TRACKING_CONCURRENCY);
+    await Promise.allSettled(
+      batch.map((task, batchIdx) => processTrackingTask(task, i + batchIdx + 1))
+    );
+    console.log(`[Tracking Sync] Batch ${Math.ceil((i + 1) / TRACKING_CONCURRENCY)} complete (${Math.min(i + TRACKING_CONCURRENCY, trackingTasks.length)}/${trackingTasks.length} processed)`);
+  }
+
 
   // 3. Batch execute database changes for event-driven alerts
   if (alertsToResolve.length > 0) {

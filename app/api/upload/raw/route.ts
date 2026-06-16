@@ -15,7 +15,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Missing folderId, name, or mimeType parameters' }, { status: 400 });
     }
 
-    // Ensure the uploads directory exists on the system
+    // Ensure the uploads directory exists on the system.
+    // NOTE: On Vercel, /tmp is ephemeral. Files here survive for the lifetime of
+    // the function invocation only. The primary path must always be Google Drive.
     const uploadsDir = process.env.VERCEL
       ? path.join('/tmp', 'uploads')
       : path.join(process.cwd(), 'uploads');
@@ -26,14 +28,15 @@ export async function PUT(req: NextRequest) {
     const sanitizedFileName = `${Date.now()}_${name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     localFilePath = path.join(uploadsDir, sanitizedFileName);
 
-    // 1. Store the file in user's system storage first using a highly efficient memory-stream to support large files
+    // 1. Write incoming stream to local disk first.
+    //    This is a staging buffer — the real destination is always Google Drive.
     const writeStream = fs.createWriteStream(localFilePath);
     if (req.body) {
       const reader = req.body.getReader();
       await new Promise<void>((resolve, reject) => {
         writeStream.on('finish', resolve);
         writeStream.on('error', reject);
-        
+
         (async () => {
           try {
             while (true) {
@@ -53,9 +56,9 @@ export async function PUT(req: NextRequest) {
     } else {
       writeStream.end();
     }
-    console.log(`[Local Disk Storage] Successfully stored file in system storage: ${localFilePath}`);
+    console.log(`[Local Disk Storage] Staged file to disk: ${localFilePath}`);
 
-    // Auth with Google using OAuth2 Refresh Token credentials to avoid Service Account quota limits
+    // Auth with Google using OAuth2 Refresh Token credentials
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -63,14 +66,11 @@ export async function PUT(req: NextRequest) {
     oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    // 2. Upload file directly to Drive from the local system storage
+    // 2. Upload from local staging file to Google Drive.
     const media = {
       mimeType: mimeType,
       body: fs.createReadStream(localFilePath),
     };
-
-    let fileId = '';
-    let webViewLink = '';
 
     try {
       const res = await drive.files.create({
@@ -84,17 +84,14 @@ export async function PUT(req: NextRequest) {
         supportsTeamDrives: true,
       });
 
-      fileId = res.data.id!;
-      webViewLink = res.data.webViewLink!;
+      const fileId = res.data.id!;
+      const webViewLink = res.data.webViewLink!;
 
       // Make the file publicly readable
       try {
         await drive.permissions.create({
           fileId: fileId,
-          requestBody: {
-            role: 'reader',
-            type: 'anyone',
-          },
+          requestBody: { role: 'reader', type: 'anyone' },
           supportsAllDrives: true,
           supportsTeamDrives: true,
         });
@@ -102,33 +99,56 @@ export async function PUT(req: NextRequest) {
         console.error(`[Google Drive Permissions Warning] Failed to set permissions for file ${name}:`, permError);
       }
 
-      console.log(`[Google Drive Success] Successfully uploaded file to Google Drive: ${fileId}`);
+      console.log(`[Google Drive Success] Uploaded: ${fileId}`);
 
-      // Delete the local file since the upload to Google Drive succeeded
+      // 3. Only delete the local staging file AFTER confirmed Drive upload.
+      //    If this fails, it is non-critical — the Drive copy is the source of truth.
       try {
         if (fs.existsSync(localFilePath)) {
           fs.unlinkSync(localFilePath);
-          console.log(`[Local Disk Cleanup] Cleaned up local file: ${localFilePath}`);
+          console.log(`[Local Disk Cleanup] Removed staging file: ${localFilePath}`);
         }
       } catch (cleanupErr) {
-        console.warn(`[Local Disk Cleanup Warning] Could not delete local file ${localFilePath}:`, cleanupErr);
+        console.warn(`[Local Disk Cleanup Warning] Could not remove staging file ${localFilePath}:`, cleanupErr);
       }
+
+      return NextResponse.json({
+        success: true,
+        fileId,
+        webViewLink,
+      });
+
     } catch (driveError: any) {
-      console.warn(`⚠️ [Google Drive Warning] Drive upload failed, falling back to local storage serving:`, driveError.message);
-      
-      // Fallback: local serving endpoint URL
-      fileId = `local_${sanitizedFileName}`;
-      webViewLink = `/api/uploads/${sanitizedFileName}`;
+      // ── Google Drive Upload Failed ──────────────────────────────────────────
+      // IMPORTANT: Do NOT delete the local staging file here.
+      // The file remains on disk so it can be retried by the user or an automated
+      // retry mechanism. The client receives driveUploadFailed: true so it can
+      // surface a meaningful error and retry option instead of silently failing.
+      console.error(
+        `[Google Drive Error] Upload to Drive failed for "${name}". ` +
+        `Local staging file preserved at: ${localFilePath}. ` +
+        `Error: ${driveError?.message}`
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          driveUploadFailed: true,
+          error: 'Failed to upload file to Google Drive. The file has been saved temporarily. Please retry the upload.',
+          retryable: true,
+          // Provide enough context for the client to construct a retry request
+          originalFolderId: folderId,
+          originalFileName: name,
+          originalMimeType: mimeType,
+        },
+        { status: 502 }
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      fileId: fileId,
-      webViewLink: webViewLink,
-      localPath: localFilePath,
-    });
   } catch (error: any) {
-    console.error('🔥 LOCAL STORAGE OR GOOGLE UPLOAD CRITICAL FAILURE:', error);
+    // Top-level failure (e.g. could not write to disk at all)
+    console.error('🔥 UPLOAD CRITICAL FAILURE:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }
+

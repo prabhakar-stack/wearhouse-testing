@@ -10,10 +10,6 @@ export default function SettingsTab() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    fetchConfig();
-  }, []);
-
   const fetchConfig = async () => {
     setLoading(true);
     try {
@@ -29,6 +25,10 @@ export default function SettingsTab() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchConfig();
+  }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

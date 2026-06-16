@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { consumeOtp, getLatestOtp } from "@/lib/otpInbox";
+import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  // Rate limit: 30 OTP reads per IP per minute
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(ip, 'otp:read', 30, 60_000);
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
   try {
     const url = new URL(req.url);
     const trackingId = url.searchParams.get("trackingId");

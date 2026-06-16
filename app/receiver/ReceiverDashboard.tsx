@@ -32,6 +32,8 @@ import Image from "next/image";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
 import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
+import { savePendingUpload } from "@/lib/indexedDb";
+import PendingUploadsIndicator from "@/app/components/PendingUploadsIndicator";
 
 // ─── Marketplace → tape image map ─────────────────────────────────────────────
 const TAPE_IMAGES: Record<string, { good: string; bad: string }> = {
@@ -774,6 +776,7 @@ export default function ReceiverDashboard({
         )}
         </div>
       </main>
+      <PendingUploadsIndicator preferredLanguage={preferredLanguage} />
     </div>
   );
 }
@@ -1307,8 +1310,37 @@ function ReceiveTab({
           }),
         }).catch(console.error);
       } catch (e: any) {
-        console.error("[Silent Rejection Upload] failed, triggering local backup:", e);
-        // Save local backup
+        console.error("[Silent Rejection Upload] failed, triggering client IndexedDB backup:", e);
+        
+        // Save to client device storage (IndexedDB)
+        try {
+          const lpnConditions = {
+            tapeIntact: String(ts !== "damaged"),
+            boxCrushed: String(bs === "damaged"),
+            isTampered: String(ts2 === "damaged"),
+          };
+          await savePendingUpload({
+            id: `RECEIVER_REJECTION_${orderId}_file`,
+            orderId,
+            type: "RECEIVER_REJECTION",
+            key: "file",
+            name: fileName,
+            mimeType: "image/jpeg",
+            blob: blob,
+            uploadedById: uid || undefined,
+            reason: "Package failed visual inspection",
+            lpnConditions,
+            timestamp: Date.now(),
+            status: "failed",
+            error: e.message || String(e),
+          });
+          window.dispatchEvent(new Event("pending-uploads-changed"));
+          console.log("[IndexedDB Backup] Successfully saved rejection photo to client device IndexedDB.");
+        } catch (idbErr) {
+          console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
+        }
+
+        // Save local backup (server secondary fallback)
         try {
           const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(orderId)}&filename=${encodeURIComponent(fileName)}`, {
             method: "PUT",

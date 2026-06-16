@@ -264,18 +264,18 @@ model ReturnPrimeReturn {
   channel         String?
   order_id        String?
   order_name      String?
-  recevied_status Boolean?
+  received_status Boolean?
   rejected_status Boolean?
   archived_status Boolean?
   refund_status   String?
   sku             String?
-  traking_number  String?
+  tracking_number String?
   quantity        Int?
   actual_amount   Float?
   image_src       String?
 
   @@index([order_id])
-  @@index([traking_number])
+  @@index([tracking_number])
   @@map("return_prime_returns")
 }
 

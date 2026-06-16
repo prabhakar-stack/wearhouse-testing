@@ -40,6 +40,8 @@ import AccessDenied from "@/app/components/AccessDenied";
 import LanguagePreference from "@/app/components/LanguagePreference";
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
 import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
+import { savePendingUpload } from "@/lib/indexedDb";
+import PendingUploadsIndicator from "@/app/components/PendingUploadsIndicator";
 
 type ProductCondition =
   | "GOOD_SELLABLE"
@@ -1258,9 +1260,9 @@ function InspectorDashboard({ role }: { role: string }) {
           {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
           {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
           {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} setActiveTab={(tab: any) => { if (tab !== "profile") setActiveTab(tab); }} />}
-          {activeTab === "alerts" && <NotificationsTab />}
         </div>
       </main>
+      <PendingUploadsIndicator preferredLanguage={preferredLanguage} />
     </div>
   );
 }
@@ -2143,30 +2145,54 @@ function InspectTab({
                 };
 
                 // ─── Helper: upload a small file (image) to /api/upload/raw ──────────────
+                // Server returns { success: true, fileId, webViewLink } on success.
+                // Server returns { success: false, driveUploadFailed: true, retryable: true } + HTTP 502 when
+                // Google Drive is unreachable. In that case the server preserves the file on its
+                // local staging disk. We retry here; if all 3 attempts fail, we throw so the
+                // outer catch block triggers the local backup pipeline.
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
-                  // Compress JPEG images to stay under Vercel's 4.5 MB body limit
+                  // Compress JPEG images to stay under the request body limit
                   let uploadBlob = f.blob;
                   if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
                     uploadBlob = await compressImage(f.blob, 0.65);
                     console.log(`[Upload] Compressed ${f.name}: ${(f.blob.size / 1024).toFixed(0)} KB → ${(uploadBlob.size / 1024).toFixed(0)} KB`);
                   }
                   const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
-                  let lastError = null;
+                  let lastError: Error | null = null;
                   for (let attempt = 1; attempt <= 3; attempt++) {
                     const controller = new AbortController();
                     const tid = setTimeout(() => controller.abort(), timeoutMs);
                     try {
                       const res = await fetch(url, { method: "PUT", body: uploadBlob, signal: controller.signal });
                       clearTimeout(tid);
-                      if (res.ok) return;
-                      lastError = new Error(`Status ${res.status}`);
+                      if (res.ok) {
+                        // Confirm the server actually got the file into Drive
+                        const data = await res.json().catch(() => ({}));
+                        if (data?.success === false && data?.driveUploadFailed) {
+                          // Server staged the file but Drive upload failed — treat as retryable error
+                          lastError = new Error(`Drive upload failed for ${f.name}: ${data.error || "Unknown Drive error"}`);
+                          console.warn(`[Upload] Attempt ${attempt}/3 — Drive upload failed for ${f.name}. Will retry.`);
+                        } else {
+                          return; // ✅ Successfully written to Drive
+                        }
+                      } else {
+                        // Parse error body to detect driveUploadFailed on non-ok responses (e.g. 502)
+                        const errData = await res.json().catch(() => ({}));
+                        if (errData?.driveUploadFailed) {
+                          lastError = new Error(`Drive upload failed for ${f.name}: ${errData.error || `HTTP ${res.status}`}`);
+                          console.warn(`[Upload] Attempt ${attempt}/3 — Drive upload returned ${res.status} for ${f.name}. Will retry.`);
+                        } else {
+                          lastError = new Error(`HTTP ${res.status} for ${f.name}`);
+                        }
+                      }
                     } catch (err: any) {
                       clearTimeout(tid);
                       lastError = err;
                     }
-                    if (attempt < 3) await new Promise((r) => setTimeout(r, 1000 * attempt));
+                    if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
                   }
-                  throw new Error(`Failed to upload ${f.name} after 3 attempts: ${lastError?.message || "unknown"}`);
+                  // All retries exhausted — throw to trigger the outer local backup pipeline
+                  throw new Error(`Failed to upload ${f.name} to Drive after 3 attempts: ${lastError?.message || "unknown"}`);
                 };
 
                 // ─── Helper: upload video via Google Drive Resumable Upload ───────────────
@@ -2271,8 +2297,38 @@ function InspectTab({
                   throw new Error(`Failed to finalize upload: ${finalizeRes.status}`);
                 }
               } catch (e: any) {
-                console.error("Silent background pipeline failed:", e);
-                // Trigger local backup on failure — video is chunked to stay under Vercel body limits
+                console.error("Silent background pipeline failed, triggering client IndexedDB backup:", e);
+                
+                // Save to client device storage (IndexedDB)
+                try {
+                  for (const f of filesToUpload) {
+                    await savePendingUpload({
+                      id: `INSPECTION_VIDEO_${activeOrderId}_${f.key}`,
+                      orderId: activeOrderId,
+                      manifestId: activeManifestId || undefined,
+                      orderPlatformId: activePlatformOrderId || undefined,
+                      type: "INSPECTION_VIDEO",
+                      key: f.key,
+                      name: f.name,
+                      mimeType: f.mimeType,
+                      blob: f.blob,
+                      lpn: f.lpn,
+                      uploadedById: activeUserId || undefined,
+                      reason: "Complete Order Inspection Folder",
+                      lpnConditions,
+                      lpnRecoveryTypes,
+                      timestamp: Date.now(),
+                      status: "failed",
+                      error: e.message || String(e),
+                    });
+                  }
+                  window.dispatchEvent(new Event("pending-uploads-changed"));
+                  console.log("[IndexedDB Backup] Successfully saved inspection files to client device IndexedDB.");
+                } catch (idbErr) {
+                  console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
+                }
+
+                // Trigger local backup on failure (server secondary fallback)
                 for (const f of filesToUpload) {
                   try {
                     if (f.blob.type.startsWith("video/") && f.blob.size > 2 * 1024 * 1024) {
@@ -3160,7 +3216,8 @@ function InspectTab({
           )
         )}
 
-        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (() => {
+        {/* eslint-disable-next-line */}
+        {(phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && (() => { // NOSONAR
           if (showMissingConfirm) {
             return (
               <div className="flex-1 flex flex-col items-center justify-center p-8 bg-red-50/50 animate-in fade-in duration-300 text-center">

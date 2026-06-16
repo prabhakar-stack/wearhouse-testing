@@ -189,6 +189,8 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionText, setResolutionText] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  // selectedRole: drives only the Switch Role dropdown navigation — NOT tab visibility.
+  // Tab access is always derived from the server-verified `role` prop below.
   const [selectedRole, setSelectedRole] = useState(role);
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
 
@@ -240,10 +242,11 @@ export default function SuperAdminDashboard({ role, name, email, userId }: { rol
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('userRole');
-      if (stored) {
-        setSelectedRole(stored);
-      }
+      // NOTE: We intentionally do NOT read 'userRole' from localStorage here.
+      // The selectedRole dropdown is purely cosmetic (it navigates to a different page).
+      // Tab access permissions are always derived from the server-verified `role` prop.
+      // Reading localStorage for RBAC would let any user do: localStorage.setItem('userRole', 'SUPER_ACCESS')
+      // and gain visibility into admin tabs — so we removed that vulnerability.
       setIsSidebarMinimized(localStorage.getItem("isSidebarMinimized") === "true");
     }
   }, []);

@@ -1,4 +1,7 @@
-// Singleton Prisma Client instantiation to prevent connection pool exhaustion during development
+// Singleton Prisma Client — cached on globalThis to survive hot-reloads in dev
+// AND to prevent new connections being opened on every serverless invocation in prod.
+// Without this, each Vercel function call opens a fresh PrismaClient which exhausts
+// Supabase's connection pool under real traffic.
 import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
@@ -7,4 +10,5 @@ const globalForPrisma = globalThis as unknown as {
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient();
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+// Cache in all environments — critical for serverless production deployments.
+globalForPrisma.prisma = prisma;

@@ -31,12 +31,26 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/product/status") ||
+    pathname.startsWith("/api/health") || // Health check — no session needed for uptime monitors
     pathname.startsWith("/api/cron") || // Cron routes validate their own secret
-    pathname.startsWith("/api/otp/bridge") || // External OTP bridge validates its own secret
-    pathname.startsWith("/api/alerts/seed") // Test seed validates its own secret
+    pathname.startsWith("/api/otp/bridge") // External OTP bridge validates its own secret
   ) {
     return NextResponse.next();
   }
+
+  // Seed route: allowed in development only.
+  // In production this returns 403 before it reaches the route handler,
+  // preventing fake alert injection into the live system.
+  if (pathname.startsWith("/api/alerts/seed")) {
+    if (IS_PRODUCTION) {
+      return NextResponse.json(
+        { error: "This endpoint is disabled in production." },
+        { status: 403 }
+      );
+    }
+    return NextResponse.next();
+  }
+
 
   // Enforce session presence
   if (!session) {

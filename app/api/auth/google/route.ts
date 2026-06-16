@@ -2,6 +2,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit, getClientIp, tooManyRequests } from '@/lib/rateLimit';
 
 const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const client = new OAuth2Client(clientId);
@@ -10,6 +11,11 @@ const isProduction = process.env.NODE_ENV === 'production';
 const JWT_SECRET_CONFIGURED = !!process.env.JWT_SECRET;
 
 export async function POST(req: Request) {
+  // Rate limit: 10 login attempts per IP per minute
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(ip, 'auth:google', 10, 60_000);
+  if (!rl.allowed) return tooManyRequests(rl.retryAfterSec);
+
   try {
     // Fail-fast in production if JWT_SECRET is not configured
     if (isProduction && !JWT_SECRET_CONFIGURED) {

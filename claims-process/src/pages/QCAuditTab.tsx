@@ -73,6 +73,12 @@ export default function QCAuditTab() {
   // Global Notification
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
+  // Toast notification helper — defined first so fetchData (below) can call it
+  const triggerToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
   // Initial Fetch Function
   const fetchData = async () => {
     try {
@@ -111,11 +117,6 @@ export default function QCAuditTab() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  const triggerToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
-    setToast({ text, type });
-    setTimeout(() => setToast(null), 4000);
-  };
 
   // Section 1 Handlers
   const handleScanSubmit = async (e: React.FormEvent) => {

@@ -3,9 +3,6 @@
   "name": "returns-management-system",
   "version": "0.1.0",
   "private": true,
-  "prisma": {
-    "seed": "node prisma/seed.js"
-  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",
@@ -14,7 +11,7 @@
     "lint": "eslint .",
     "clean": "next clean",
     "seed:test-order": "node prisma/seed-test-order.js",
-    "postbuild": "prisma db push",
+    "postbuild": "prisma migrate deploy",
     "sync:shopify-returns": "ts-node --esm scripts/run_shopify_returns_sync.ts",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
     "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js",
