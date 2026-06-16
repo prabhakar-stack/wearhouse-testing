@@ -800,11 +800,21 @@ export default function ReceiverDashboard({
   );
 }
 
-// ─── Expected Tab ─────────────────────────────────────────────────────────────
 function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: PreferredLanguage }) {
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [expected, setExpected] = useState<any[]>([]);;
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState<number>(0);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setNow(Date.now());
+    });
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const fetch_ = () => {
