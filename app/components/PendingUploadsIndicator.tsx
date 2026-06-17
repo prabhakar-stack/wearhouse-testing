@@ -269,17 +269,14 @@ export default function PendingUploadsIndicator({
 
       const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
 
-      // 2. Upload each file in the group
+      // 2. Upload each file — both images and video go through uploadSmallFile.
+      // The /api/upload/raw route handles Drive upload server-side, so there are
+      // no CORS or chunk assembly issues. The /api/upload/init already returns
+      // a valid uploadUrls entry for every file key including the video "file" key.
       for (const f of group.files) {
-        if (f.key === "file" && group.type === "INSPECTION_VIDEO") {
-          // Video upload via direct Google Resumable Upload
-          await uploadVideoResumable(f, orderFolderId);
-        } else {
-          // Small images
-          const rawUrl = uploadUrls[f.key];
-          if (!rawUrl) throw new Error(`Missing raw upload URL for file key: ${f.key}`);
-          await uploadSmallFile(f, rawUrl);
-        }
+        const rawUrl = uploadUrls[f.key];
+        if (!rawUrl) throw new Error(`Missing upload URL for file key: ${f.key}`);
+        await uploadSmallFile(f, rawUrl);
       }
 
       // 3. Finalize upload metadata in DB

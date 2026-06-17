@@ -2084,6 +2084,8 @@ function InspectTab({
               if (!activeOrderId) return;
               setIsUploading(true);
               const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
+              // Track which files reach Drive — used in catch to only save truly failed files to IndexedDB.
+              const uploadedKeys = new Set<string>();
               try {
                 const videoChunks = chunksRef.current.length > 0 ? chunksRef.current : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
                 const blob = new Blob(videoChunks, { type: "video/webm" });
@@ -2206,33 +2208,19 @@ function InspectTab({
                   throw new Error(`Failed to upload ${f.name} to Drive after 3 attempts: ${lastError?.message || "unknown"}`);
                 };
 
-                // ─── Helper: upload video via Google Drive Resumable Upload ───────────────
-                // 1. Ask server for a resumable session URI (only the token exchange hits Vercel)
-                // 2. Send 5 MB chunks directly to Google's servers — no Vercel body size limit
-                // 3. After upload completes, tell server to set public permissions
+                // ─── Helper: upload video via same-origin chunked proxy ─────────────────
+                // Sends 1 MB chunks to /api/upload/chunk (same origin, avoids CORS), then
+                // calls /api/upload/assemble to stream-upload the reassembled file to Drive.
                 const uploadVideoResumable = async (
                   f: { key: string; name: string; mimeType: string; blob: Blob },
                   targetFolderId: string
                 ) => {
-                  const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB — Google minimum for resumable is 256 KB
+                  const CHUNK_SIZE = 1 * 1024 * 1024; // 1 MB — stays within Next.js body limits
                   const totalSize = f.blob.size;
-
-                  console.log(`[Resumable] Starting upload for ${f.name} (${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
-
-                  // Step 1: Get resumable session URI from our server
-                  const sessionRes = await fetch("/api/upload/resumable-init", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ folderId: targetFolderId, name: f.name, mimeType: f.mimeType, fileSize: totalSize }),
-                  });
-                  if (!sessionRes.ok) {
-                    throw new Error(`Failed to create resumable session: ${sessionRes.status}`);
-                  }
-                  const { sessionUri } = await sessionRes.json();
-
-                  // Step 2: Upload chunks directly to Google
-                  let uploadedBytes = 0;
                   const totalChunks = Math.max(1, Math.ceil(totalSize / CHUNK_SIZE));
+                  const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+                  console.log(`[Chunked Upload] Starting for ${f.name} (${(totalSize / 1024 / 1024).toFixed(1)} MB), uploadId=${uploadId}`);
 
                   for (let i = 0; i < totalChunks; i++) {
                     const start = i * CHUNK_SIZE;
@@ -2244,25 +2232,15 @@ function InspectTab({
 
                     for (let attempt = 1; attempt <= 3; attempt++) {
                       const controller = new AbortController();
-                      const tid = setTimeout(() => controller.abort(), 120000); // 2 min per chunk
+                      const tid = setTimeout(() => controller.abort(), 120000);
                       try {
-                        const res = await fetch(sessionUri, {
-                          method: "PUT",
-                          headers: {
-                            "Content-Range": `bytes ${start}-${end - 1}/${totalSize}`,
-                            "Content-Type": f.mimeType,
-                          },
-                          body: chunk,
-                          signal: controller.signal,
-                        });
+                        const res = await fetch(
+                          `/api/upload/chunk?uploadId=${uploadId}&chunkIndex=${i}&name=${encodeURIComponent(f.name)}`,
+                          { method: "PUT", body: chunk, signal: controller.signal }
+                        );
                         clearTimeout(tid);
-                        // 200/201 = complete, 308 = chunk accepted (resume incomplete)
-                        if (res.status === 200 || res.status === 201 || res.status === 308) {
-                          uploadedBytes = end;
-                          chunkOk = true;
-                          break;
-                        }
-                        lastErr = new Error(`Google returned status ${res.status}`);
+                        if (res.ok) { chunkOk = true; break; }
+                        lastErr = new Error(`Server returned ${res.status}`);
                       } catch (err: any) {
                         clearTimeout(tid);
                         lastErr = err;
@@ -2271,31 +2249,34 @@ function InspectTab({
                     }
 
                     if (!chunkOk) {
-                      throw new Error(`Chunk ${i + 1}/${totalChunks} failed after 3 attempts: ${lastErr?.message || "unknown"}`);
+                      throw new Error(`Chunk ${i + 1}/${totalChunks} failed: ${lastErr?.message || "unknown"}`);
                     }
-                    console.log(`[Resumable] Chunk ${i + 1}/${totalChunks} uploaded (${(uploadedBytes / 1024 / 1024).toFixed(1)} MB / ${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
+                    console.log(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} done.`);
                   }
 
-                  // Step 3: Set file permissions via server (client doesn't have OAuth token)
-                  const finalizeRes = await fetch("/api/upload/resumable-finalize-by-name", {
+                  // Assemble chunks server-side and upload to Drive
+                  console.log(`[Chunked Upload] Assembling ${totalChunks} chunks for ${f.name}…`);
+                  const assembleRes = await fetch("/api/upload/assemble", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ folderId: targetFolderId, name: f.name }),
+                    body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
                   });
-                  if (!finalizeRes.ok) {
-                    console.warn("[Resumable] Could not finalize/set permissions, but upload succeeded.");
-                  } else {
-                    const fd = await finalizeRes.json();
-                    console.log(`[Resumable] Upload complete. webViewLink: ${fd.webViewLink}`);
+                  if (!assembleRes.ok) {
+                    const errData = await assembleRes.json().catch(() => ({}));
+                    throw new Error(`Assembly failed: ${errData.error || `HTTP ${assembleRes.status}`}`);
                   }
+                  const assembled = await assembleRes.json();
+                  console.log(`[Chunked Upload] Uploaded to Drive:`, assembled.webViewLink);
                 };
 
+                // Upload ALL files (video + images) through uploadSmallFile → /api/upload/raw.
+                // Track which files succeed so the catch block only saves FAILED files to
+                // IndexedDB — successfully uploaded files must NOT appear in the pending tab.
                 for (const f of filesToUpload) {
-                  if (f.key === "file") {
-                    await uploadVideoResumable(f, orderFolderId);
-                  } else {
-                    const url = uploadUrls[f.key];
-                    if (url) await uploadSmallFile(f, url);
+                  const url = uploadUrls[f.key];
+                  if (url) {
+                    await uploadSmallFile(f, url);
+                    uploadedKeys.add(f.key); // only reaches here if upload didn't throw
                   }
                 }
 
@@ -2312,7 +2293,11 @@ function InspectTab({
                 
                 // Save to client device storage (IndexedDB)
                 try {
-                  for (const f of filesToUpload) {
+                  // Only save files that did NOT yet make it to Drive.
+                  // Files already uploaded successfully should not show in the pending tab.
+                  const failedFiles = filesToUpload.filter(f => !uploadedKeys.has(f.key));
+                  console.log(`[IndexedDB Backup] ${uploadedKeys.size} file(s) already uploaded; saving ${failedFiles.length} pending file(s).`);
+                  for (const f of failedFiles) {
                     await savePendingUpload({
                       id: `INSPECTION_VIDEO_${activeOrderId}_${f.key}`,
                       orderId: activeOrderId,
@@ -3195,7 +3180,7 @@ function InspectTab({
                 <ScanEye size={48} className="text-[#FF6700]" />
               </div>
               <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
-                {lang === 'hi' ? 'ऑर्डर ID स्कैन करें' : 'Scan Order ID'}
+                {lang === 'hi' ? 'ट्रैकिंग ID स्कैन करें' : 'Scan Tracking ID'}
               </h2>
               <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
                 {lang === 'hi' ? 'निरंतर साक्ष्य शुरू करने के लिए' : 'To Begin Continuous Evidence'}
@@ -3203,7 +3188,7 @@ function InspectTab({
               <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
                 <input
                   type="text"
-                  placeholder={lang === 'hi' ? 'ऑर्डर ID डालें...' : "ENTER ORDER ID..."}
+                  placeholder={lang === 'hi' ? 'ट्रैकिंग ID डालें...' : "ENTER TRACKING ID..."}
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
                   autoFocus

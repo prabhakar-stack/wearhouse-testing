@@ -102,9 +102,17 @@ export async function POST(req: Request) {
     }
 
     if (manifest.status !== 'IN_INSPECTION') {
+      // Manifest has already been evaluated and moved past IN_INSPECTION
+      // (e.g. CLAIMS_STAGING or INSPECTED). This can happen when a pending upload
+      // retry calls evaluate after the first attempt already completed the scan.
+      // The files are already uploaded — return 200 so the retry flow can clear
+      // the item from IndexedDB rather than staying stuck in the pending tab.
+      console.warn(`[Evaluate] Manifest ${manifestId} already in status "${manifest.status}" — skipping re-evaluation, treating as success.`);
       return NextResponse.json({
-        error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.`
-      }, { status: 400 });
+        success: true,
+        skipped: true,
+        message: `Manifest already evaluated (status: ${manifest.status}). No re-evaluation needed.`,
+      });
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
