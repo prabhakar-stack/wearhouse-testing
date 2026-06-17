@@ -337,22 +337,7 @@ export async function POST(req: Request) {
         }
       }
 
-      // Raise Level L3 Alert for missing items if shortages exist
-      if (missingCount > 0) {
-        const targetUserIds = await resolveTargetUserIds(['L3']);
-        await tx.alert.create({
-          data: {
-            level: 'L3',
-            type: 'MISSING_ITEMS',
-            title: `Missing Items Detected`,
-            description: `Inspection of tracking ID ${manifest.trackingId} found missing items. Expected: ${itemsExpected || totalExpectedQty}, Scanned: ${itemsScanned || scannedEntries.length}, Missing Shortages: ${missingCount}.`,
-            manifestId: manifest.id,
-            targetUsers: {
-              connect: targetUserIds.map(id => ({ id }))
-            }
-          }
-        });
-      }
+
 
       // Determine manifest status based on return item conditions.
       // Any condition other than GOOD_SELLABLE (including PACKAGING_DAMAGED = product's original

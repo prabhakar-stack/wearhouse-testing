@@ -161,11 +161,14 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
 export default function AdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc'>('alerts');
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -376,13 +379,25 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
                         </span>
                         <h4 className="font-bold text-[#313079] mt-1 text-xs leading-tight">{alert.title}</h4>
                         <p className="text-[10px] text-slate-500 mt-1 leading-normal">
-                          {lang === 'hi' ? (
-                            HINDI_ALERT_DESCRIPTIONS[alert.type]
+                          {(() => {
+                            if (lang !== 'hi') return alert.description;
+                            let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
                               ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                                   .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                                   .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-                              : translateInstruction(alert.description, 'hi')
-                          ) : alert.description}
+                              : translateInstruction(alert.description, 'hi');
+                            if (alert.description.includes('Missing items:')) {
+                              const parts = alert.description.split('Missing items:');
+                              if (parts.length > 1) {
+                                const missingInfo = 'Missing items:' + parts[1];
+                                const translatedInfo = translateInstruction(missingInfo, 'hi');
+                                if (!baseDesc.includes(translatedInfo)) {
+                                  baseDesc = baseDesc + ' ' + translatedInfo;
+                                }
+                              }
+                            }
+                            return baseDesc;
+                          })()}
                         </p>
                         {alert.manifest?.trackingId && (
                           <span className="inline-block mt-1 text-[8px] font-mono text-slate-400 uppercase">
@@ -597,7 +612,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
       <main className="flex-1 overflow-hidden flex flex-col bg-white">
         <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
-            {activeTab === 'alerts'   && <AlertsTab userRole={role} />}
+            {activeTab === 'alerts'   && <AlertsTab userRole={role} preferredLanguage={preferredLanguage} />}
             {activeTab === 'claims'   && <ClaimsTab />}
             {(() => {
               const claimsUrl = process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000";
@@ -1153,10 +1168,9 @@ const LEVEL_CONFIG: Record<string, { color: string; bgColor: string; borderColor
   L1: { color: 'text-slate-600', bgColor: 'bg-slate-50', borderColor: 'border-slate-300', icon: <Info size={18} className="text-slate-500" />, label: 'LOW', action: 'In-app only' },
 };
 
-function AlertsTab({ userRole }: { userRole: string }) {
+function AlertsTab({ userRole, preferredLanguage }: { userRole: string; preferredLanguage: PreferredLanguage }) {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const [counts, setCounts] = useState<any>({ L1: 0, L2: 0, L3: 0, L4: 0, total: 0 });
   const [stats, setStats] = useState<any>({ resolvedToday: 0, sopFollowedToday: 0, adherenceRate: 100 });
@@ -1208,14 +1222,7 @@ function AlertsTab({ userRole }: { userRole: string }) {
   }, [showResolved, preferredLanguage]);
 
   useEffect(() => {
-    const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     queueMicrotask(() => { fetchAlerts(); });
-    window.addEventListener('preferred-language-changed', syncLanguage);
-    window.addEventListener('storage', syncLanguage);
-    return () => {
-      window.removeEventListener('preferred-language-changed', syncLanguage);
-      window.removeEventListener('storage', syncLanguage);
-    };
   }, [fetchAlerts]);
 
   const handleResolve = async (alertId: string, alertLevel: string) => {
@@ -1604,13 +1611,25 @@ function AlertsTab({ userRole }: { userRole: string }) {
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200">
                     <p className="text-sm text-slate-650 leading-relaxed">
-                      {lang === 'hi' ? (
-                        HINDI_ALERT_DESCRIPTIONS[alert.type]
+                      {(() => {
+                        if (lang !== 'hi') return alert.description;
+                        let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
                           ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                               .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                               .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-                          : translateInstruction(alert.description, 'hi')
-                      ) : alert.description}
+                          : translateInstruction(alert.description, 'hi');
+                        if (alert.description.includes('Missing items:')) {
+                          const parts = alert.description.split('Missing items:');
+                          if (parts.length > 1) {
+                            const missingInfo = 'Missing items:' + parts[1];
+                            const translatedInfo = translateInstruction(missingInfo, 'hi');
+                            if (!baseDesc.includes(translatedInfo)) {
+                              baseDesc = baseDesc + ' ' + translatedInfo;
+                            }
+                          }
+                        }
+                        return baseDesc;
+                      })()}
                     </p>
 
                     {/* SOP Steps */}

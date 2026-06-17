@@ -107,10 +107,13 @@ function StepVisualGuide({
   step: { id: number; title: { en: string; hi: string } | string; desc: { en: string; hi: string } | string; sampleImg: string | string[] | null };
   className?: string;
 }) {
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -690,7 +693,7 @@ function InspectorDashboard({ role }: { role: string }) {
   const [alertCount, setAlertCount] = useState(0);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const [ledgerCount, setLedgerCount] = useState(0);
@@ -764,6 +767,9 @@ function InspectorDashboard({ role }: { role: string }) {
   }, []);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -1262,6 +1268,7 @@ function InspectorDashboard({ role }: { role: string }) {
           {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
           {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
           {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} setActiveTab={(tab: any) => { if (tab !== "profile") setActiveTab(tab); }} />}
+          {activeTab === "alerts" && <NotificationsTab />}
         </div>
       </main>
       <PendingUploadsIndicator preferredLanguage={preferredLanguage} />
@@ -1534,7 +1541,7 @@ function InspectTab({
   setActiveTab?: (tab: "home" | "takeover" | "inspect" | "profile" | "ledger" | "alerts") => void;
 }) {
   const router = useRouter();
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const [phase, setPhase] = useState<
@@ -1564,6 +1571,9 @@ function InspectTab({
   }, [phase, setIsQaActive]);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -3764,7 +3774,7 @@ const LEVEL_CONFIG: Record<string, { color: string; bgColor: string; borderColor
 function NotificationsTab() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
@@ -3815,6 +3825,9 @@ function NotificationsTab() {
   }, [showResolved, preferredLanguage]);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     queueMicrotask(() => { fetchAlerts(); });
     window.addEventListener('preferred-language-changed', syncLanguage);
@@ -4183,13 +4196,25 @@ function NotificationsTab() {
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200 text-left">
                     <p className="text-sm text-slate-600 leading-relaxed text-left">
-                      {lang === 'hi' ? (
-                        HINDI_ALERT_DESCRIPTIONS[alert.type]
+                      {(() => {
+                        if (lang !== 'hi') return alert.description;
+                        let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
                           ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                               .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                               .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-                          : translateInstruction(alert.description, 'hi')
-                      ) : alert.description}
+                          : translateInstruction(alert.description, 'hi');
+                        if (alert.description.includes('Missing items:')) {
+                          const parts = alert.description.split('Missing items:');
+                          if (parts.length > 1) {
+                            const missingInfo = 'Missing items:' + parts[1];
+                            const translatedInfo = translateInstruction(missingInfo, 'hi');
+                            if (!baseDesc.includes(translatedInfo)) {
+                              baseDesc = baseDesc + ' ' + translatedInfo;
+                            }
+                          }
+                        }
+                        return baseDesc;
+                      })()}
                     </p>
                     {editingSopType === alert.type ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">

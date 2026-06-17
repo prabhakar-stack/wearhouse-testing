@@ -920,7 +920,16 @@ export async function runEscalationsJob() {
   for (const manifest of claimsManifests) {
     if (!manifest.inspectedAt) continue;
 
-    const workingHoursElapsed = calculateWarehouseWorkingHours(manifest.inspectedAt, now, startTimeStr, endTimeStr, timezoneStr);
+    const missingItems = await prisma.missingItem.findMany({
+      where: { manifestId: manifest.id }
+    });
+
+    let baseTime = manifest.inspectedAt;
+    if (missingItems.length > 0) {
+      baseTime = missingItems[0].createdAt || manifest.inspectedAt;
+    }
+
+    const workingHoursElapsed = calculateWarehouseWorkingHours(baseTime, now, startTimeStr, endTimeStr, timezoneStr);
     let targetAlertType: string | null = null;
 
     if (workingHoursElapsed >= 24) {
@@ -962,12 +971,19 @@ export async function runEscalationsJob() {
 
           if (shouldCreate) {
             const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+            let description = rule.description.replace("{trackingId}", manifest.trackingId);
+            if (missingItems.length > 0) {
+              const fnskus = [...new Set(missingItems.map(item => item.fnsku))].join(', ');
+              const quantities = missingItems.map(item => `${item.fnsku}: ${item.missingQuantity}`).join(', ');
+              description = `${description} Missing items: Tracking ID: ${manifest.trackingId}, Removal Order ID: ${manifest.removalOrderId || 'N/A'}, FNSKUs: ${fnskus}, Quantities: ${quantities}. Claim is not raised.`;
+            }
+
             const alert = await prisma.alert.create({
               data: {
                 level: rule.level as any,
                 type: rule.type,
                 title: rule.title,
-                description: rule.description.replace("{trackingId}", manifest.trackingId),
+                description: description,
                 manifestId: manifest.id,
                 targetUsers: {
                   connect: targetUserIds.map(id => ({ id }))
@@ -1096,30 +1112,7 @@ export async function runEscalationsJob() {
     if (alert) results.l4Alerts++;
   }
 
-  const missingEvidence = await prisma.evidence.findMany({
-    where: {
-      claimReason: "MISSING",
-      manifest: {
-        alerts: {
-          none: { type: "MISSING_ITEMS", resolved: false },
-        },
-      },
-    },
-    include: { manifest: true },
-  });
 
-  for (const ev of missingEvidence) {
-    if (ev.manifest) {
-      await createAlertIfNew({
-        level: "L3",
-        type: "MISSING_ITEMS",
-        title: `Missing Items Detected in Inspection`,
-        description: `Inspection of tracking ID ${ev.manifest.trackingId} found missing items.`,
-        manifestId: ev.manifestId!,
-        targetUserIds: await resolveTargetUserIds(["L3"]),
-      });
-    }
-  }
 
 
   // ── GROUP 10: AMAZON NON-DISPATCH (Reimbursement Window Monitoring) ──────────
