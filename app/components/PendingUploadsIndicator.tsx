@@ -123,8 +123,8 @@ export default function PendingUploadsIndicator({
     url: string
   ) => {
     let uploadBlob = f.blob;
-    if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
-      uploadBlob = await compressImage(f.blob, 0.65);
+    if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+      uploadBlob = await compressImage(f.blob, 0.8);
     }
     const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
     let lastError: Error | null = null;
@@ -269,14 +269,24 @@ export default function PendingUploadsIndicator({
 
       const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
 
-      // 2. Upload each file — both images and video go through uploadSmallFile.
-      // The /api/upload/raw route handles Drive upload server-side, so there are
-      // no CORS or chunk assembly issues. The /api/upload/init already returns
-      // a valid uploadUrls entry for every file key including the video "file" key.
+      // 2. Upload each file — route large files (> 4 MB) to direct resumable upload, and small files to raw upload.
       for (const f of group.files) {
         const rawUrl = uploadUrls[f.key];
         if (!rawUrl) throw new Error(`Missing upload URL for file key: ${f.key}`);
-        await uploadSmallFile(f, rawUrl);
+        
+        let fileToUpload = f;
+        if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+          const compressed = await compressImage(f.blob, 0.8);
+          console.log(`[Upload Retry] Compressed large image ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
+          fileToUpload = { ...f, blob: compressed };
+        }
+
+        if (fileToUpload.blob.size > 4_000_000) {
+          console.log(`[Upload Retry] File ${f.name} is large (${(fileToUpload.blob.size / 1024 / 1024).toFixed(1)} MB) — using resumable upload.`);
+          await uploadVideoResumable(fileToUpload, orderFolderId);
+        } else {
+          await uploadSmallFile(fileToUpload, rawUrl);
+        }
       }
 
       // 3. Finalize upload metadata in DB

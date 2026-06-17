@@ -2052,17 +2052,17 @@ function InspectTab({
           // and offloads encoding to hardware-accelerated browser codecs, preventing OOM crashes.
           const recordingStream = recStreamRef.current;
 
-          // Pick the best supported codec at a low bitrate to stay within laptop memory limits
-          let options = { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: 200000 };
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: "video/webm", videoBitsPerSecond: 200000 };
-          }
-
-          const mr = new MediaRecorder(recordingStream, options);
-
-          mediaRecorderRef.current = mr;
-          chunksRef.current = [];
-          mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+           // Configure the recorder with a high bitrate of 3 Mbps for crystal-clear details
+           let options = { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: 3000000 };
+           if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+             options = { mimeType: "video/webm", videoBitsPerSecond: 3000000 };
+           }
+ 
+           const mr = new MediaRecorder(recordingStream, options);
+ 
+           mediaRecorderRef.current = mr;
+           chunksRef.current = [];
+           mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
             // ⚠️ Read all values from refs — onstop is a stale closure
@@ -2164,11 +2164,11 @@ function InspectTab({
                 // local staging disk. We retry here; if all 3 attempts fail, we throw so the
                 // outer catch block triggers the local backup pipeline.
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
-                  // Compress JPEG images to stay under the request body limit
+                  // Compress JPEG images if they exceed 5 MB to keep files reasonable
                   let uploadBlob = f.blob;
-                  if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
-                    uploadBlob = await compressImage(f.blob, 0.65);
-                    console.log(`[Upload] Compressed ${f.name}: ${(f.blob.size / 1024).toFixed(0)} KB → ${(uploadBlob.size / 1024).toFixed(0)} KB`);
+                  if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+                    uploadBlob = await compressImage(f.blob, 0.8);
+                    console.log(`[Upload] Compressed ${f.name} (> 5MB): ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(uploadBlob.size / 1024 / 1024).toFixed(1)} MB`);
                   }
                   const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
                   let lastError: Error | null = null;
@@ -2269,13 +2269,26 @@ function InspectTab({
                   console.log(`[Chunked Upload] Uploaded to Drive:`, assembled.webViewLink);
                 };
 
-                // Upload ALL files (video + images) through uploadSmallFile → /api/upload/raw.
+                // Upload ALL files (video + images). If a file is > 4 MB, upload it via chunked proxy.
+                // Otherwise, upload normally.
                 // Track which files succeed so the catch block only saves FAILED files to
                 // IndexedDB — successfully uploaded files must NOT appear in the pending tab.
                 for (const f of filesToUpload) {
                   const url = uploadUrls[f.key];
                   if (url) {
-                    await uploadSmallFile(f, url);
+                    let fileToUpload = f;
+                    if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+                      const compressed = await compressImage(f.blob, 0.8);
+                      console.log(`[Upload] Compressed large image ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
+                      fileToUpload = { ...f, blob: compressed };
+                    }
+
+                    if (fileToUpload.blob.size > 4_000_000) {
+                      console.log(`[Upload] File ${f.name} is large (${(fileToUpload.blob.size / 1024 / 1024).toFixed(1)} MB) — using chunked upload.`);
+                      await uploadVideoResumable(fileToUpload, orderFolderId);
+                    } else {
+                      await uploadSmallFile(fileToUpload, url);
+                    }
                     uploadedKeys.add(f.key); // only reaches here if upload didn't throw
                   }
                 }
@@ -2968,14 +2981,7 @@ function InspectTab({
               <span>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</span>
             </div>
 
-            {availableCameras.length > 0 && (
-              <button
-                onClick={() => setShowConfigPanel((v) => !v)}
-                className="absolute bottom-2 left-2 z-10 text-[8px] font-bold uppercase tracking-widest text-white/70 hover:text-white transition-colors border border-white/10 hover:border-white/20 bg-black/50 px-2 py-1 rounded"
-              >
-                {showConfigPanel ? (lang === 'hi' ? 'कॉन्फ़िग छुपाएं' : 'Hide Config') : (lang === 'hi' ? 'कैमरे कॉन्फ़िगर करें' : 'Configure Cameras')}
-              </button>
-            )}
+
             <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
               <VideoIcon size={9} />
               <span>{lang === 'hi' ? 'रिकॉर्डिंग कैम' : 'REC CAM'}</span>
@@ -3053,22 +3059,13 @@ function InspectTab({
             />
           )}
 
-          {dualCameraMode && (
-            <button
-              onClick={swapCameras}
-              disabled={isSwitchingCameras}
-              className="absolute top-4 right-4 z-30 bg-gradient-to-r from-[#FF6700] to-[#ff8c3b] hover:from-[#ff8c3b] hover:to-[#FF6700] active:scale-95 text-white disabled:opacity-40 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-full shadow-lg flex items-center space-x-2 transition-all border border-[#FF6700]/30"
-            >
-              <SwitchCamera size={14} className={isSwitchingCameras ? "animate-spin" : ""} />
-              <span>{isSwitchingCameras ? (lang === 'hi' ? 'बदल रहे हैं...' : 'Switching...') : (lang === 'hi' ? 'कैमरे बदलें' : 'Swap Cameras')}</span>
-            </button>
-          )}
+
 
           {shutterFlash && (
             <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150" />
           )}
 
-          <div className="absolute bottom-3 left-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
+          <div className="absolute bottom-3 right-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
             <Camera size={10} />
             <span>{dualCameraMode ? (lang === 'hi' ? 'इमेज कैम' : 'Image Cam') : (lang === 'hi' ? 'कैमरा' : 'Camera')}</span>
           </div>
