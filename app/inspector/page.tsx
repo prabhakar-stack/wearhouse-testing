@@ -2346,41 +2346,6 @@ function InspectTab({
                 } catch (idbErr) {
                   console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
                 }
-
-                // Trigger local backup on failure (server secondary fallback)
-                for (const f of filesToUpload) {
-                  try {
-                    if (f.blob.type.startsWith("video/") && f.blob.size > 2 * 1024 * 1024) {
-                      // Chunk the video backup in 2 MB slices — Vercel hard limit is 4.5 MB,
-                      // 2 MB leaves a safe margin for request headers and overhead.
-                      const BACKUP_CHUNK = 2 * 1024 * 1024;
-                      const totalChunks = Math.ceil(f.blob.size / BACKUP_CHUNK);
-                      for (let i = 0; i < totalChunks; i++) {
-                        const chunk = f.blob.slice(i * BACKUP_CHUNK, Math.min((i + 1) * BACKUP_CHUNK, f.blob.size));
-                        const chunkName = `${f.name}.part${i}of${totalChunks}`;
-                        const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(chunkName)}`, {
-                          method: "PUT",
-                          body: chunk,
-                        });
-                        if (backupRes.ok) {
-                          console.log(`[Local Backup] Saved video chunk ${i + 1}/${totalChunks} → failed_uploads/${activeOrderId}/${chunkName}`);
-                        }
-                      }
-                    } else {
-                      const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(f.name)}`, {
-                        method: "PUT",
-                        body: f.blob,
-                      });
-                      if (backupRes.ok) {
-                        console.log(`[Local Backup] Successfully saved ${f.name} locally to failed_uploads/${activeOrderId}`);
-                      } else {
-                        console.error(`[Local Backup] Failed to save ${f.name} locally: status ${backupRes.status}`);
-                      }
-                    }
-                  } catch (backupErr: any) {
-                    console.error(`[Local Backup] Error saving ${f.name} locally:`, backupErr);
-                  }
-                }
               } finally { setIsUploading(false); }
             };
             backgroundUpload();

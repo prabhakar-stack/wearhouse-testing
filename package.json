@@ -23,6 +23,7 @@
     "@hookform/resolvers": "^5.2.1",
     "@prisma/client": "^5.22.0",
     "@react-oauth/google": "^0.13.5",
+    "@sentry/nextjs": "^10.58.0",
     "@vercel/kv": "^3.0.0",
     "amazon-sp-api": "^1.2.1",
     "autoprefixer": "^10.4.21",

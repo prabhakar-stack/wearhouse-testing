@@ -1374,21 +1374,6 @@ function ReceiveTab({
           console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
         }
 
-        // Save local backup (server secondary fallback)
-        try {
-          const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(orderId)}&filename=${encodeURIComponent(fileName)}`, {
-            method: "PUT",
-            body: blob,
-          });
-          if (backupRes.ok) {
-            console.log(`[Local Backup] Successfully saved receiver rejection file locally to failed_uploads/${orderId}`);
-          } else {
-            console.error(`[Local Backup] Failed to save receiver local backup: status ${backupRes.status}`);
-          }
-        } catch (backupErr) {
-          console.error("[Local Backup] Error saving files locally for receiver:", backupErr);
-        }
-
         // Database fallback registration
         try {
           await fetch("/api/upload/finalize", {
