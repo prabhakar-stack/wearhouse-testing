@@ -114,38 +114,45 @@ export async function updateClaimsStatus(): Promise<void> {
         : { rejectUnauthorized: false }
     });
 
-    // 1. Initialize schema — composite unique on (orderId, trackingId) so that one
-    //    removal order with N tracking IDs creates N separate claim status rows.
+    // 1. Initialize schemas (Table structurally enforces id, orderId, trackingId, claimId, status, bot_log_reason, created_at)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "claims_status" (
         id SERIAL PRIMARY KEY,
-        "orderId" text NOT NULL,
-        "trackingId" text NOT NULL,
+        "orderId" text,
+        "trackingId" text,
         "claimId" text DEFAULT '',
         status text DEFAULT 'unclaimed',
         bot_log_reason text,
-        created_at timestamp with time zone DEFAULT now(),
-        UNIQUE ("orderId", "trackingId")
+        created_at timestamp with time zone DEFAULT now()
       );
     `);
 
-    // Ensure columns and composite constraint exist on already-created tables
+    // Ensure columns exist on already created table
     try {
       await pool.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "trackingId" text;`);
       await pool.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now();`);
-      // Add composite unique constraint if not already present (idempotent)
+      await pool.query(`ALTER TABLE "claims_status" ALTER COLUMN "orderId" DROP NOT NULL;`);
+      
+      // Drop key constraint or index on orderId
+      await pool.query(`ALTER TABLE "claims_status" DROP CONSTRAINT IF EXISTS "claims_status_orderId_unique" CASCADE;`);
+      await pool.query(`ALTER TABLE "claims_status" DROP CONSTRAINT IF EXISTS "claims_status_orderId_key" CASCADE;`);
+      await pool.query(`DROP INDEX IF EXISTS "claims_status_orderId_unique";`);
+      await pool.query(`DROP INDEX IF EXISTS "claims_status_orderId_key";`);
+      
+      // Deduplicate on trackingId and enforce unique trackingId
       await pool.query(`
-        DO $$ BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'claims_status_orderId_trackingId_key'
-          ) THEN
-            ALTER TABLE "claims_status" ADD CONSTRAINT "claims_status_orderId_trackingId_key" UNIQUE ("orderId", "trackingId");
-          END IF;
-        END $$;
+        DELETE FROM "claims_status" a 
+        USING "claims_status" b 
+        WHERE a.id < b.id AND a."trackingId" = b."trackingId" AND a."trackingId" IS NOT NULL AND a."trackingId" != ''
+      `);
+      
+      await pool.query(`
+        ALTER TABLE "claims_status" ADD CONSTRAINT "claims_status_trackingId_unique" UNIQUE ("trackingId");
       `);
     } catch (e: any) {
-      console.warn("[CRON] Column/constraint check on claims_status warning:", e.message);
+      if (!e.message.includes("already exists") && !e.message.includes("multiple unique") && !e.message.includes("relation")) {
+        console.warn("[CRON] Column/Constraint check on claims_status warning:", e.message);
+      }
     }
 
     // Check if the "Evidence" table exists (case-insensitive search in schema)
@@ -189,13 +196,12 @@ export async function updateClaimsStatus(): Promise<void> {
     const hasClaimsAll = viewCheck.rows.length > 0 || tableCheck.rows.length > 0;
 
     if (hasClaimsAll) {
-      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_all" WHERE "trackingId" IS NOT NULL AND "trackingId" != \'\''
+      let queryStr = 'SELECT DISTINCT "orderId", "trackingId" FROM "claims_all"';
       if (hasEvidenceTable) {
         queryStr = `
-          SELECT DISTINCT "orderId", "trackingId"
-          FROM "claims_all"
-          WHERE "trackingId" IS NOT NULL AND "trackingId" != ''
-          AND "orderId" IN (
+          SELECT DISTINCT "orderId", "trackingId" 
+          FROM "claims_all" 
+          WHERE "orderId" IN (
             SELECT DISTINCT "orderId" FROM "${evidenceTableName}" WHERE "orderId" IS NOT NULL AND "orderId" != 'N/A'
           )
         `;
@@ -203,15 +209,31 @@ export async function updateClaimsStatus(): Promise<void> {
       const allClaimsRes = await pool.query(queryStr);
       for (const row of allClaimsRes.rows) {
         const oId = row.orderId;
-        const tId = row.trackingId;
-        // Both orderId and trackingId are required for the composite key
-        if (oId && oId !== 'N/A' && oId.trim() !== '' && tId && tId.trim() !== '') {
-          // Initialize records in claims_status to 'unclaimed' — composite ON CONFLICT
-          await pool.query(`
-            INSERT INTO "claims_status" ("orderId", "trackingId", status)
-            VALUES ($1, $2, 'unclaimed')
-            ON CONFLICT ("orderId", "trackingId") DO NOTHING
-          `, [oId.trim(), tId.trim()]);
+        const tId = row.trackingId || null;
+        if (oId && oId !== 'N/A' && oId.trim() !== '') {
+          // Initialize records in claims_status by default to 'unclaimed'
+          const cleanOId = oId.trim();
+          const cleanTId = tId && tId.trim() !== '' ? tId.trim() : null;
+          if (cleanTId) {
+            await pool.query(`
+              INSERT INTO "claims_status" ("orderId", "trackingId", status)
+              VALUES ($1, $2, 'unclaimed')
+              ON CONFLICT ("trackingId") DO UPDATE SET
+                "orderId" = COALESCE("claims_status"."orderId", EXCLUDED."orderId")
+            `, [cleanOId, cleanTId]);
+          } else {
+            const upRes = await pool.query(`
+              UPDATE "claims_status"
+              SET "trackingId" = COALESCE("trackingId", $2)
+              WHERE "orderId" = $1
+            `, [cleanOId, null]);
+            if (upRes.rowCount === 0) {
+              await pool.query(`
+                INSERT INTO "claims_status" ("orderId", "trackingId", status)
+                VALUES ($1, NULL, 'unclaimed')
+              `, [cleanOId]).catch(() => {});
+            }
+          }
         }
       }
     }
@@ -237,7 +259,7 @@ export async function updateClaimsStatus(): Promise<void> {
           if (hasClaimsAll) {
             try {
               const matchRes = await pool.query(
-                `SELECT DISTINCT "orderId", "trackingId" FROM "claims_all" WHERE LOWER("orderId") = LOWER($1) OR LOWER(lpn) = LOWER($1)`,
+                `SELECT DISTINCT "orderId", "trackingId" FROM "claims_all" WHERE LOWER("orderId") = LOWER($1) OR LOWER("trackingId") = LOWER($1) OR LOWER(lpn) = LOWER($1)`,
                 [id]
               );
               for (const mRow of matchRes.rows) {
@@ -258,14 +280,9 @@ export async function updateClaimsStatus(): Promise<void> {
             targetPairs.push({ orderId: id, trackingId: null });
           }
 
-          // Batch-upsert each related (orderId, trackingId) pair — composite ON CONFLICT
+          // Batch-upsert / update each related orderId record simultaneously
           for (const pair of targetPairs) {
             if (!pair.orderId || pair.orderId.trim() === '' || pair.orderId === 'N/A') continue;
-            // trackingId is now required — skip pairs without one
-            if (!pair.trackingId || pair.trackingId.trim() === '') {
-              console.warn(`[CRON LOG SYNC] Skipping pair orderId=${pair.orderId}: no trackingId resolved.`);
-              continue;
-            }
 
             // Enforce that log status synchronization only applies if targetOrderId exists in Evidence
             if (hasEvidenceTable) {
@@ -276,24 +293,56 @@ export async function updateClaimsStatus(): Promise<void> {
               }
             }
 
-            await pool.query(`
-              INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status, bot_log_reason, created_at)
-              VALUES ($1, $2, $3, $4, $5, $6)
-              ON CONFLICT ("orderId", "trackingId")
-              DO UPDATE SET
-                status = EXCLUDED.status,
-                "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", ''),
-                bot_log_reason = EXCLUDED.bot_log_reason,
-                created_at = EXCLUDED.created_at
-            `, [
-              pair.orderId,
-              pair.trackingId,
-              parseResult.claimId,
-              parseResult.status,
-              parseResult.botLogReason,
-              createdAt
-            ]);
-            console.log(`[CRON LOG SYNC] Synchronized logs for Order ID: ${pair.orderId} / Tracking: ${pair.trackingId} (Status: ${parseResult.status})`);
+            const cleanPairTId = pair.trackingId && pair.trackingId.trim() !== '' ? pair.trackingId.trim() : null;
+            if (cleanPairTId) {
+              await pool.query(`
+                INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status, bot_log_reason, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT ("trackingId")
+                DO UPDATE SET
+                  status = EXCLUDED.status,
+                  "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", ''),
+                  "orderId" = COALESCE("claims_status"."orderId", EXCLUDED."orderId"),
+                  bot_log_reason = EXCLUDED.bot_log_reason,
+                  created_at = EXCLUDED.created_at
+              `, [
+                pair.orderId,
+                cleanPairTId,
+                parseResult.claimId,
+                parseResult.status,
+                parseResult.botLogReason,
+                createdAt
+              ]);
+            } else {
+              const upRes = await pool.query(`
+                UPDATE "claims_status"
+                SET 
+                  status = $2,
+                  "claimId" = COALESCE(NULLIF($3, ''), "claimId", ''),
+                  bot_log_reason = $4,
+                  created_at = $5
+                WHERE "orderId" = $1
+              `, [
+                pair.orderId,
+                parseResult.status,
+                parseResult.claimId,
+                parseResult.botLogReason,
+                createdAt
+              ]);
+              if (upRes.rowCount === 0) {
+                await pool.query(`
+                  INSERT INTO "claims_status" ("orderId", "trackingId", "claimId", status, bot_log_reason, created_at)
+                  VALUES ($1, NULL, $2, $3, $4, $5)
+                `, [
+                  pair.orderId,
+                  parseResult.claimId,
+                  parseResult.status,
+                  parseResult.botLogReason,
+                  createdAt
+                ]).catch(() => {});
+              }
+            }
+            console.log(`[CRON LOG SYNC] Synchronized logs for Order ID: ${pair.orderId} (Status: ${parseResult.status}, CreatedAt: ${createdAt})`);
           }
         }
       }

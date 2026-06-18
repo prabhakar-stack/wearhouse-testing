@@ -717,7 +717,7 @@ const BOT_LOGS_PATH = path.join(process.cwd(), 'bot_logs');
 
 
 export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
-  const logId = claim.orderId || claim.lpn || claim.claimId;
+  const logId = claim.trackingId || claim.orderId || claim.lpn || claim.claimId;
   const logPath = path.join(process.cwd(), 'bot_logs', `${logId}.log`);
   if (!fs.existsSync(path.dirname(logPath))) fs.mkdirSync(path.dirname(logPath), { recursive: true });
   if (!fs.existsSync(path.dirname(COOKIE_PATH))) fs.mkdirSync(path.dirname(COOKIE_PATH), { recursive: true });
@@ -877,7 +877,7 @@ export async function fileAmazonClaim(claim: Claim): Promise<FilingResult> {
     await fileWindow.waitForTimeout(500);
     
     // Fill in the Tracking ID
-    const trackingValue = claim.trackingId || claim.orderId;
+    const trackingValue = claim.trackingId || claim.orderId || '';
     log(`Inputting Tracking ID: ${trackingValue}`);
     
     let isFilled = false;

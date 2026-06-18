@@ -9,8 +9,6 @@ import "dotenv/config";
 // Lazy initialization for PostgreSQL Pool
 let pool: pg.Pool | null = null;
 
-let mockQcStatus: any[] = [];
-
 let mockSampleRecovery: any[] = [];
 
 
@@ -70,18 +68,30 @@ async function setupDatabaseSchema(db: pg.Pool) {
       await db.query(`ALTER TABLE "claims_status" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now();`);
       await db.query(`ALTER TABLE "claims_status" ALTER COLUMN "orderId" DROP NOT NULL;`);
       
-      // Drop key constraint if any
+      // Drop key constraint or index on orderId if any
       await db.query(`ALTER TABLE "claims_status" DROP CONSTRAINT IF EXISTS "claims_status_orderId_key" CASCADE;`);
+      await db.query(`ALTER TABLE "claims_status" DROP CONSTRAINT IF EXISTS "claims_status_orderId_unique" CASCADE;`);
       await db.query(`DROP INDEX IF EXISTS "claims_status_orderId_key";`);
+      await db.query(`DROP INDEX IF EXISTS "claims_status_orderId_unique";`);
+      await db.query(`DROP INDEX IF EXISTS "claims_status_trackingId_unique_idx";`);
       
-      // Add filtered unique index on trackingId (ignoring null and empty strings to prevent conflicts)
+      // Deduplicate on trackingId is done in background, but let's do it safely here too
+      try {
+        await db.query(`
+          DELETE FROM "claims_status" a 
+          USING "claims_status" b 
+          WHERE a.id < b.id AND a."trackingId" = b."trackingId" AND a."trackingId" IS NOT NULL AND a."trackingId" != '';
+        `);
+      } catch (dedupErr) {}
+
+      // Add actual unique constraint on trackingId
       await db.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS "claims_status_trackingId_unique_idx" 
-        ON "claims_status" ("trackingId") 
-        WHERE "trackingId" IS NOT NULL AND "trackingId" != '';
+        ALTER TABLE "claims_status" ADD CONSTRAINT "claims_status_trackingId_unique" UNIQUE ("trackingId");
       `);
     } catch (e: any) {
-      console.warn("Backwards compatibility Alter check on claims_status warning:", e.message);
+      if (!e.message.includes("already exists") && !e.message.includes("multiple unique") && !e.message.includes("relation")) {
+        console.warn("Backwards compatibility Alter check on claims_status warning:", e.message);
+      }
     }
 
     await db.query(`
@@ -155,36 +165,19 @@ async function setupDatabaseSchema(db: pg.Pool) {
               lpn text PRIMARY KEY,
               status text NOT NULL,
               "recoveryType" text,
-              "createdAt" timestamp with time zone DEFAULT now()
+              "createdAt" timestamp with time zone DEFAULT now(),
+              temp_id text UNIQUE
             );
           `);
         }
       }
+      try {
+        await db.query(`ALTER TABLE "ItemStatus" ADD COLUMN IF NOT EXISTS "temp_id" text UNIQUE;`);
+      } catch (e: any) {
+        console.warn("[Schema Match] Alter check on ItemStatus temp_id column warning:", e.message);
+      }
     } catch (colErr: any) {
       console.warn(`[Schema Match] Error checking schema for "ItemStatus":`, colErr.message);
-    }
-
-    console.log("Checking and setting up qc_status table...");
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS "qc_status" (
-        sku text PRIMARY KEY,
-        target_count integer NOT NULL DEFAULT 0,
-        quantity_count integer NOT NULL DEFAULT 0,
-        status text
-      );
-    `);
-
-    // Backwards compatibility alter column checks
-    try {
-      await db.query(`ALTER TABLE "qc_status" ADD COLUMN IF NOT EXISTS "target_count" integer NOT NULL DEFAULT 0;`);
-    } catch (e: any) {
-      console.warn("Backwards compatibility Alter check on qc_status warning:", e.message);
-    }
-
-    try {
-      await db.query(`ALTER TABLE "qc_status" ADD COLUMN IF NOT EXISTS "scannedAt" timestamp with time zone;`);
-    } catch (e: any) {
-      console.warn("Backwards compatibility Alter check on qc_status scannedAt warning:", e.message);
     }
 
     // Seed ReturnItem
@@ -766,22 +759,30 @@ async function startServer() {
     }
   }
 
-  async function handleEvidenceTypeClaimedUpdate(db: any, orderId: string | undefined, status: string | undefined) {
-    if (!db || !orderId || !status) return;
+  async function handleEvidenceTypeClaimedUpdate(db: any, orderId: string | undefined, status: string | undefined, trackingId?: string) {
+    if (!db || !status) return;
+    if (!orderId && !trackingId) return;
     if (status.toLowerCase() === 'claimed') {
       try {
         const claimCheck = await db.query(
-          `SELECT "type" FROM "claims_all" WHERE "orderId" = $1 LIMIT 1`,
-          [orderId]
+          `SELECT "type" FROM "claims_all" WHERE ("trackingId" = $1 AND $1 IS NOT NULL AND $1 != '') OR "orderId" = $2 LIMIT 1`,
+          [trackingId || null, orderId || null]
         );
         if (claimCheck.rows.length > 0 && claimCheck.rows[0].type === 'Rejected') {
           try {
-            await db.query(`UPDATE "Evidence" SET "status" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
-            console.log(`[Evidence Update] Updated Evidence.status to 'Claimed' for Order ID: ${orderId}`);
+            if (trackingId) {
+              await db.query(`UPDATE "Evidence" SET "status" = 'Claimed' WHERE "trackingId" = $1`, [trackingId]);
+              console.log(`[Evidence Update] Updated Evidence.status to 'Claimed' for Tracking ID: ${trackingId}`);
+            } else {
+              await db.query(`UPDATE "Evidence" SET "status" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
+              console.log(`[Evidence Update] Updated Evidence.status to 'Claimed' for Order ID: ${orderId}`);
+            }
           } catch (evErr) {
             try {
-              await db.query(`UPDATE "evidence" SET "status" = 'Claimed' WHERE "orderId" = $1`, [orderId]);
-              console.log(`[Evidence Update fallback] Updated evidence.type to 'Claimed' for Order ID: ${orderId}`);
+              const col = trackingId ? '"trackingId"' : '"orderId"';
+              const val = trackingId || orderId;
+              await db.query(`UPDATE "evidence" SET "status" = 'Claimed' WHERE ${col} = $1`, [val]);
+              console.log(`[Evidence Update fallback] Updated evidence.status to 'Claimed' for ${trackingId ? 'Tracking' : 'Order'} ID: ${trackingId || orderId}`);
             } catch (innerEvErr: any) {
               console.error(`[Evidence Update] Failed both Evidence and evidence table updates: ${innerEvErr.message}`);
             }
@@ -1081,6 +1082,41 @@ async function startServer() {
     }
   });
 
+  async function generateNextTempId(clientOrPool: any, isMock: boolean): Promise<string> {
+    const prefix = "26TS";
+    let maxNum = 0;
+
+    if (!isMock && clientOrPool) {
+      const res = await clientOrPool.query(
+        `SELECT temp_id FROM "ItemStatus" WHERE temp_id LIKE $1 ORDER BY temp_id DESC LIMIT 1`,
+        [`${prefix}%`]
+      );
+      if (res.rows.length > 0 && res.rows[0].temp_id) {
+        const dbTempId = res.rows[0].temp_id;
+        const match = dbTempId.match(/26TS(\d{6})/);
+        if (match) {
+          maxNum = parseInt(match[1], 10);
+        }
+      }
+    } else {
+      for (const item of mockItemStatus) {
+        if (item.temp_id && item.temp_id.startsWith(prefix)) {
+          const match = item.temp_id.match(/26TS(\d{6})/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    const padded = String(nextNum).padStart(6, '0');
+    return `${prefix}${padded}`;
+  }
+
   app.post("/api/recovery/update", async (req, res, next) => {
     try {
       const { lpn, sku, damageType, isRefurbished, status } = req.body;
@@ -1096,20 +1132,42 @@ async function startServer() {
       const currentTimestamp = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
 
       if (pool) {
-        await pool.query(`
-          UPDATE "sample_recovery"
-          SET is_refurbished = $2, status = $3, "scannedAt" = COALESCE("scannedAt", $4)
-          WHERE LOWER(lpn) = LOWER($1)
-        `, [lpn, is_refurbished, recordStatus, currentTimestamp]);
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
 
-        await pool.query(`
-          UPDATE "ItemStatus"
-          SET status = $2
-          WHERE LOWER(lpn) = LOWER($1)
-        `, [lpn, recordStatus]);
+          const nextTempId = await generateNextTempId(client, false);
 
-        console.log(`[DB] Two-way status update synced successfully to 'sample_recovery' and 'ItemStatus' for ${lpn}`);
+          await client.query(`
+            UPDATE "sample_recovery"
+            SET is_refurbished = $2, status = $3, "scannedAt" = COALESCE("scannedAt", $4)
+            WHERE LOWER(lpn) = LOWER($1)
+          `, [lpn, is_refurbished, recordStatus, currentTimestamp]);
+
+          await client.query(`
+            UPDATE "ItemStatus"
+            SET status = $2, temp_id = $3
+            WHERE LOWER(lpn) = LOWER($1)
+          `, [lpn, recordStatus, nextTempId]);
+
+          await client.query("COMMIT");
+          console.log(`[DB] Two-way status update synced successfully to 'sample_recovery' and 'ItemStatus' (with temp_id ${nextTempId}) for ${lpn}`);
+          
+          return res.json({ 
+            status: "Success", 
+            message: "Item successfully updated with two-way status sync.",
+            temp_id: nextTempId
+          });
+        } catch (err: any) {
+          await client.query("ROLLBACK");
+          console.error(`[DB Update Error] Transaction rolled back:`, err);
+          throw err;
+        } finally {
+          client.release();
+        }
       } else {
+        const nextTempId = await generateNextTempId(null, true);
+
         const idx = mockSampleRecovery.findIndex(item => item.lpn.toLowerCase() === lpn.toLowerCase());
         if (idx !== -1) {
           mockSampleRecovery[idx].is_refurbished = is_refurbished;
@@ -1131,12 +1189,17 @@ async function startServer() {
         const isIdx = mockItemStatus.findIndex(item => item.lpn.toLowerCase() === lpn.toLowerCase());
         if (isIdx !== -1) {
           mockItemStatus[isIdx].status = recordStatus;
+          mockItemStatus[isIdx].temp_id = nextTempId;
         } else {
-          mockItemStatus.push({ lpn, status: recordStatus });
+          mockItemStatus.push({ lpn, status: recordStatus, temp_id: nextTempId });
         }
-      }
 
-      return res.json({ status: "Success", message: "Item successfully updated with two-way status sync." });
+        return res.json({ 
+          status: "Success", 
+          message: "Item successfully updated with two-way status sync.",
+          temp_id: nextTempId
+        });
+      }
     } catch (err) {
       next(err);
     }
@@ -1379,17 +1442,17 @@ async function startServer() {
 
 
   app.post("/api/bot/trigger", async (req, res) => {
-    const { claimId, orderId, lpn } = req.body;
+    const { claimId, trackingId: bodyTrackingId, orderId, lpn } = req.body;
     const now = Date.now();
 
     // Find the claim record to pass full context
     const pool = getDbPool();
     let claimData: any = null;
-    
+
     if (pool) {
       const db = pool;
       try {
-        const tid = (lpn || claimId || orderId || "").trim();
+        const tid = (lpn || bodyTrackingId || claimId || orderId || "").trim();
         if (!tid) throw new Error("No ID provided");
 
         // Try table names: quoted '"claims_all"', lowercase 'claims', etc.
@@ -1470,7 +1533,7 @@ async function startServer() {
       }
     }
 
-    const identifier = claimData.lpn || claimData.claimId || claimData.orderId;
+    const identifier = claimData.trackingId || claimData.lpn || claimData.claimId || claimData.orderId;
 
     if (isBotRunning) {
       return res.status(429).json({ 
@@ -1529,14 +1592,19 @@ async function startServer() {
           } else {
             // Fallback to orderId if trackingId is missing (backwards compatibility)
             db.query(
-              `INSERT INTO "claims_status" ("orderId", "claimId", status)
-               VALUES ($1, $2, 'Claimed')
-               ON CONFLICT ("orderId") 
-               DO UPDATE SET 
-                 status = 'Claimed', 
-                 "claimId" = COALESCE(NULLIF(EXCLUDED."claimId", ''), "claims_status"."claimId", '')`,
+              `UPDATE "claims_status" 
+               SET status = 'Claimed', 
+                   "claimId" = COALESCE(NULLIF($2, ''), "claimId", '')
+               WHERE "orderId" = $1`,
               [oid, result.caseId || '']
-            ).then(() => {
+            ).then((updIdRes) => {
+              if (updIdRes.rowCount === 0) {
+                db.query(
+                  `INSERT INTO "claims_status" ("orderId", "claimId", status)
+                   VALUES ($1, $2, 'Claimed')`,
+                  [oid, result.caseId || '']
+                ).catch(() => {});
+              }
               console.log(`[DB SUCCESS] Recorded claimed status in claims_status for Order ID: ${oid}`);
             }).catch(dbErr => {
               console.error(`[DB ERROR] Failed to record status in claims_statusFallback:`, dbErr);
@@ -1549,7 +1617,7 @@ async function startServer() {
           }
 
           // 3. Conditional Evidence table type update
-          handleEvidenceTypeClaimedUpdate(db, claimData.orderId, 'Claimed');
+          handleEvidenceTypeClaimedUpdate(db, claimData.orderId, 'Claimed', claimData.trackingId);
         }
       }
     }).catch(err => {
@@ -1567,276 +1635,77 @@ async function startServer() {
   });
 
   // --- QC AUDIT ENDPOINTS ---
-  app.get("/api/qc/sku-status", async (req, res, next) => {
+
+  app.get("/api/qc/check-lpn", async (req, res, next) => {
     try {
+      const lpn = (req.query.lpn as string || '').trim();
+      if (!lpn) return res.status(400).json({ message: 'lpn query param is required' });
       const db = getDbPool();
-      let rows = [];
       if (db) {
-        // Calculate the freshest target counts from Supabase expected pool criteria
-        const targetsRes = await db.query(`
-          WITH expected_items AS (
-            -- ItemStatus 'good', 'recovered', or 'review declined'
-            SELECT r.sku, i.lpn AS item_id
-            FROM "ItemStatus" i
-            JOIN "ReturnItem" r ON i.lpn = r.lpn
-            WHERE i.status = 'good' OR i.status = 'recovered' OR i.status = 'review declined'
-            
-            UNION ALL
-            
-            -- claims_status 'rejected'
-            SELECT c.sku, s."orderId" AS item_id
-            FROM "claims_status" s
-            JOIN "claims_all" c ON s."orderId" = c."orderId"
-            WHERE s.status = 'rejected'
-          )
-          SELECT sku, COUNT(*)::int as target_count
-          FROM expected_items
-          GROUP BY sku
-        `);
-
-        // First set target_count = 0 for active items not inside the target pool anymore
-        await db.query(`UPDATE "qc_status" SET target_count = 0`);
-
-        // Upsert dynamic target counts for SKU’s in expected pool
-        for (const row of targetsRes.rows) {
-          await db.query(`
-            INSERT INTO "qc_status" (sku, target_count, quantity_count, status)
-            VALUES ($1, $2, 0, 'unscanned')
-            ON CONFLICT (sku) 
-            DO UPDATE SET target_count = EXCLUDED.target_count
-          `, [row.sku, row.target_count]);
-        }
-
-        // Return list for SKUs where target_count > 0 only (FILTER GATE)
-        const query = `
-          SELECT 
-            sku,
-            target_count as expected_count,
-            target_count,
-            quantity_count,
-            COALESCE(status, 'unscanned') as status,
-            "scannedAt",
-            EXISTS (
-              SELECT 1 
-              FROM "ItemStatus" i 
-              JOIN "ReturnItem" r2 ON i.lpn = r2.lpn
-              WHERE r2.sku = "qc_status".sku AND LOWER(i.status) = 'damaged'
-            ) as has_hidden_damaged
-          FROM "qc_status"
-          WHERE target_count > 0
-        `;
-        const result = await db.query(query);
-        rows = result.rows;
+        const result = await db.query(
+          `SELECT i.lpn, i.status, r.sku FROM "ItemStatus" i LEFT JOIN "ReturnItem" r ON i.lpn = r.lpn WHERE i.lpn = $1`,
+          [lpn]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ message: `LPN ${lpn} not found in ItemStatus` });
+        return res.json(result.rows[0]);
       } else {
-        // Mock fallback calculations
-        const computedTargets: Record<string, number> = {};
-        
-        // 1. mockItemStatus good/recovered or review declined
-        mockItemStatus.forEach((i: any) => {
-          if (i.status === 'good' || i.status === 'recovered' || i.status === 'review declined') {
-            const rit = mockReturnItems.find(r => r.lpn === i.lpn);
-            const sku = rit ? rit.sku : 'UNKNOWN';
-            if (sku && sku !== 'UNKNOWN') {
-              computedTargets[sku] = (computedTargets[sku] || 0) + 1;
-            }
-          }
-        });
-        
-        // 2. mockClaims rejected
-        mockClaims.forEach((c: any) => {
-          if (c.status === 'rejected' || c.status?.toLowerCase() === 'rejected') {
-            const sku = c.sku;
-            if (sku) {
-              computedTargets[sku] = (computedTargets[sku] || 0) + 1;
-            }
-          }
-        });
-        
-        // Seed mockQcStatus with computed target values
-        Object.entries(computedTargets).forEach(([sku, targetCount]) => {
-          let item = mockQcStatus.find(q => q.sku === sku);
-          if (!item) {
-            item = { sku, quantity_count: 0, status: 'unscanned', target_count: targetCount };
-            mockQcStatus.push(item);
-          } else {
-            item.target_count = targetCount;
-          }
-        });
-        
-        // Set other items target_count to 0
-        mockQcStatus.forEach(item => {
-          if (!computedTargets[item.sku]) {
-            item.target_count = 0;
-          }
-        });
-
-        // Filter out elements where target_count === 0
-        rows = mockQcStatus
-          .filter(q => (q.target_count || 0) > 0)
-          .map(q => {
-            const matchingLpns = mockReturnItems.filter(r => r.sku === q.sku).map(r => r.lpn);
-            const has_hidden_damaged = mockItemStatus.some(i => matchingLpns.includes(i.lpn) && i.status.toLowerCase() === 'damaged');
-            return {
-              sku: q.sku,
-              quantity_count: q.quantity_count || 0,
-              status: q.status || 'unscanned',
-              expected_count: q.target_count,
-              target_count: q.target_count,
-              scannedAt: q.scannedAt || null,
-              has_hidden_damaged
-            };
-          });
+        const item = mockItemStatus.find((i: any) => i.lpn.toLowerCase() === lpn.toLowerCase());
+        if (!item) return res.status(404).json({ message: `LPN ${lpn} not found` });
+        const ri = mockReturnItems.find((r: any) => r.lpn === item.lpn);
+        return res.json({ lpn: item.lpn, status: item.status, sku: ri?.sku || 'UNKNOWN' });
       }
-      res.json(rows);
-    } catch (err) {
-      next(err);
-    }
+    } catch (err) { next(err); }
   });
 
-  app.post("/api/qc/scan", async (req, res, next) => {
+  app.get("/api/qc/check-temp-id", async (req, res, next) => {
     try {
-      const { sku } = req.body;
+      const temp_id = (req.query.temp_id as string || '').trim();
+      if (!temp_id) return res.status(400).json({ message: 'temp_id query param is required' });
       const db = getDbPool();
-      let quantityCount = 1;
-      let dbStatus = 'ok';
-      let expectedCount = 1;
-      let hasHiddenDamaged = false;
-      let scannedAtVal: Date | null = null;
-
       if (db) {
-        // First check if the SKU exists in the expected pool / has target_count > 0 in qc_status
-        const poolCheckRes = await db.query(`
-          SELECT target_count, quantity_count, status, "scannedAt" FROM "qc_status" WHERE sku = $1
-        `, [sku]);
-        
-        if (poolCheckRes.rows.length === 0 || poolCheckRes.rows[0].target_count === 0) {
-          return res.status(404).json({
-            message: `SKU ${sku} is not part of the active expected QC audit pool.`
-          });
-        }
-        
-        expectedCount = poolCheckRes.rows[0].target_count;
-        quantityCount = poolCheckRes.rows[0].quantity_count + 1;
-        const existingScannedAt = poolCheckRes.rows[0].scannedAt;
-        scannedAtVal = existingScannedAt;
-
-        if (!existingScannedAt) {
-          scannedAtVal = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-        }
-        
-        if (quantityCount < expectedCount) {
-          dbStatus = 'quantity missing';
-        } else {
-          dbStatus = 'ok';
-        }
-        
-        await db.query(`
-          UPDATE "qc_status" 
-          SET quantity_count = $1, status = $2, "scannedAt" = $3 
-          WHERE sku = $4
-        `, [quantityCount, dbStatus, scannedAtVal, sku]);
-
-        // Cross-reference hidden damaged
-        const damagedRes = await db.query(`
-          SELECT EXISTS (
-             SELECT 1 
-             FROM "ItemStatus" i 
-             JOIN "ReturnItem" r ON i.lpn = r.lpn 
-             WHERE r.sku = $1 AND LOWER(i.status) = 'damaged'
-          ) as has_damaged
-        `, [sku]);
-        hasHiddenDamaged = damagedRes.rows[0].has_damaged;
-
+        const result = await db.query(
+          `SELECT i.lpn, i.temp_id, i.status, r.sku FROM "ItemStatus" i LEFT JOIN "ReturnItem" r ON i.lpn = r.lpn WHERE i.temp_id = $1`,
+          [temp_id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ message: `Temp ID ${temp_id} not found in ItemStatus` });
+        return res.json(result.rows[0]);
       } else {
-        // Mock fallback
-        let item = mockQcStatus.find((q: any) => q.sku === sku);
-        if (!item || (item.target_count || 0) === 0) {
-          return res.status(404).json({
-            message: `SKU ${sku} is not part of the active expected QC audit pool.`
-          });
-        }
-        
-        item.quantity_count = (item.quantity_count || 0) + 1;
-        quantityCount = item.quantity_count;
-        expectedCount = item.target_count;
-        
-        if (quantityCount < expectedCount) {
-          item.status = 'quantity missing';
-        } else {
-          item.status = 'ok';
-        }
-        dbStatus = item.status;
-
-        if (!item.scannedAt) {
-          item.scannedAt = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-        }
-        scannedAtVal = item.scannedAt;
-
-        const matchingLpns = mockReturnItems.filter((r: any) => r.sku === sku).map((r: any) => r.lpn);
-        hasHiddenDamaged = mockItemStatus.some((i: any) => matchingLpns.includes(i.lpn) && i.status.toLowerCase() === 'damaged');
+        const item = mockItemStatus.find((i: any) => i.temp_id && i.temp_id.toLowerCase() === temp_id.toLowerCase());
+        if (!item) return res.status(404).json({ message: `Temp ID ${temp_id} not found` });
+        const ri = mockReturnItems.find((r: any) => r.lpn === item.lpn);
+        return res.json({ lpn: item.lpn, temp_id: item.temp_id, status: item.status, sku: ri?.sku || 'UNKNOWN' });
       }
-
-      res.json({
-        status: "Success",
-        sku,
-        quantity_count: quantityCount,
-        expected_count: expectedCount,
-        target_count: expectedCount,
-        qc_status: dbStatus,
-        scannedAt: scannedAtVal,
-        has_hidden_damaged: hasHiddenDamaged
-      });
-    } catch (err) {
-      next(err);
-    }
+    } catch (err) { next(err); }
   });
 
-  app.post("/api/qc/sku-damaged", async (req, res, next) => {
+  app.post("/api/qc/lpn-qc-update", async (req, res, next) => {
     try {
-      const { sku } = req.body;
+      const { lpn, status } = req.body;
+      if (!lpn || !status) return res.status(400).json({ message: 'lpn and status are required' });
       const db = getDbPool();
       if (db) {
-        // Update qc_status to 'requires review at qc'
-        await db.query(`
-          INSERT INTO "qc_status" (sku, target_count, quantity_count, status)
-          VALUES ($1, 0, 0, 'requires review at qc')
-          ON CONFLICT (sku)
-          DO UPDATE SET status = 'requires review at qc'
-        `, [sku]);
-
-        // Find LPNs of that SKU
-        const lpnsRes = await db.query(`SELECT lpn FROM "ReturnItem" WHERE sku = $1`, [sku]);
-        for (const row of lpnsRes.rows) {
-          await db.query(`
-            INSERT INTO "ItemStatus" (lpn, status)
-            VALUES ($1, 'requires review at qc')
-            ON CONFLICT (lpn)
-            DO UPDATE SET status = 'requires review at qc'
-          `, [row.lpn]);
-        }
+        await db.query(`UPDATE "ItemStatus" SET status = $1 WHERE lpn = $2`, [status, lpn]);
       } else {
-        let item = mockQcStatus.find((q: any) => q.sku === sku);
-        if (!item) {
-          item = { sku, quantity_count: 0, target_count: 0, status: 'requires review at qc' };
-          mockQcStatus.push(item);
-        } else {
-          item.status = 'requires review at qc';
-        }
-
-        const matchingLpns = mockReturnItems.filter((r: any) => r.sku === sku).map((r: any) => r.lpn);
-        matchingLpns.forEach(lpn => {
-          let statusItem = mockItemStatus.find((i: any) => i.lpn === lpn);
-          if (statusItem) {
-            statusItem.status = 'requires review at qc';
-          } else {
-            mockItemStatus.push({ lpn, status: 'requires review at qc' });
-          }
-        });
+        const idx = mockItemStatus.findIndex((i: any) => i.lpn.toLowerCase() === lpn.toLowerCase());
+        if (idx !== -1) mockItemStatus[idx].status = status;
       }
-      res.json({ status: "Success", message: `SKU ${sku} marked as damaged (requires review at QC)` });
-    } catch (err) {
-      next(err);
-    }
+      res.json({ status: 'Success', lpn, newStatus: status });
+    } catch (err) { next(err); }
+  });
+
+  app.post("/api/qc/temp-id-qc-update", async (req, res, next) => {
+    try {
+      const { temp_id, status } = req.body;
+      if (!temp_id || !status) return res.status(400).json({ message: 'temp_id and status are required' });
+      const db = getDbPool();
+      if (db) {
+        await db.query(`UPDATE "ItemStatus" SET status = $1 WHERE temp_id = $2`, [status, temp_id]);
+      } else {
+        const idx = mockItemStatus.findIndex((i: any) => i.temp_id && i.temp_id.toLowerCase() === temp_id.toLowerCase());
+        if (idx !== -1) mockItemStatus[idx].status = status;
+      }
+      res.json({ status: 'Success', temp_id, newStatus: status });
+    } catch (err) { next(err); }
   });
 
   app.get("/api/admin/reviews", async (req, res, next) => {
@@ -1861,25 +1730,6 @@ async function startServer() {
           });
         }
 
-        // 2. Fetch QC reviews (matching SKU to any associated LPN from ReturnItem)
-        const qcRes = await db.query(`
-          SELECT q.sku, q.status, COALESCE(r.lpn, 'UNKNOWN') as lpn
-          FROM "qc_status" q
-          LEFT JOIN (
-            SELECT DISTINCT ON (sku) sku, lpn FROM "ReturnItem" ORDER BY sku, lpn
-          ) r ON q.sku = r.sku
-          WHERE q.status = 'requires review at qc'
-        `);
-        for (const row of qcRes.rows) {
-          reviews.push({
-            id: `qc-${row.sku}`,
-            type: 'QC',
-            lpn: row.lpn,
-            sku: row.sku,
-            damage_type: 'QC Flagged Damage',
-            status: row.status
-          });
-        }
       } else {
         // Mock source
         const recs = mockSampleRecovery.filter(item => item.status === 'requires review at recovery');
@@ -1890,19 +1740,6 @@ async function startServer() {
             lpn: row.lpn,
             sku: row.sku,
             damage_type: row.damage_type,
-            status: row.status
-          });
-        });
-
-        const qcs = mockQcStatus.filter(item => item.status === 'requires review at qc');
-        qcs.forEach(row => {
-          const rit = mockReturnItems.find(r => r.sku === row.sku);
-          reviews.push({
-            id: `qc-${row.sku}`,
-            type: 'QC',
-            lpn: rit ? rit.lpn : 'UNKNOWN',
-            sku: row.sku,
-            damage_type: 'QC Flagged Damage',
             status: row.status
           });
         });
@@ -1940,29 +1777,6 @@ async function startServer() {
             await db.query('ROLLBACK');
             throw txErr;
           }
-        } else if (type === 'QC') {
-          await db.query('BEGIN');
-          try {
-            await db.query(`
-              UPDATE "qc_status"
-              SET status = $1
-              WHERE sku = $2
-            `, [targetStatus, sku]);
-
-            const lpnsRes = await db.query('SELECT lpn FROM "ReturnItem" WHERE sku = $1', [sku]);
-            for (const row of lpnsRes.rows) {
-              await db.query(`
-                INSERT INTO "ItemStatus" (lpn, status)
-                VALUES ($1, $2)
-                ON CONFLICT (lpn)
-                DO UPDATE SET status = EXCLUDED.status
-              `, [row.lpn, targetStatus]);
-            }
-            await db.query('COMMIT');
-          } catch (txErr) {
-            await db.query('ROLLBACK');
-            throw txErr;
-          }
         }
       } else {
         // Mock fallback
@@ -1977,142 +1791,9 @@ async function startServer() {
           } else {
             mockItemStatus.push({ lpn, status: targetStatus });
           }
-        } else if (type === 'QC') {
-          const idx = mockQcStatus.findIndex(item => item.sku === sku);
-          if (idx !== -1) {
-            mockQcStatus[idx].status = targetStatus;
-          }
-          const matchingLpns = mockReturnItems.filter((r: any) => r.sku === sku).map((r: any) => r.lpn);
-          matchingLpns.forEach(lpnStr => {
-            const isIdx = mockItemStatus.findIndex(item => item.lpn.toLowerCase() === lpnStr.toLowerCase());
-            if (isIdx !== -1) {
-              mockItemStatus[isIdx].status = targetStatus;
-            } else {
-              mockItemStatus.push({ lpn: lpnStr, status: targetStatus });
-            }
-          });
         }
       }
       res.json({ status: "Success", message: `Review successfully resolved with action: ${action}` });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  app.post("/api/qc/handover-complete", async (req, res, next) => {
-    try {
-      const { bypassWarning } = req.body;
-      const db = getDbPool();
-      
-      let poolItems: { sku: string; target_count: number; quantity_count: number; }[] = [];
-      
-      if (db) {
-        // Fetch all active elements in the expected pool
-        const skuRes = await db.query(`
-          SELECT sku, target_count, quantity_count FROM "qc_status" WHERE target_count > 0
-        `);
-        poolItems = skuRes.rows;
-      } else {
-        poolItems = mockQcStatus.filter(q => (q.target_count || 0) > 0);
-      }
-      
-      // Calculate Total Missing
-      let totalMissing = 0;
-      poolItems.forEach(item => {
-        const diff = item.target_count - item.quantity_count;
-        if (diff > 0) {
-          totalMissing += diff;
-        }
-      });
-      
-      if (totalMissing > 0 && !bypassWarning) {
-        return res.json({
-          status: "Warning",
-          totalMissing,
-          message: `There are ${totalMissing} products left missing compared to the expected target. Are you sure you want to proceed?`
-        });
-      }
-      
-      // If we proceed, perform the mutations:
-      if (db) {
-        const timestamp = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-        for (const item of poolItems) {
-          if (item.quantity_count < item.target_count) {
-            // Shorted elements updated to 'missing at qc'
-            await db.query(`
-              UPDATE "qc_status" 
-              SET status = 'missing at qc', "scannedAt" = COALESCE("scannedAt", $2) 
-              WHERE sku = $1
-            `, [item.sku, timestamp]);
-            
-            const lpnsRes = await db.query(`
-              SELECT i.lpn 
-              FROM "ItemStatus" i
-              JOIN "ReturnItem" r ON i.lpn = r.lpn
-              WHERE r.sku = $1 AND (i.status = 'good' OR i.status = 'recovered')
-            `, [item.sku]);
-            
-            for (const row of lpnsRes.rows) {
-              await db.query(`
-                UPDATE "ItemStatus" SET status = 'missing at qc' WHERE lpn = $1
-              `, [row.lpn]);
-            }
-          } else {
-            // Passed with no errors updated to 'ready for Inventory'
-            await db.query(`
-              UPDATE "qc_status" 
-              SET status = 'ready for Inventory', "scannedAt" = COALESCE("scannedAt", $2) 
-              WHERE sku = $1
-            `, [item.sku, timestamp]);
-            
-            const lpnsRes = await db.query(`
-              SELECT i.lpn 
-              FROM "ItemStatus" i
-              JOIN "ReturnItem" r ON i.lpn = r.lpn
-              WHERE r.sku = $1 AND (i.status = 'good' OR i.status = 'recovered')
-            `, [item.sku]);
-            
-            for (const row of lpnsRes.rows) {
-              await db.query(`
-                UPDATE "ItemStatus" SET status = 'ready for Inventory' WHERE lpn = $1
-              `, [row.lpn]);
-            }
-          }
-        }
-      } else {
-        // Mock fallback mutate
-        poolItems.forEach(item => {
-          let mockQc = mockQcStatus.find(q => q.sku === item.sku);
-          if (item.quantity_count < item.target_count) {
-            if (mockQc) mockQc.status = 'missing at qc';
-            
-            mockReturnItems.forEach(ri => {
-              if (ri.sku === item.sku) {
-                let statusItem = mockItemStatus.find(ms => ms.lpn === ri.lpn);
-                if (statusItem && (statusItem.status === 'good' || statusItem.status === 'recovered')) {
-                  statusItem.status = 'missing at qc';
-                }
-              }
-            });
-          } else {
-            if (mockQc) mockQc.status = 'ready for Inventory';
-            
-            mockReturnItems.forEach(ri => {
-              if (ri.sku === item.sku) {
-                let statusItem = mockItemStatus.find(ms => ms.lpn === ri.lpn);
-                if (statusItem && (statusItem.status === 'good' || statusItem.status === 'recovered')) {
-                  statusItem.status = 'ready for Inventory';
-                }
-              }
-            });
-          }
-        });
-      }
-      
-      res.json({
-        status: "Success",
-        message: "Handover successfully reconciled and completed."
-      });
     } catch (err) {
       next(err);
     }
@@ -2178,16 +1859,6 @@ async function startServer() {
           ON CONFLICT (lpn)
           DO UPDATE SET status = 'requires recovery review'
         `, [lpn]);
-
-        // Update qc_status
-        if (sku && sku !== 'UNKNOWN') {
-          await db.query(`
-            INSERT INTO "qc_status" (sku, quantity_count, status)
-            VALUES ($1, 1, 'requires recovery review')
-            ON CONFLICT (sku)
-            DO UPDATE SET status = 'requires recovery review'
-          `, [sku]);
-        }
       } else {
         const item = mockItemStatus.find((i: any) => i.lpn === lpn);
         if (item) {
@@ -2198,15 +1869,6 @@ async function startServer() {
 
         const returnItem = mockReturnItems.find((r: any) => r.lpn === lpn);
         sku = returnItem ? returnItem.sku : 'UNKNOWN';
-
-        if (sku && sku !== 'UNKNOWN') {
-          let qcs = mockQcStatus.find((q: any) => q.sku === sku);
-          if (!qcs) {
-            mockQcStatus.push({ sku, quantity_count: 1, status: 'requires recovery review' });
-          } else {
-            qcs.status = 'requires recovery review';
-          }
-        }
       }
       res.json({ status: "Success", sku, lpn, message: "Successfully updated to requires recovery review" });
     } catch (err) {
@@ -2220,14 +1882,15 @@ async function startServer() {
       let rows = [];
       if (db) {
         const query = `
-          SELECT 
-            c.*, 
-            s.status AS claims_status_status, 
+          SELECT
+            c.*,
+            s.status AS claims_status_status,
+            s."claimId" AS "claimId",
             s.bot_log_reason,
             COALESCE(c."driveLink", 'https://drive.google.com/embeddedfolderview?id=1xyz') as "driveLink"
           FROM "claims_all" c
-          JOIN "claims_status" s ON c."orderId" = s."orderId"
-          WHERE s.status = 'rejected' OR c.status = 'rejected'
+          LEFT JOIN "claims_status" s ON (c."trackingId" IS NOT NULL AND c."trackingId" != '' AND c."trackingId" = s."trackingId") OR ((c."trackingId" IS NULL OR c."trackingId" = '') AND c."orderId" = s."orderId")
+          WHERE LOWER(s.status) = 'rejected' OR LOWER(c.status) = 'rejected'
         `;
         const result = await db.query(query);
         rows = result.rows.map(toCamelCase);
@@ -2237,26 +1900,32 @@ async function startServer() {
         if (rejectedClaimsFromMock.length === 0) {
           rows = [
             {
+              lpn: "LPN001",
               orderId: "114-1234567-1234567",
               trackingId: "1Z999AA10123456784",
               sku: "1120200",
               fnsku: "X0018CDFL4",
+              claimId: "CLM-MOCK-001",
               productName: "Premium Wireless Keyboard K950",
               channel: "AMZ B2C",
               status: "rejected",
               type: "RejectedDelivery",
+              createdAt: new Date().toISOString(),
               driveLink: "https://www.wikipedia.org",
               botLogReason: "Amazon Rejected: Package returned but LPN was damaged. Verification required."
             },
             {
+              lpn: "LPN002",
               orderId: "702-9876543-9876543",
               trackingId: "3Z999AA10123450000",
               sku: "4829102",
               fnsku: "X0018CDF88",
+              claimId: "CLM-MOCK-002",
               productName: "Mechanical Gaming Mouse G502",
               channel: "Amazon B2B",
               status: "rejected",
               type: "Damaged",
+              createdAt: new Date().toISOString(),
               driveLink: "https://www.wikipedia.org",
               botLogReason: "Evidence photos uploaded but Safe-T claim was denied. Reason: inadequate retail box pictures."
             }
@@ -2292,12 +1961,16 @@ async function startServer() {
             await db.query(`UPDATE "claims_all" SET status = $1 WHERE "trackingId" = $2`, [status, trackingId]);
           } catch (e) {}
         } else {
-          await db.query(`
-            INSERT INTO "claims_status" ("orderId", status)
-            VALUES ($1, $2)
-            ON CONFLICT ("orderId")
-            DO UPDATE SET status = $2
-          `, [orderId, status]);
+          const updRes = await db.query(
+            `UPDATE "claims_status" SET status = $2 WHERE "orderId" = $1`,
+            [orderId, status]
+          );
+          if (updRes.rowCount === 0) {
+            await db.query(
+              `INSERT INTO "claims_status" ("orderId", status) VALUES ($1, $2)`,
+              [orderId, status]
+            ).catch(() => {});
+          }
 
           try {
             await db.query(`UPDATE "claims_all" SET status = $1 WHERE "orderId" = $2`, [status, orderId]);
@@ -2305,9 +1978,7 @@ async function startServer() {
         }
 
         // Conditional Evidence table type update
-        if (orderId) {
-          await handleEvidenceTypeClaimedUpdate(db, orderId, status);
-        }
+        await handleEvidenceTypeClaimedUpdate(db, orderId, status, trackingId);
       } else {
         const item = mockClaims.find((c: any) => (trackingId && c.trackingId === trackingId) || c.orderId === orderId);
         if (item) {
@@ -2437,9 +2108,7 @@ async function startServer() {
           await db.query(`UPDATE "claims_all" SET status = 'Ready for claim' WHERE "trackingId" = $1 OR "orderId" = $2`, [resolvedTrackingId, orderId]);
         } catch (e) {}
         
-        if (orderId) {
-          await handleEvidenceTypeClaimedUpdate(db, orderId, 'Ready for claim');
-        }
+        await handleEvidenceTypeClaimedUpdate(db, orderId, 'Ready for claim', resolvedTrackingId);
       } else {
         mockClaims.forEach((c: any) => {
           if (c.trackingId === key || c.orderId === key) {
@@ -2479,9 +2148,7 @@ async function startServer() {
           await db.query(`UPDATE "claims_all" SET status = 'Partial' WHERE "trackingId" = $1 OR "orderId" = $2`, [resolvedTrackingId, orderId]);
         } catch (e) {}
         
-        if (orderId) {
-          await handleEvidenceTypeClaimedUpdate(db, orderId, 'Partial');
-        }
+        await handleEvidenceTypeClaimedUpdate(db, orderId, 'Partial', resolvedTrackingId);
       } else {
         mockClaims.forEach((c: any) => {
           if (c.trackingId === key || c.orderId === key) {

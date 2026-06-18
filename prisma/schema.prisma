@@ -156,6 +156,8 @@ model CronJobState {
 
 model ItemStatus {
   lpn                String    @id
+  temp_id            String?   @unique
+  temp_id            String?   @unique
   status             String
   recoveryType       String?
   orderId            String?
@@ -170,6 +172,7 @@ model ItemStatus {
   @@index([manifestId])
   @@index([status])
   @@index([orderId])
+
 }
 
 model MissingItem {
@@ -405,17 +408,10 @@ model ClaimsStatus {
   @@map("claims_status")
 }
 
-model QcStatus {
-  sku           String  @id
-  targetCount   Int     @map("target_count")
-  quantityCount Int     @default(0) @map("quantity_count")
-  status        String?
-  scannedAt     DateTime? 
-  @@map("qc_status")
-}
 
 model SampleRecovery {
   lpn           String  @id
+  temp_id            String?   @unique
   sku           String
   damageType    String  @map("damage_type")
   status        String  @default("recovery")

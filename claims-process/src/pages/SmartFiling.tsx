@@ -63,7 +63,7 @@ export default function SmartFiling() {
   };
 
   const triggerTest = async () => {
-    if (!testOrderId) return alert("Please provide an Order ID or LPN");
+    if (!testOrderId) return alert("Please provide a Tracking ID or LPN");
     try {
       const res = await fetch('/api/bot/trigger', {
         method: 'POST',
