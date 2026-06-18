@@ -707,7 +707,7 @@ function UsersTab({ role, currentUserId, preferredLanguage }: { role: string; cu
   
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
-  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'SUPER_ACCESS'];
+  const availableRoles = ['ADMIN', 'RECEIVER', 'INSPECTOR', 'CLAIMS_SPECIALIST', 'RECOVERER', 'QC_AGENT', 'SUPER_ACCESS'];
 
   const fetchUsers = async () => {
     setLoading(true);
