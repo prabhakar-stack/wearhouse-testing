@@ -355,7 +355,6 @@ function mapReturnRow(raw) {
     reason: pick(row.return_reason, row.reason, row.customer_comment, row.customer_comments) || "Unknown",
     customerComments: pick(row.customer_comments, row.customer_comment),
     detailedDisposition: pick(row.detailed_disposition, row.disposition),
-    itemPrice: toFloat(pick(row.item_price, row.price, row.item_amount)),
     returnDate: toDate(pick(row.return_date, row.purchase_date, row.order_date, row.created_date)),
     fulfillmentCenterId: pick(row.fulfillment_center_id, row.fulfillmentcenterid),
   };
@@ -384,14 +383,12 @@ async function materializeReturnItems(rows) {
               productName: mapped.productName, returnDate: mapped.returnDate,
               fulfillmentCenterId: mapped.fulfillmentCenterId, reason: mapped.reason,
               customerComments: mapped.customerComments, detailedDisposition: mapped.detailedDisposition,
-              itemPrice: mapped.itemPrice,
             },
             create: {
               lpn: lpnVal, orderId: mapped.orderId, sku: mapped.sku, asin: mapped.asin, fnsku: mapped.fnsku,
               productName: mapped.productName, returnDate: mapped.returnDate,
               fulfillmentCenterId: mapped.fulfillmentCenterId, reason: mapped.reason,
               customerComments: mapped.customerComments, detailedDisposition: mapped.detailedDisposition,
-              itemPrice: mapped.itemPrice,
             },
           });
           saved++;
@@ -436,13 +433,11 @@ async function findOrCreateReturnItemForReimbursement(row) {
       orderId, sku,
       reason: pick(r.reason, r.original_reimbursement_type) || "Reimbursement",
       productName: pick(r.product_name), fnsku: pick(r.fnsku), asin: pick(r.asin),
-      itemPrice: toFloat(pick(r.amount_per_unit, r.amount_total)),
     },
     create: {
       lpn, orderId, sku,
       reason: pick(r.reason, r.original_reimbursement_type) || "Reimbursement",
       productName: pick(r.product_name), fnsku: pick(r.fnsku), asin: pick(r.asin),
-      itemPrice: toFloat(pick(r.amount_per_unit, r.amount_total)),
     },
   });
 }

@@ -1,55 +1,57 @@
 import { prisma } from './prisma.ts';
 import { Role, AlertLevel } from '@prisma/client';
 
+const ALERT_LEVELS = new Set(['L1', 'L2', 'L3', 'L4']);
+
+const ROLE_ALIASES: Record<string, Role> = {
+  RECEIVER: 'RECEIVER',
+  INSPECTOR: 'INSPECTOR',
+  QC: 'QC_AGENT',
+  QC_AGENT: 'QC_AGENT',
+  RECOVERY: 'RECOVERER',
+  RECOVERER: 'RECOVERER',
+  ADMIN: 'ADMIN',
+  SUPER_ACCESS: 'SUPER_ACCESS',
+  'SUPER-ACCESS': 'SUPER_ACCESS',
+  CLAIMS_SPECIALIST: 'CLAIMS_SPECIALIST',
+  CLAIMS: 'CLAIMS_SPECIALIST',
+};
+
 /**
  * Resolves all target user IDs from a list of target role, level, or email identifiers.
+ * Uses a single batched DB query instead of one query per target entry.
  */
 export async function resolveTargetUserIds(targetRoles?: string[]): Promise<string[]> {
   if (!targetRoles || targetRoles.length === 0) return [];
 
-  const userIds: string[] = [];
+  const emails: string[] = [];
+  const levels: AlertLevel[] = [];
+  const roles: Role[] = [];
 
   for (const target of targetRoles) {
-    const cleanTarget = target.trim();
-    const upperTarget = cleanTarget.toUpperCase();
+    const clean = target.trim();
+    const upper = clean.toUpperCase();
 
-    // 1. Check if it's an email (contains '@')
-    if (cleanTarget.includes('@')) {
-      const user = await (prisma as any).user.findFirst({
-        where: { email: { equals: cleanTarget, mode: 'insensitive' } },
-        select: { id: true }
-      });
-      if (user) userIds.push(user.id);
-    }
-
-    // 2. Check if it's an AlertLevel (L1, L2, L3, L4)
-    if (['L1', 'L2', 'L3', 'L4'].includes(upperTarget)) {
-      const users = await (prisma as any).user.findMany({
-        where: { alertLevel: upperTarget as AlertLevel },
-        select: { id: true }
-      });
-      userIds.push(...users.map((u: { id: string }) => u.id));
-    }
-
-    // 3. Check if it's a direct role
-    let roleEnum: Role | null = null;
-    if (upperTarget === 'RECEIVER') roleEnum = 'RECEIVER';
-    else if (upperTarget === 'INSPECTOR') roleEnum = 'INSPECTOR';
-    else if (upperTarget === 'QC' || upperTarget === 'QC_AGENT') roleEnum = 'QC_AGENT';
-    else if (upperTarget === 'RECOVERY' || upperTarget === 'RECOVERER') roleEnum = 'RECOVERER';
-    else if (upperTarget === 'ADMIN') roleEnum = 'ADMIN';
-    else if (upperTarget === 'SUPER_ACCESS' || upperTarget === 'SUPER-ACCESS') roleEnum = 'SUPER_ACCESS';
-    else if (upperTarget === 'CLAIMS_SPECIALIST' || upperTarget === 'CLAIMS') roleEnum = 'CLAIMS_SPECIALIST';
-
-    if (roleEnum) {
-      const users = await (prisma as any).user.findMany({
-        where: { role: roleEnum },
-        select: { id: true }
-      });
-      userIds.push(...users.map((u: { id: string }) => u.id));
+    if (clean.includes('@')) {
+      emails.push(clean);
+    } else if (ALERT_LEVELS.has(upper)) {
+      levels.push(upper as AlertLevel);
+    } else if (ROLE_ALIASES[upper]) {
+      roles.push(ROLE_ALIASES[upper]);
     }
   }
 
-  return [...new Set(userIds)];
-}
+  if (emails.length === 0 && levels.length === 0 && roles.length === 0) return [];
 
+  const orConditions: any[] = [];
+  if (emails.length > 0) orConditions.push({ email: { in: emails, mode: 'insensitive' } });
+  if (levels.length > 0) orConditions.push({ alertLevel: { in: levels } });
+  if (roles.length > 0)  orConditions.push({ role: { in: roles } });
+
+  const users = await prisma.user.findMany({
+    where: { OR: orConditions },
+    select: { id: true },
+  });
+
+  return [...new Set(users.map(u => u.id))];
+}

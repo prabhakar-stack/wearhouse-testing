@@ -105,18 +105,25 @@ export async function GET(req: Request) {
       },
     });
 
+    // Batch-fetch all Order records needed for the loop upfront (avoids N+1).
+    const removalOrderIds = Array.from(
+      new Set(overdueSnapshots.map(s => s.manifest?.removalOrderId).filter((id): id is string => !!id))
+    );
+    const orderRecords = await prisma.order.findMany({
+      where: { platformOrderId: { in: removalOrderIds } },
+      select: { platformOrderId: true, requestDate: true },
+    });
+    const orderByRemovalId = new Map(orderRecords.map(o => [o.platformOrderId, o]));
+
     const seenManifestIds = new Set<string>();
     for (const snap of overdueSnapshots) {
       if (!snap.manifest) continue;
       if (seenManifestIds.has(snap.manifest.id)) continue;
       seenManifestIds.add(snap.manifest.id);
 
-      // Derive requestDate from the Order table via manifest.removalOrderId
+      // Derive requestDate from the pre-fetched Order map.
       const orderRecord = snap.manifest.removalOrderId
-        ? await prisma.order.findUnique({
-            where: { platformOrderId: snap.manifest.removalOrderId },
-            select: { requestDate: true },
-          })
+        ? orderByRemovalId.get(snap.manifest.removalOrderId) ?? null
         : null;
       const orderRequestDate = orderRecord?.requestDate;
       if (!orderRequestDate) continue;
@@ -207,10 +214,21 @@ export async function GET(req: Request) {
       },
     });
 
+    // Batch-fetch all MissingItems for claims manifests upfront (avoids N+1).
+    const claimsManifestIds = claimsManifests.map(m => m.id);
+    const allMissingItems = await prisma.missingItem.findMany({
+      where: { manifestId: { in: claimsManifestIds } },
+    });
+    const missingItemsByManifest = new Map<string, typeof allMissingItems>();
+    for (const mi of allMissingItems) {
+      if (!mi.manifestId) continue;
+      const list = missingItemsByManifest.get(mi.manifestId) ?? [];
+      list.push(mi);
+      missingItemsByManifest.set(mi.manifestId, list);
+    }
+
     for (const manifest of claimsManifests) {
-      const missingItems = await prisma.missingItem.findMany({
-        where: { manifestId: manifest.id }
-      });
+      const missingItems = missingItemsByManifest.get(manifest.id) ?? [];
 
       let baseTime = manifest.receivedAt ?? manifest.createdAt;
       if (missingItems.length > 0) {

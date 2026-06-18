@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
 
     const whereClause: any = {
       resolved: showResolved,
-      AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
+      ...(exclusionConditions.length > 0 ? { AND: exclusionConditions } : {}),
       OR: visibilityOrConditions
     };
 
@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
     if (!showResolved) {
       const unresolvedWhere: any = {
         resolved: false,
-        AND: exclusionConditions.length > 0 ? exclusionConditions : undefined,
+        ...(exclusionConditions.length > 0 ? { AND: exclusionConditions } : {}),
         OR: visibilityOrConditions
       };
 
@@ -390,19 +390,7 @@ export async function PATCH(req: NextRequest) {
         sopViewedAt: sopAcknowledged ? new Date() : null,
       };
 
-      if (userId) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true }
-        });
-        if (dbUser) {
-          updateData.resolvedById = dbUser.id;
-        } else {
-          updateData.resolvedById = null;
-        }
-      } else {
-        updateData.resolvedById = null;
-      }
+      updateData.resolvedById = (userId && dbUser) ? userId : null;
 
       const sopFollowed = !!sopAcknowledged;
 

@@ -186,11 +186,11 @@ export async function POST(req: Request) {
           expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
         }
 
-        // Dynamically upsert ReturnItem without deprecated fields
         await tx.returnItem.upsert({
           where: { lpn: normalizedLpnVal },
           update: {
-            isInspected: true
+            isInspected: true,
+            removalOrderId: manifest.removalOrderId ?? null,
           },
           create: {
             lpn: normalizedLpnVal,
@@ -199,7 +199,9 @@ export async function POST(req: Request) {
             fnsku: rawReturn?.fnsku || null,
             productName: rawReturn?.productName || `SKU: ${rawReturn?.sku || "UNKNOWN"}`,
             customerComments: rawReturn?.customerComments || null,
-            isInspected: true
+            orderId: rawReturn?.orderId || null,
+            isInspected: true,
+            removalOrderId: manifest.removalOrderId ?? null,
           },
         });
 

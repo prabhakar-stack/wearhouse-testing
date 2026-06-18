@@ -94,34 +94,19 @@ export async function POST(req: NextRequest) {
 
     // Transaction: update status and inspectedBy
     const result = await prisma.$transaction(async (tx) => {
-      // Update manifest status to IN_INSPECTION and set inspectedBy
       const updated = await tx.manifest.update({
         where: { id: manifest.id },
-        data: { 
+        data: {
           status: 'IN_INSPECTION',
           inspectedBy: userEmail,
           inspectorHandoverAt: new Date()
         },
       });
-
       return { manifest: updated };
     });
 
-    // Reload return items for result
-    const updatedReturnItems = await prisma.returnItem.findMany({
-      where: {
-        OR: [
-          { sku: { in: expectedSkus } },
-          { fnsku: { in: expectedFnskus } },
-          // removed orderId filter
-        ]
-      },
-      select: { lpn: true, sku: true }
-    }).then(items => items.map(ri => ({
-      id: ri.lpn,
-      lpn: ri.lpn,
-      sku: ri.sku
-    })));
+    // Reuse the return items already fetched before the transaction.
+    const updatedReturnItems = initialReturnItems;
 
     const expectedItemCount = totalExpectedQty;
 

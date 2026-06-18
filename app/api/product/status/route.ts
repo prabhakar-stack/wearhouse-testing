@@ -113,15 +113,10 @@ export async function POST(req: Request) {
     const espCondition = mapToEspCondition(condition);
     const jsonPayload = { lpn, condition, espCondition, timestamp: Date.now() };
 
-    // Write exactly to the single-row database table for hardware!
-    await prisma.hardwareStatus.deleteMany({ where: { id: 1 } });
-    await prisma.hardwareStatus.create({
-      data: {
-        id: 1,
-        lpn,
-        status: condition
-      }
-    });
+    await prisma.$transaction([
+      prisma.hardwareStatus.deleteMany({ where: { id: 1 } }),
+      prisma.hardwareStatus.create({ data: { id: 1, lpn, status: condition } }),
+    ]);
 
     return NextResponse.json({
       success: true,

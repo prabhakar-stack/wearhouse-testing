@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ trackingId: string }> }) {
   try {
     const { trackingId } = await params;
 
@@ -70,13 +70,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ tracking
     });
 
     // Build product-level items list for UI (sku, fnsku, shipped qty, name)
+    const uniqueSkus = Array.from(new Set(shipments.map(s => s.sku).filter((s): s is string => !!s)));
+    const customerReturnRows = await prisma.aMZCustomerReturn.findMany({
+      where: { sku: { in: uniqueSkus } },
+      select: { sku: true, productName: true }
+    });
+    const customerReturnBySkuMap = new Map(customerReturnRows.map(r => [r.sku, r]));
+
     const items: Array<{ sku: string; fnsku: string | null; quantity: number; productName: string }> = [];
     let totalExpectedQuantity = 0;
     for (const s of shipments) {
       if (!s.sku) continue;
-      const rawReturn = await prisma.aMZCustomerReturn.findFirst({
-        where: { sku: s.sku }
-      });
+      const rawReturn = customerReturnBySkuMap.get(s.sku ?? '');
       items.push({
         sku: s.sku,
         fnsku: s.fnsku || null,

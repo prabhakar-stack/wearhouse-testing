@@ -1,5 +1,6 @@
 import type { TrackingSnapshot } from "@/lib/trackcourier";
 import { setTimeout } from "timers/promises";
+import { slugifyCourierName } from "@/lib/utils";
 
 const SHIPROCKET_BASE_URL = (
   process.env.SHIPROCKET_API_BASE_URL ||
@@ -97,14 +98,7 @@ function parseTrackingData(trackingData: any, trackingNumber: string) {
   return {
     trackingUrl: trackUrl,
     courierName,
-    courierSlug: courierName
-      ? courierName
-          .trim()
-          .toLowerCase()
-          .replace(/&/g, " and ")
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-      : "shiprocket",
+    courierSlug: slugifyCourierName(courierName) || "shiprocket",
     found: Boolean(latestStatus || latestLocation || checkpoints.length > 0),
     scheduledDelivery: scheduledDelivery
       ? scheduledDelivery.toISOString()
