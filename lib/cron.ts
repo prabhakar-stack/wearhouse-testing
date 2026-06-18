@@ -3,6 +3,7 @@ import { PackageState } from "@prisma/client";
 import { fetchTrackingSnapshot } from "./trackcourier.ts";
 import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "./shopifyReturns.ts";
+import { runSmarthubIngestJob } from "./smarthubIngest.ts";
 import { ALERT_RULE_BY_TYPE } from "./alertRules.ts";
 import { calculateWarehouseWorkingHours } from "./timeUtils.ts";
 import { resolveTargetUserIds } from "./alertTargeting.ts";
@@ -11,13 +12,30 @@ import { dispatchAlert } from "./alertDispatcher.ts";
 import { randomUUID } from "crypto";
 
 
-// Helper to get carrier name from AMZRemovalShipment by tracking number
+/**
+ * Resolves the carrier for a given tracking number.
+ *
+ * Priority:
+ *  1. B2B  — AMZRemovalShipment.carrier  (removal / FBA B2B flow)
+ *  2. B2C  — AMAZON_B2C_SMARTHUB.carrier (SmartHub FBA B2C flow)
+ *
+ * Returns null when the tracking number is not found in either table,
+ * leaving the caller to apply its own fallback (e.g. "Bluedart").
+ */
 async function getCarrierByTracking(trackingNumber: string): Promise<string | null> {
-  const rec = await prisma.aMZRemovalShipment.findFirst({
+  // B2B path: AMZ removal shipments
+  const b2bRec = await prisma.aMZRemovalShipment.findFirst({
     where: { trackingNumber },
     select: { carrier: true },
   });
-  return rec?.carrier ?? null;
+  if (b2bRec?.carrier) return b2bRec.carrier;
+
+  // B2C path: SmartHub returns
+  const b2cRec = await (prisma as any).aMAZON_B2C_SMARTHUB.findFirst({
+    where: { returnTrackingId: trackingNumber },
+    select: { carrier: true },
+  });
+  return b2cRec?.carrier ?? null;
 }
 
 export const HOUR_MS = 60 * 60 * 1000;
@@ -30,7 +48,8 @@ export type CronJobKey =
   | "amazon-returns"
   | "shopify-returns"
   | "expected-tracking"
-  | "escalations";
+  | "escalations"
+  | "smarthub-ingest";
 
 export async function generateOrdersFromShipments() {
   console.log("[generateOrdersFromShipments] Fetching removal shipments...");
@@ -1587,5 +1606,11 @@ export const cronJobs = [
     label: "Escalations",
     intervalMs: HOUR_MS,
     run: runEscalationsJob,
+  },
+  {
+    key: "smarthub-ingest" as const,
+    label: "SmartHub B2C Ingest",
+    intervalMs: HOUR_MS,
+    run: runSmarthubIngestJob,
   },
 ] as const;

@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
         }, { status: 400 });
       }
       const marketplace = manifest.marketplace || 'AMAZON';
-      return NextResponse.json({ success: true, marketplace });
+      const otpRequired = marketplace === 'AMAZON_FBA';
+      return NextResponse.json({ success: true, marketplace, otpRequired });
     }
 
     // 2. Check if AMZRemovalShipment exists (Case-Insensitive)
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (removalShipment) {
-      return NextResponse.json({ success: true, marketplace: 'AMAZON' });
+      return NextResponse.json({ success: true, marketplace: 'AMAZON', otpRequired: false });
     }
 
     // 3. Check if Order exists (Case-Insensitive)
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (order) {
-      return NextResponse.json({ success: true, marketplace: order.marketplace || 'AMAZON' });
+      return NextResponse.json({ success: true, marketplace: order.marketplace || 'AMAZON', otpRequired: false });
     }
 
     // If not found in any of them, return error

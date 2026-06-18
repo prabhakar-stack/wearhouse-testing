@@ -452,6 +452,7 @@ enum Role {
 
 enum Marketplace {
   AMAZON
+  AMAZON_FBA
   SHOPIFY
 }
 

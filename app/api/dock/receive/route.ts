@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getLatestOtp, consumeOtp } from '@/lib/otpInbox';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,53 +37,69 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Fetch removal shipments scoped strictly to this tracking number.
-    // This is the shipment-centric lookup: only rows belonging to this physical box.
-    const removalShipments = await prisma.aMZRemovalShipment.findMany({
-      where: { trackingNumber: manifest.trackingId }
-    });
+    const isFBA = manifest.marketplace === 'AMAZON_FBA';
 
-    // Resolve orderId from the manifest metadata (set during staging sync)
+    // OTP validation — strictly required for AMAZON_FBA (B2C), not required for B2B.
+    let consumableOtpId: string | null = null;
+    if (isFBA) {
+      if (!otpProvided || String(otpProvided).trim() === '') {
+        return NextResponse.json({ error: 'OTP is required for Amazon FBA returns.' }, { status: 400 });
+      }
+      const otpRecord = await getLatestOtp(trackingId);
+      if (!otpRecord) {
+        return NextResponse.json({ error: 'No OTP found for this tracking ID. Ensure the delivery OTP has been received.' }, { status: 400 });
+      }
+      if (otpRecord.otp !== String(otpProvided).trim()) {
+        return NextResponse.json({ error: 'Invalid OTP. Please verify and try again.' }, { status: 400 });
+      }
+      consumableOtpId = otpRecord.id;
+    }
+
+    // B2B-only: fetch removal shipments, order metadata, and upsert the operational Order.
+    let removalShipments: Awaited<ReturnType<typeof prisma.aMZRemovalShipment.findMany>> = [];
     const removalOrderId = manifest.removalOrderId;
 
-    // Fetch order-level metadata from the raw staging table for request-date context
-    const rawOrder = removalOrderId
-      ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId: removalOrderId } })
-      : null;
-
-    // Upsert the operational Order (independent — no manifestId FK).
-    // This exists for order-level tracking (request date, reimbursement window alerts).
-    if (removalOrderId) {
-      const totalQuantity = removalShipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
-      await prisma.order.upsert({
-        where: { platformOrderId: removalOrderId },
-        update: {
-          marketplace: 'AMAZON',
-          totalQuantity,
-          ...(rawOrder ? {
-            requestDate: rawOrder.requestDate || new Date(),
-            totalAmount: rawOrder.removalFee || null,
-            fulfillmentChannel: 'AMAZON_REMOVAL',
-          } : {}),
-        },
-        create: {
-          platformOrderId: removalOrderId,
-          marketplace: 'AMAZON',
-          totalQuantity,
-          requestDate: rawOrder?.requestDate || new Date(),
-          totalAmount: rawOrder?.removalFee || null,
-          fulfillmentChannel: 'AMAZON_REMOVAL',
-        },
+    if (!isFBA) {
+      removalShipments = await prisma.aMZRemovalShipment.findMany({
+        where: { trackingNumber: manifest.trackingId }
       });
+
+      const rawOrder = removalOrderId
+        ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId: removalOrderId } })
+        : null;
+
+      if (removalOrderId) {
+        const totalQuantity = removalShipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
+        await prisma.order.upsert({
+          where: { platformOrderId: removalOrderId },
+          update: {
+            marketplace: 'AMAZON',
+            totalQuantity,
+            ...(rawOrder ? {
+              requestDate: rawOrder.requestDate || new Date(),
+              totalAmount: rawOrder.removalFee || null,
+              fulfillmentChannel: 'AMAZON_REMOVAL',
+            } : {}),
+          },
+          create: {
+            platformOrderId: removalOrderId,
+            marketplace: 'AMAZON',
+            totalQuantity,
+            requestDate: rawOrder?.requestDate || new Date(),
+            totalAmount: rawOrder?.removalFee || null,
+            fulfillmentChannel: 'AMAZON_REMOVAL',
+          },
+        });
+      }
     }
 
     const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
     const userEmail = user?.email || 'receiver@cubelelo.com';
 
     await prisma.$transaction(async (tx) => {
-      // Resolve customer order ID from the first shipment's SKU match
+      // B2B only: resolve customer order ID from the first shipment's SKU match.
       let customerOrderId = null;
-      if (removalOrderId && removalShipments.length > 0) {
+      if (!isFBA && removalOrderId && removalShipments.length > 0) {
         const firstShipment = removalShipments[0];
         const rawReturn = await tx.aMZCustomerReturn.findFirst({
           where: {
@@ -157,6 +174,11 @@ export async function POST(req: NextRequest) {
         });
       }
     });
+
+    // Consume OTP for AMAZON_FBA after successful receive.
+    if (consumableOtpId) {
+      await consumeOtp(consumableOtpId);
+    }
 
     return NextResponse.json({
       success: true,

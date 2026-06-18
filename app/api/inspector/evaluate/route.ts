@@ -125,13 +125,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // scopedOrderId comes from the manifest's removalOrderId metadata field.
-    // In the shipment-centric model, one manifest = one tracking ID = one physical box.
-    // The manifest already knows which removal order it belongs to.
+    // scopedOrderId: for AMAZON_FBA (B2C) there is no removalOrderId — fall back to
+    // the manifest's trackingId as the order reference throughout the inspection flow.
     const scopedOrderId =
       typeof orderPlatformId === 'string' && orderPlatformId.trim()
         ? orderPlatformId.trim()
-        : manifest.removalOrderId || null;
+        : manifest.removalOrderId ||
+          (manifest.marketplace === 'AMAZON_FBA' ? manifest.trackingId : null);
 
     if (!scopedOrderId) {
       return NextResponse.json(
@@ -140,19 +140,37 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch expected removal shipments scoped to this tracking number only.
-    //    Shipment-centric: we only look at SKUs in this physical box, not the whole order.
-    const shipments = await prisma.aMZRemovalShipment.findMany({
-      where: { trackingNumber: manifest.trackingId }
-    });
-
+    // 1. Fetch expected SKU/quantity data for this physical box.
+    //    AMAZON_FBA (B2C): from AMAZON_B2C_SMARTHUB keyed by returnTrackingId.
+    //    All other marketplaces (B2B): from AMZRemovalShipment keyed by trackingNumber.
     const expectedFnskuQuantities = new Map<string, number>();
     let totalExpectedQty = 0;
-    for (const s of shipments) {
-      if (s.fnsku && s.shippedQuantity) {
-        const fnsku = s.fnsku;
-        expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + s.shippedQuantity);
-        totalExpectedQty += s.shippedQuantity;
+
+    if (manifest.marketplace === 'AMAZON_FBA') {
+      const b2cRows: { channelSku: string | null; units: number | null }[] =
+        await (prisma as any).aMAZON_B2C_SMARTHUB.findMany({
+          where: { returnTrackingId: manifest.trackingId },
+          select: { channelSku: true, units: true },
+        });
+      for (const r of b2cRows) {
+        if (r.channelSku && r.units) {
+          expectedFnskuQuantities.set(
+            r.channelSku,
+            (expectedFnskuQuantities.get(r.channelSku) || 0) + r.units,
+          );
+          totalExpectedQty += r.units;
+        }
+      }
+    } else {
+      const shipments = await prisma.aMZRemovalShipment.findMany({
+        where: { trackingNumber: manifest.trackingId }
+      });
+      for (const s of shipments) {
+        if (s.fnsku && s.shippedQuantity) {
+          const fnsku = s.fnsku;
+          expectedFnskuQuantities.set(fnsku, (expectedFnskuQuantities.get(fnsku) || 0) + s.shippedQuantity);
+          totalExpectedQty += s.shippedQuantity;
+        }
       }
     }
 
