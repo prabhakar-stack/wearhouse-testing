@@ -57,10 +57,6 @@ model Manifest {
   inspectedAt         DateTime?
   itemStatuses        ItemStatus[]
   missingItems        MissingItem[]
-
-  @@index([status])
-  @@index([status, receivedAt])
-  @@index([inspectedBy])
 }
 
 model Order {
@@ -107,7 +103,7 @@ model Evidence {
   orderDriveLink  String?
   lpnDriveLink    String?
   type            EvidenceType
-  status          String?      @default("unclaimed")
+  status          String?      @default("unclaimed") 
   rawReference    String?
   uploadedByEmail String?
   manifestId      String?
@@ -116,9 +112,6 @@ model Evidence {
   claimSubReason  String?
   createdAt       DateTime     @default(now())
   manifest        Manifest?    @relation(fields: [manifestId], references: [id])
-
-  @@index([orderId])
-  @@index([manifestId, type])
 }
 
 model Alert {
@@ -140,10 +133,6 @@ model Alert {
   manifest        Manifest?  @relation(fields: [manifestId], references: [id])
   resolvedBy      User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
   targetUsers     User[]     @relation("AlertTargetUsers")
-
-  @@index([resolved, level, createdAt])
-  @@index([manifestId, resolved])
-  @@index([type, manifestId, resolved])
 }
 
 model CronJobState {
@@ -168,11 +157,6 @@ model ItemStatus {
   createdAt          DateTime  @default(now())
   isRefurbished      Boolean   @default(false) @map("is_refurbished")
 
-  @@index([manifestId])
-  @@index([status])
-  @@index([orderId])
-
-
 }
 
 model MissingItem {
@@ -187,7 +171,6 @@ model MissingItem {
   manifest        Manifest? @relation(fields: [manifestId], references: [id])
 
   @@unique([manifestId, fnsku])
-  @@index([manifestId])
 }
 
 model AMZRemovalOrder {
@@ -231,8 +214,6 @@ model AMZRemovalShipment {
   // Composite unique key prevents duplicate rows on re-sync.
   // orderId + sku + trackingNumber + shipmentDate uniquely identifies one shipment line.
   @@unique([orderId, sku, trackingNumber, shipmentDate], name: "orderId_sku_tracking_date")
-  @@index([trackingNumber])
-  @@index([orderId])
   @@map("AMZ_removal_shipments")
 }
 
@@ -274,8 +255,6 @@ model AMZCustomerReturn {
   customerComments    String?   @map("customer-comments")
   removalOrderType    String?   @map("removal-order-type")
 
-  @@index([orderId])
-  @@index([sku])
   @@map("AMZ_customer_returns")
 }
 
@@ -374,7 +353,6 @@ model ShopifyReturnTracking {
 model ReturnItem {
   lpn                 String    @id
   returnDate          DateTime? @map("return-date")
-  orderId             String?                         // direct copy from AMZCustomerReturn.orderId
   sku                 String?   @map("sku")
   asin                String?   @map("asin")
   fnsku               String?   @map("fnsku")
@@ -385,13 +363,11 @@ model ReturnItem {
   reason              String?   @map("reason")
   customerComments    String?   @map("customer-comments")
   removalOrderType    String?   @map("removal-order-type")
-  marketplace         String    @default("AMAZON")    // unified source: AMAZON | SHOPIFY | …
-  removalOrderId      String?                         // set at inspection time from manifest.removalOrderId
+  marketplace         String?   @default("amazon")
+  orderId             String?
+  itemPrice           Float?
   isInspected         Boolean   @default(false) @map("is_inspected")
 
-  @@index([fnsku])
-  @@index([sku])
-  @@index([orderId])
   @@map("ReturnItem")
 }
 
@@ -448,7 +424,6 @@ enum Role {
 
 enum Marketplace {
   AMAZON
-  AMAZON_FBA
   SHOPIFY
 }
 
