@@ -15,14 +15,10 @@ Sentry.init({
 
   integrations: [
     Sentry.replayIntegration({
-      // Mask all text and inputs by default for privacy
       maskAllText: false,
       blockAllMedia: false,
     }),
   ],
-
-  // Print debug logs in development only
-  debug: process.env.NODE_ENV === "development",
 });
 
 // Required by Sentry to instrument client-side route transitions/navigations.
