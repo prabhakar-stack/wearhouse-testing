@@ -24,29 +24,28 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { orderId, folderLink, orderFolderId, type, uploadedById, reason, manifestId, orderPlatformId, lpnConditions, lpnRecoveryTypes } = body;
 
-    const trackingId = orderId || manifestId;
-    if (!trackingId) {
-      return NextResponse.json({ error: 'Missing orderId or manifestId in request body' }, { status: 400 });
+    if (!manifestId) {
+      return NextResponse.json({ error: 'Missing manifestId in request body' }, { status: 400 });
     }
 
-    console.log(`[Finalize Upload] Finalizing for Tracking ID: ${trackingId}`, body);
+    console.log(`[Finalize Upload] Finalizing for manifestId: ${manifestId}`, body);
 
-    // 1. Resolve the Manifest by trackingId, manifestId, or orderId (via removalOrderId metadata)
+    // 1. Resolve the Manifest by manifestId (matching either UUID id or trackingId)
     let manifest = await prisma.manifest.findFirst({
       where: {
         OR: [
-          { trackingId: trackingId },
-          { id: manifestId || '' },
-          { removalOrderId: trackingId },
-          { removalOrderId: orderPlatformId || '' },
+          { id: manifestId },
+          { trackingId: manifestId },
         ]
       },
     });
 
     if (!manifest) {
-      console.warn(`[Finalize Upload] Manifest not found for Tracking ID: ${trackingId}. Dynamic creation is disabled.`);
-      return NextResponse.json({ error: `Manifest not found for ID: ${trackingId}` }, { status: 404 });
+      console.warn(`[Finalize Upload] Manifest not found for ID: ${manifestId}. Dynamic creation is disabled.`);
+      return NextResponse.json({ error: `Manifest not found for ID: ${manifestId}` }, { status: 404 });
     }
+
+    const resolvedTrackingId = manifest.trackingId;
 
     // Auth with Google using OAuth2 Refresh Token credentials to avoid Service Account quota limits
     const oauth2Client = new google.auth.OAuth2(
@@ -64,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (rejectionsFolderId) {
       try {
         const rejList = await drive.files.list({
-          q: `'${rejectionsFolderId}' in parents and name contains '${trackingId}' and trashed = false`,
+          q: `'${rejectionsFolderId}' in parents and name contains '${resolvedTrackingId}' and trashed = false`,
           fields: 'files(id, name, mimeType, webViewLink)',
           spaces: 'drive',
           supportsAllDrives: true,
@@ -139,7 +138,7 @@ export async function POST(req: NextRequest) {
       if (fs.existsSync(uploadsDir)) {
         const localFiles = fs.readdirSync(uploadsDir);
         for (const filename of localFiles) {
-          if (filename.includes(trackingId)) {
+          if (filename.includes(resolvedTrackingId)) {
             // Determine content MIME type
             let mimeType = 'application/octet-stream';
             if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
@@ -179,7 +178,7 @@ export async function POST(req: NextRequest) {
       console.error('Failed to scan local system storage uploads directory:', localError);
     }
 
-    console.log(`[Finalize Scan] Resolved ${allFilesToProcess.length} total files (Drive + Local) for tracking ID ${trackingId}`);
+    console.log(`[Finalize Scan] Resolved ${allFilesToProcess.length} total files (Drive + Local) for tracking ID ${resolvedTrackingId}`);
 
     // Validate uploadedById exists in database to prevent foreign key constraint violations
     const headerUserId = req.headers.get('x-user-id');
@@ -241,7 +240,7 @@ export async function POST(req: NextRequest) {
       // lpn = trackingId (the physical barcode on the shipment — the only identifier we have at dock stage)
       // orderId = the platform order ID if resolved, else null
       const ev = await prisma.evidence.upsert({
-        where: { lpn: trackingId },
+        where: { lpn: resolvedTrackingId },
         update: {
           orderId: scopedOrderId || null,
           trackingId: manifest.trackingId,
@@ -254,7 +253,7 @@ export async function POST(req: NextRequest) {
           claimSubReason: reason || 'Package failed visual inspection',
         },
         create: {
-          lpn: trackingId,
+          lpn: resolvedTrackingId,
           orderId: scopedOrderId || null,
           trackingId: manifest.trackingId,
           orderDriveLink: folderLink || null,
@@ -266,7 +265,7 @@ export async function POST(req: NextRequest) {
           claimSubReason: reason || 'Package failed visual inspection',
         }
       });
-      console.log(`[Database Rejection Evidence] Upserted rejection evidence for Tracking ID: ${trackingId}`);
+      console.log(`[Database Rejection Evidence] Upserted rejection evidence for Tracking ID: ${resolvedTrackingId}`);
       evidenceRecordsCreated.push(ev);
     } else {
       // 6. STANDARD INSPECTION - LPN-level tracking
@@ -276,14 +275,12 @@ export async function POST(req: NextRequest) {
         recovery: 'PACKAGING_DAMAGED',
         bad: 'PRODUCT_DAMAGED',
       };
-      // 1. Fetch expected removal shipments to determine expected quantities per FNSKU
+      // 1. Fetch expected removal shipments scoped to THIS tracking number (physical box) only.
+      //    Using scopedOrderId (platform order ID) here would pull shipments from ALL boxes
+      //    in the same removal order, inflating expected quantities and producing phantom
+      //    "missing" rows for items that are in other boxes, not this one.
       const shipments = await prisma.aMZRemovalShipment.findMany({
-        where: {
-          OR: [
-            { orderId: scopedOrderId },
-            { trackingNumber: scopedOrderId }
-          ]
-        }
+        where: { trackingNumber: manifest.trackingId }
       });
 
       const expectedFnskuQuantities = new Map<string, number>();
@@ -328,18 +325,21 @@ export async function POST(req: NextRequest) {
             where: { lpn: normalizedLpnVal }
           });
 
-          if (rawReturn?.isInspected) {
-            return NextResponse.json({
-              error: `LPN ${normalizedLpnVal} has already been inspected.`
-            }, { status: 400 });
-          }
-
           const scannedFnsku = rawReturn?.fnsku || rawReturn?.sku || 'UNKNOWN_FNSKU';
 
           // Consume FNSKU expected quantity
           const expectedQty = expectedFnskuQuantities.get(scannedFnsku) || 0;
           if (expectedQty > 0) {
             expectedFnskuQuantities.set(scannedFnsku, expectedQty - 1);
+          }
+
+          if (rawReturn?.isInspected) {
+            // LPN was already inspected in a previous attempt (e.g. the upload failed mid-way
+            // and is being retried from the pending uploads manager). Skip re-processing this
+            // LPN's condition record but allow the retry to continue so all files get uploaded
+            // and the pending entry gets cleared from IndexedDB.
+            console.warn(`[Finalize] LPN ${normalizedLpnVal} already inspected — skipping condition re-write, continuing retry.`);
+            continue;
           }
 
           await prisma.returnItem.upsert({

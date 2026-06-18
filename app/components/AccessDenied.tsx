@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { AlertOctagon } from "lucide-react";
-import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
+import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
 
 interface AccessDeniedProps {
   message?: string;
 }
 
 export default function AccessDenied({ message = "Invalid Role Authorization" }: AccessDeniedProps) {
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);

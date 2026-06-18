@@ -1,4 +1,5 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -24,9 +25,9 @@ const nextConfig: NextConfig = {
     // Adding a comment here to force the Next.js dev server to restart.
     // This ensures it detects the newly created /api/upload API routes.
   },
-  webpack: (config, {dev}) => {
+  webpack: (config, { dev }) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.
-    // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+    // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
     if (dev && process.env.DISABLE_HMR === 'true') {
       config.watchOptions = {
         ignored: /.*/,
@@ -36,4 +37,33 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Sentry organization and project slugs (from your Sentry dashboard URL)
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Auth token for uploading source maps during Vercel build.
+  // Set SENTRY_AUTH_TOKEN in Vercel env vars.
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Only print Sentry build output in CI; suppress locally.
+  silent: !process.env.CI,
+
+  // Tunnels Sentry requests through /monitoring to avoid ad blockers.
+  tunnelRoute: "/monitoring",
+
+  // Upload source maps to Sentry but exclude them from the browser bundle.
+  sourcemaps: {
+    disable: false,
+  },
+
+  webpack: {
+    // Automatically wrap all server functions (API routes, Server Actions) with Sentry.
+    autoInstrumentServerFunctions: true,
+    // Remove Sentry debug/logger statements from production bundles.
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
+});
+

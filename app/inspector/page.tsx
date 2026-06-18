@@ -107,10 +107,13 @@ function StepVisualGuide({
   step: { id: number; title: { en: string; hi: string } | string; desc: { en: string; hi: string } | string; sampleImg: string | string[] | null };
   className?: string;
 }) {
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -690,7 +693,7 @@ function InspectorDashboard({ role }: { role: string }) {
   const [alertCount, setAlertCount] = useState(0);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const [ledgerCount, setLedgerCount] = useState(0);
@@ -764,6 +767,9 @@ function InspectorDashboard({ role }: { role: string }) {
   }, []);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -1262,6 +1268,7 @@ function InspectorDashboard({ role }: { role: string }) {
           {activeTab === "ledger" && <LedgerTab preferredLanguage={preferredLanguage} />}
           {activeTab === "takeover" && <TakeoverTab preferredLanguage={preferredLanguage} />}
           {activeTab === "inspect" && <InspectTab userId={userData?.id} setIsQaActive={setIsQaActive} setActiveTab={(tab: any) => { if (tab !== "profile") setActiveTab(tab); }} />}
+          {activeTab === "alerts" && <NotificationsTab />}
         </div>
       </main>
       <PendingUploadsIndicator preferredLanguage={preferredLanguage} />
@@ -1534,7 +1541,7 @@ function InspectTab({
   setActiveTab?: (tab: "home" | "takeover" | "inspect" | "profile" | "ledger" | "alerts") => void;
 }) {
   const router = useRouter();
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
   const [phase, setPhase] = useState<
@@ -1564,6 +1571,9 @@ function InspectTab({
   }, [phase, setIsQaActive]);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -2052,17 +2062,17 @@ function InspectTab({
           // and offloads encoding to hardware-accelerated browser codecs, preventing OOM crashes.
           const recordingStream = recStreamRef.current;
 
-          // Pick the best supported codec at a low bitrate to stay within laptop memory limits
-          let options = { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: 200000 };
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: "video/webm", videoBitsPerSecond: 200000 };
-          }
-
-          const mr = new MediaRecorder(recordingStream, options);
-
-          mediaRecorderRef.current = mr;
-          chunksRef.current = [];
-          mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+           // Configure the recorder with a high bitrate of 3 Mbps for crystal-clear details
+           let options = { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: 3000000 };
+           if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+             options = { mimeType: "video/webm", videoBitsPerSecond: 3000000 };
+           }
+ 
+           const mr = new MediaRecorder(recordingStream, options);
+ 
+           mediaRecorderRef.current = mr;
+           chunksRef.current = [];
+           mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mr.onstop = () => {
             if (!isOrderCompleteRef.current) return;
             // ⚠️ Read all values from refs — onstop is a stale closure
@@ -2084,6 +2094,8 @@ function InspectTab({
               if (!activeOrderId) return;
               setIsUploading(true);
               const filesToUpload: { key: string; name: string; mimeType: string; lpn?: string; blob: Blob }[] = [];
+              // Track which files reach Drive — used in catch to only save truly failed files to IndexedDB.
+              const uploadedKeys = new Set<string>();
               try {
                 const videoChunks = chunksRef.current.length > 0 ? chunksRef.current : [new Blob(["empty-video-fallback"], { type: "video/webm" })];
                 const blob = new Blob(videoChunks, { type: "video/webm" });
@@ -2162,11 +2174,11 @@ function InspectTab({
                 // local staging disk. We retry here; if all 3 attempts fail, we throw so the
                 // outer catch block triggers the local backup pipeline.
                 const uploadSmallFile = async (f: { key: string; name: string; blob: Blob }, url: string) => {
-                  // Compress JPEG images to stay under the request body limit
+                  // Compress JPEG images if they exceed 5 MB to keep files reasonable
                   let uploadBlob = f.blob;
-                  if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
-                    uploadBlob = await compressImage(f.blob, 0.65);
-                    console.log(`[Upload] Compressed ${f.name}: ${(f.blob.size / 1024).toFixed(0)} KB → ${(uploadBlob.size / 1024).toFixed(0)} KB`);
+                  if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+                    uploadBlob = await compressImage(f.blob, 0.8);
+                    console.log(`[Upload] Compressed ${f.name} (> 5MB): ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(uploadBlob.size / 1024 / 1024).toFixed(1)} MB`);
                   }
                   const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
                   let lastError: Error | null = null;
@@ -2206,33 +2218,19 @@ function InspectTab({
                   throw new Error(`Failed to upload ${f.name} to Drive after 3 attempts: ${lastError?.message || "unknown"}`);
                 };
 
-                // ─── Helper: upload video via Google Drive Resumable Upload ───────────────
-                // 1. Ask server for a resumable session URI (only the token exchange hits Vercel)
-                // 2. Send 5 MB chunks directly to Google's servers — no Vercel body size limit
-                // 3. After upload completes, tell server to set public permissions
+                // ─── Helper: upload video via same-origin chunked proxy ─────────────────
+                // Sends 1 MB chunks to /api/upload/chunk (same origin, avoids CORS), then
+                // calls /api/upload/assemble to stream-upload the reassembled file to Drive.
                 const uploadVideoResumable = async (
                   f: { key: string; name: string; mimeType: string; blob: Blob },
                   targetFolderId: string
                 ) => {
-                  const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB — Google minimum for resumable is 256 KB
+                  const CHUNK_SIZE = 1 * 1024 * 1024; // 1 MB — stays within Next.js body limits
                   const totalSize = f.blob.size;
-
-                  console.log(`[Resumable] Starting upload for ${f.name} (${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
-
-                  // Step 1: Get resumable session URI from our server
-                  const sessionRes = await fetch("/api/upload/resumable-init", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ folderId: targetFolderId, name: f.name, mimeType: f.mimeType, fileSize: totalSize }),
-                  });
-                  if (!sessionRes.ok) {
-                    throw new Error(`Failed to create resumable session: ${sessionRes.status}`);
-                  }
-                  const { sessionUri } = await sessionRes.json();
-
-                  // Step 2: Upload chunks directly to Google
-                  let uploadedBytes = 0;
                   const totalChunks = Math.max(1, Math.ceil(totalSize / CHUNK_SIZE));
+                  const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+                  console.log(`[Chunked Upload] Starting for ${f.name} (${(totalSize / 1024 / 1024).toFixed(1)} MB), uploadId=${uploadId}`);
 
                   for (let i = 0; i < totalChunks; i++) {
                     const start = i * CHUNK_SIZE;
@@ -2244,25 +2242,15 @@ function InspectTab({
 
                     for (let attempt = 1; attempt <= 3; attempt++) {
                       const controller = new AbortController();
-                      const tid = setTimeout(() => controller.abort(), 120000); // 2 min per chunk
+                      const tid = setTimeout(() => controller.abort(), 120000);
                       try {
-                        const res = await fetch(sessionUri, {
-                          method: "PUT",
-                          headers: {
-                            "Content-Range": `bytes ${start}-${end - 1}/${totalSize}`,
-                            "Content-Type": f.mimeType,
-                          },
-                          body: chunk,
-                          signal: controller.signal,
-                        });
+                        const res = await fetch(
+                          `/api/upload/chunk?uploadId=${uploadId}&chunkIndex=${i}&name=${encodeURIComponent(f.name)}`,
+                          { method: "PUT", body: chunk, signal: controller.signal }
+                        );
                         clearTimeout(tid);
-                        // 200/201 = complete, 308 = chunk accepted (resume incomplete)
-                        if (res.status === 200 || res.status === 201 || res.status === 308) {
-                          uploadedBytes = end;
-                          chunkOk = true;
-                          break;
-                        }
-                        lastErr = new Error(`Google returned status ${res.status}`);
+                        if (res.ok) { chunkOk = true; break; }
+                        lastErr = new Error(`Server returned ${res.status}`);
                       } catch (err: any) {
                         clearTimeout(tid);
                         lastErr = err;
@@ -2271,31 +2259,47 @@ function InspectTab({
                     }
 
                     if (!chunkOk) {
-                      throw new Error(`Chunk ${i + 1}/${totalChunks} failed after 3 attempts: ${lastErr?.message || "unknown"}`);
+                      throw new Error(`Chunk ${i + 1}/${totalChunks} failed: ${lastErr?.message || "unknown"}`);
                     }
-                    console.log(`[Resumable] Chunk ${i + 1}/${totalChunks} uploaded (${(uploadedBytes / 1024 / 1024).toFixed(1)} MB / ${(totalSize / 1024 / 1024).toFixed(1)} MB)`);
+                    console.log(`[Chunked Upload] Chunk ${i + 1}/${totalChunks} done.`);
                   }
 
-                  // Step 3: Set file permissions via server (client doesn't have OAuth token)
-                  const finalizeRes = await fetch("/api/upload/resumable-finalize-by-name", {
+                  // Assemble chunks server-side and upload to Drive
+                  console.log(`[Chunked Upload] Assembling ${totalChunks} chunks for ${f.name}…`);
+                  const assembleRes = await fetch("/api/upload/assemble", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ folderId: targetFolderId, name: f.name }),
+                    body: JSON.stringify({ uploadId, totalChunks, name: f.name, mimeType: f.mimeType, folderId: targetFolderId }),
                   });
-                  if (!finalizeRes.ok) {
-                    console.warn("[Resumable] Could not finalize/set permissions, but upload succeeded.");
-                  } else {
-                    const fd = await finalizeRes.json();
-                    console.log(`[Resumable] Upload complete. webViewLink: ${fd.webViewLink}`);
+                  if (!assembleRes.ok) {
+                    const errData = await assembleRes.json().catch(() => ({}));
+                    throw new Error(`Assembly failed: ${errData.error || `HTTP ${assembleRes.status}`}`);
                   }
+                  const assembled = await assembleRes.json();
+                  console.log(`[Chunked Upload] Uploaded to Drive:`, assembled.webViewLink);
                 };
 
+                // Upload ALL files (video + images). If a file is > 4 MB, upload it via chunked proxy.
+                // Otherwise, upload normally.
+                // Track which files succeed so the catch block only saves FAILED files to
+                // IndexedDB — successfully uploaded files must NOT appear in the pending tab.
                 for (const f of filesToUpload) {
-                  if (f.key === "file") {
-                    await uploadVideoResumable(f, orderFolderId);
-                  } else {
-                    const url = uploadUrls[f.key];
-                    if (url) await uploadSmallFile(f, url);
+                  const url = uploadUrls[f.key];
+                  if (url) {
+                    let fileToUpload = f;
+                    if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+                      const compressed = await compressImage(f.blob, 0.8);
+                      console.log(`[Upload] Compressed large image ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
+                      fileToUpload = { ...f, blob: compressed };
+                    }
+
+                    if (fileToUpload.blob.size > 4_000_000) {
+                      console.log(`[Upload] File ${f.name} is large (${(fileToUpload.blob.size / 1024 / 1024).toFixed(1)} MB) — using chunked upload.`);
+                      await uploadVideoResumable(fileToUpload, orderFolderId);
+                    } else {
+                      await uploadSmallFile(fileToUpload, url);
+                    }
+                    uploadedKeys.add(f.key); // only reaches here if upload didn't throw
                   }
                 }
 
@@ -2312,7 +2316,11 @@ function InspectTab({
                 
                 // Save to client device storage (IndexedDB)
                 try {
-                  for (const f of filesToUpload) {
+                  // Only save files that did NOT yet make it to Drive.
+                  // Files already uploaded successfully should not show in the pending tab.
+                  const failedFiles = filesToUpload.filter(f => !uploadedKeys.has(f.key));
+                  console.log(`[IndexedDB Backup] ${uploadedKeys.size} file(s) already uploaded; saving ${failedFiles.length} pending file(s).`);
+                  for (const f of failedFiles) {
                     await savePendingUpload({
                       id: `INSPECTION_VIDEO_${activeOrderId}_${f.key}`,
                       orderId: activeOrderId,
@@ -2337,41 +2345,6 @@ function InspectTab({
                   console.log("[IndexedDB Backup] Successfully saved inspection files to client device IndexedDB.");
                 } catch (idbErr) {
                   console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
-                }
-
-                // Trigger local backup on failure (server secondary fallback)
-                for (const f of filesToUpload) {
-                  try {
-                    if (f.blob.type.startsWith("video/") && f.blob.size > 2 * 1024 * 1024) {
-                      // Chunk the video backup in 2 MB slices — Vercel hard limit is 4.5 MB,
-                      // 2 MB leaves a safe margin for request headers and overhead.
-                      const BACKUP_CHUNK = 2 * 1024 * 1024;
-                      const totalChunks = Math.ceil(f.blob.size / BACKUP_CHUNK);
-                      for (let i = 0; i < totalChunks; i++) {
-                        const chunk = f.blob.slice(i * BACKUP_CHUNK, Math.min((i + 1) * BACKUP_CHUNK, f.blob.size));
-                        const chunkName = `${f.name}.part${i}of${totalChunks}`;
-                        const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(chunkName)}`, {
-                          method: "PUT",
-                          body: chunk,
-                        });
-                        if (backupRes.ok) {
-                          console.log(`[Local Backup] Saved video chunk ${i + 1}/${totalChunks} → failed_uploads/${activeOrderId}/${chunkName}`);
-                        }
-                      }
-                    } else {
-                      const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(activeOrderId)}&filename=${encodeURIComponent(f.name)}`, {
-                        method: "PUT",
-                        body: f.blob,
-                      });
-                      if (backupRes.ok) {
-                        console.log(`[Local Backup] Successfully saved ${f.name} locally to failed_uploads/${activeOrderId}`);
-                      } else {
-                        console.error(`[Local Backup] Failed to save ${f.name} locally: status ${backupRes.status}`);
-                      }
-                    }
-                  } catch (backupErr: any) {
-                    console.error(`[Local Backup] Error saving ${f.name} locally:`, backupErr);
-                  }
                 }
               } finally { setIsUploading(false); }
             };
@@ -2983,14 +2956,7 @@ function InspectTab({
               <span>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</span>
             </div>
 
-            {availableCameras.length > 0 && (
-              <button
-                onClick={() => setShowConfigPanel((v) => !v)}
-                className="absolute bottom-2 left-2 z-10 text-[8px] font-bold uppercase tracking-widest text-white/70 hover:text-white transition-colors border border-white/10 hover:border-white/20 bg-black/50 px-2 py-1 rounded"
-              >
-                {showConfigPanel ? (lang === 'hi' ? 'कॉन्फ़िग छुपाएं' : 'Hide Config') : (lang === 'hi' ? 'कैमरे कॉन्फ़िगर करें' : 'Configure Cameras')}
-              </button>
-            )}
+
             <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-1 bg-black/50 text-white/60 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
               <VideoIcon size={9} />
               <span>{lang === 'hi' ? 'रिकॉर्डिंग कैम' : 'REC CAM'}</span>
@@ -3068,22 +3034,13 @@ function InspectTab({
             />
           )}
 
-          {dualCameraMode && (
-            <button
-              onClick={swapCameras}
-              disabled={isSwitchingCameras}
-              className="absolute top-4 right-4 z-30 bg-gradient-to-r from-[#FF6700] to-[#ff8c3b] hover:from-[#ff8c3b] hover:to-[#FF6700] active:scale-95 text-white disabled:opacity-40 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-full shadow-lg flex items-center space-x-2 transition-all border border-[#FF6700]/30"
-            >
-              <SwitchCamera size={14} className={isSwitchingCameras ? "animate-spin" : ""} />
-              <span>{isSwitchingCameras ? (lang === 'hi' ? 'बदल रहे हैं...' : 'Switching...') : (lang === 'hi' ? 'कैमरे बदलें' : 'Swap Cameras')}</span>
-            </button>
-          )}
+
 
           {shutterFlash && (
             <div className="absolute inset-0 bg-white z-50 animate-out fade-out duration-150" />
           )}
 
-          <div className="absolute bottom-3 left-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
+          <div className="absolute bottom-3 right-3 z-30 flex items-center space-x-1.5 bg-black/60 backdrop-blur text-white/70 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-white/10">
             <Camera size={10} />
             <span>{dualCameraMode ? (lang === 'hi' ? 'इमेज कैम' : 'Image Cam') : (lang === 'hi' ? 'कैमरा' : 'Camera')}</span>
           </div>
@@ -3195,7 +3152,7 @@ function InspectTab({
                 <ScanEye size={48} className="text-[#FF6700]" />
               </div>
               <h2 className="text-xl font-black uppercase tracking-widest text-[#313079] mb-1 text-center">
-                {lang === 'hi' ? 'ऑर्डर ID स्कैन करें' : 'Scan Order ID'}
+                {lang === 'hi' ? 'ट्रैकिंग ID स्कैन करें' : 'Scan Tracking ID'}
               </h2>
               <p className="text-[#313079]/60 font-bold tracking-wider mb-8 uppercase text-xs">
                 {lang === 'hi' ? 'निरंतर साक्ष्य शुरू करने के लिए' : 'To Begin Continuous Evidence'}
@@ -3203,7 +3160,7 @@ function InspectTab({
               <form onSubmit={handleStart} className="w-full flex flex-col space-y-4 max-w-sm">
                 <input
                   type="text"
-                  placeholder={lang === 'hi' ? 'ऑर्डर ID डालें...' : "ENTER ORDER ID..."}
+                  placeholder={lang === 'hi' ? 'ट्रैकिंग ID डालें...' : "ENTER TRACKING ID..."}
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
                   autoFocus
@@ -3782,7 +3739,7 @@ const LEVEL_CONFIG: Record<string, { color: string; bgColor: string; borderColor
 function NotificationsTab() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [sopMap, setSopMap] = useState<Record<string, any[]>>({});
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
 
@@ -3833,6 +3790,9 @@ function NotificationsTab() {
   }, [showResolved, preferredLanguage]);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     queueMicrotask(() => { fetchAlerts(); });
     window.addEventListener('preferred-language-changed', syncLanguage);
@@ -4201,13 +4161,25 @@ function NotificationsTab() {
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200 text-left">
                     <p className="text-sm text-slate-600 leading-relaxed text-left">
-                      {lang === 'hi' ? (
-                        HINDI_ALERT_DESCRIPTIONS[alert.type]
+                      {(() => {
+                        if (lang !== 'hi') return alert.description;
+                        let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
                           ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                               .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                               .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-                          : translateInstruction(alert.description, 'hi')
-                      ) : alert.description}
+                          : translateInstruction(alert.description, 'hi');
+                        if (alert.description.includes('Missing items:')) {
+                          const parts = alert.description.split('Missing items:');
+                          if (parts.length > 1) {
+                            const missingInfo = 'Missing items:' + parts[1];
+                            const translatedInfo = translateInstruction(missingInfo, 'hi');
+                            if (!baseDesc.includes(translatedInfo)) {
+                              baseDesc = baseDesc + ' ' + translatedInfo;
+                            }
+                          }
+                        }
+                        return baseDesc;
+                      })()}
                     </p>
                     {editingSopType === alert.type ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">

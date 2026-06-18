@@ -16,13 +16,15 @@ type LanguagePreferenceProps = {
 export default function LanguagePreference({
   compact = false,
 }: LanguagePreferenceProps) {
-  const [language, setLanguage] = useState<PreferredLanguage>(() => getStoredLanguage());
+  const [language, setLanguage] = useState<PreferredLanguage>("en");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setLanguage(getStoredLanguage());
+    });
     const sync = () => setLanguage(getStoredLanguage());
-    sync();
     window.addEventListener("preferred-language-changed", sync);
     window.addEventListener("storage", sync);
     return () => {

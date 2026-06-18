@@ -24,7 +24,7 @@ import {
   Box,
 } from "lucide-react";
 import LanguagePreference from "@/app/components/LanguagePreference";
-import { getStoredLanguage, translateInstruction } from "@/lib/i18n";
+import { getStoredLanguage, translateInstruction, PreferredLanguage } from "@/lib/i18n";
 import LogoutConfirmModal from "@/app/components/LogoutConfirmModal";
 
 interface QcAgentDashboardProps {
@@ -102,7 +102,7 @@ export default function QcAgentDashboard({
 }: QcAgentDashboardProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"home" | "qcaudit" | "alerts" | "profile">("home");
-  const [preferredLanguage, setPreferredLanguage] = useState(() => getStoredLanguage());
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
@@ -119,6 +119,9 @@ export default function QcAgentDashboard({
   }, []);
 
   useEffect(() => {
+    requestAnimationFrame(() => {
+      setPreferredLanguage(getStoredLanguage());
+    });
     const syncLanguage = () => setPreferredLanguage(getStoredLanguage());
     window.addEventListener("preferred-language-changed", syncLanguage);
     window.addEventListener("storage", syncLanguage);
@@ -1091,13 +1094,25 @@ function AlertsTab({ preferredLanguage: propLanguage = "en" }: { preferredLangua
                 {isExpanded && (
                   <div className="px-5 py-5 space-y-4 border-t border-slate-100 animate-in slide-in-from-top-1 duration-200 text-left">
                     <p className="text-sm text-slate-600 leading-relaxed text-left">
-                      {lang === 'hi' ? (
-                        HINDI_ALERT_DESCRIPTIONS[alert.type]
+                      {(() => {
+                        if (lang !== 'hi') return alert.description;
+                        let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
                           ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                               .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                               .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-                          : translateInstruction(alert.description, 'hi')
-                      ) : alert.description}
+                          : translateInstruction(alert.description, 'hi');
+                        if (alert.description.includes('Missing items:')) {
+                          const parts = alert.description.split('Missing items:');
+                          if (parts.length > 1) {
+                            const missingInfo = 'Missing items:' + parts[1];
+                            const translatedInfo = translateInstruction(missingInfo, 'hi');
+                            if (!baseDesc.includes(translatedInfo)) {
+                              baseDesc = baseDesc + ' ' + translatedInfo;
+                            }
+                          }
+                        }
+                        return baseDesc;
+                      })()}
                     </p>
                     {editingSopType === alert.type ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">

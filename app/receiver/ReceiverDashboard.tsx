@@ -1374,21 +1374,6 @@ function ReceiveTab({
           console.error("[IndexedDB Backup] Critical: failed to save to client IndexedDB:", idbErr);
         }
 
-        // Save local backup (server secondary fallback)
-        try {
-          const backupRes = await fetch(`/api/upload/backup?trackingId=${encodeURIComponent(orderId)}&filename=${encodeURIComponent(fileName)}`, {
-            method: "PUT",
-            body: blob,
-          });
-          if (backupRes.ok) {
-            console.log(`[Local Backup] Successfully saved receiver rejection file locally to failed_uploads/${orderId}`);
-          } else {
-            console.error(`[Local Backup] Failed to save receiver local backup: status ${backupRes.status}`);
-          }
-        } catch (backupErr) {
-          console.error("[Local Backup] Error saving files locally for receiver:", backupErr);
-        }
-
         // Database fallback registration
         try {
           await fetch("/api/upload/finalize", {
@@ -2373,13 +2358,25 @@ function AlertsTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferred
     return (
       <div className="space-y-4 text-left">
         <p className="text-xs text-slate-600 leading-relaxed text-left">
-          {lang === 'hi' ? (
-            HINDI_ALERT_DESCRIPTIONS[alert.type]
+          {(() => {
+            if (lang !== 'hi') return alert.description;
+            let baseDesc = HINDI_ALERT_DESCRIPTIONS[alert.type]
               ? HINDI_ALERT_DESCRIPTIONS[alert.type]
                   .replace('{trackingId}', alert.manifest?.trackingId || alert.description.match(/\b\d{8,15}\b/)?.[0] || '')
                   .replace('{orderId}', alert.description.match(/Removal Order (\S+)/i)?.[1] || alert.manifest?.removalOrderId || '')
-              : translateInstruction(alert.description, 'hi')
-          ) : alert.description}
+              : translateInstruction(alert.description, 'hi');
+            if (alert.description.includes('Missing items:')) {
+              const parts = alert.description.split('Missing items:');
+              if (parts.length > 1) {
+                const missingInfo = 'Missing items:' + parts[1];
+                const translatedInfo = translateInstruction(missingInfo, 'hi');
+                if (!baseDesc.includes(translatedInfo)) {
+                  baseDesc = baseDesc + ' ' + translatedInfo;
+                }
+              }
+            }
+            return baseDesc;
+          })()}
         </p>
 
         {editingSopType === alert.type ? (

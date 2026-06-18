@@ -102,9 +102,17 @@ export async function POST(req: Request) {
     }
 
     if (manifest.status !== 'IN_INSPECTION') {
+      // Manifest has already been evaluated and moved past IN_INSPECTION
+      // (e.g. CLAIMS_STAGING or INSPECTED). This can happen when a pending upload
+      // retry calls evaluate after the first attempt already completed the scan.
+      // The files are already uploaded — return 200 so the retry flow can clear
+      // the item from IndexedDB rather than staying stuck in the pending tab.
+      console.warn(`[Evaluate] Manifest ${manifestId} already in status "${manifest.status}" — skipping re-evaluation, treating as success.`);
       return NextResponse.json({
-        error: `Cannot evaluate manifest in status "${manifest.status}". Expected IN_INSPECTION.`
-      }, { status: 400 });
+        success: true,
+        skipped: true,
+        message: `Manifest already evaluated (status: ${manifest.status}). No re-evaluation needed.`,
+      });
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -329,22 +337,7 @@ export async function POST(req: Request) {
         }
       }
 
-      // Raise Level L3 Alert for missing items if shortages exist
-      if (missingCount > 0) {
-        const targetUserIds = await resolveTargetUserIds(['L3']);
-        await tx.alert.create({
-          data: {
-            level: 'L3',
-            type: 'MISSING_ITEMS',
-            title: `Missing Items Detected`,
-            description: `Inspection of tracking ID ${manifest.trackingId} found missing items. Expected: ${itemsExpected || totalExpectedQty}, Scanned: ${itemsScanned || scannedEntries.length}, Missing Shortages: ${missingCount}.`,
-            manifestId: manifest.id,
-            targetUsers: {
-              connect: targetUserIds.map(id => ({ id }))
-            }
-          }
-        });
-      }
+
 
       // Determine manifest status based on return item conditions.
       // Any condition other than GOOD_SELLABLE (including PACKAGING_DAMAGED = product's original

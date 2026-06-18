@@ -33,6 +33,7 @@ export async function GET(req: Request) {
       ruleType: string,
       manifestId: string,
       trackingId: string,
+      customDescription?: string,
     ) => {
       const rule = ALERT_RULE_BY_TYPE[ruleType];
       if (!rule) {
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
           level: rule.level,
           type: rule.type,
           title: rule.title,
-          description: rule.description.replace("{trackingId}", trackingId),
+          description: customDescription || rule.description.replace("{trackingId}", trackingId),
           manifestId,
           targetUsers: {
             connect: targetUserIds.map(id => ({ id }))
@@ -207,9 +208,17 @@ export async function GET(req: Request) {
     });
 
     for (const manifest of claimsManifests) {
-      const startTime = manifest.receivedAt ?? manifest.createdAt;
+      const missingItems = await prisma.missingItem.findMany({
+        where: { manifestId: manifest.id }
+      });
+
+      let baseTime = manifest.receivedAt ?? manifest.createdAt;
+      if (missingItems.length > 0) {
+        baseTime = missingItems[0].createdAt || baseTime;
+      }
+
       const hoursInStaging =
-        (now.getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
+        (now.getTime() - new Date(baseTime).getTime()) / (1000 * 60 * 60);
 
       let alertType: string | null = null;
       if (hoursInStaging >= 24)
@@ -220,10 +229,19 @@ export async function GET(req: Request) {
 
       if (!alertType) continue;
 
+      const rule = ALERT_RULE_BY_TYPE[alertType];
+      let description: string | undefined;
+      if (rule && missingItems.length > 0) {
+        const fnskus = [...new Set(missingItems.map(item => item.fnsku))].join(', ');
+        const quantities = missingItems.map(item => `${item.fnsku}: ${item.missingQuantity}`).join(', ');
+        description = `${rule.description.replace("{trackingId}", manifest.trackingId)} Missing items: Tracking ID: ${manifest.trackingId}, Removal Order ID: ${manifest.removalOrderId || 'N/A'}, FNSKUs: ${fnskus}, Quantities: ${quantities}. Claim is not raised.`;
+      }
+
       const alert = await createAlertIfNew(
         alertType,
         manifest.id,
         manifest.trackingId,
+        description,
       );
       if (alert) results.claimStagedAlerts++;
     }

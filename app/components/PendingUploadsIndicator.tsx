@@ -123,8 +123,8 @@ export default function PendingUploadsIndicator({
     url: string
   ) => {
     let uploadBlob = f.blob;
-    if (f.blob.type === "image/jpeg" && f.blob.size > 1_000_000) {
-      uploadBlob = await compressImage(f.blob, 0.65);
+    if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+      uploadBlob = await compressImage(f.blob, 0.8);
     }
     const timeoutMs = Math.max(30000, Math.min(120000, Math.ceil((uploadBlob.size / 100000) * 1000)));
     let lastError: Error | null = null;
@@ -269,16 +269,23 @@ export default function PendingUploadsIndicator({
 
       const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
 
-      // 2. Upload each file in the group
+      // 2. Upload each file — route large files (> 4 MB) to direct resumable upload, and small files to raw upload.
       for (const f of group.files) {
-        if (f.key === "file" && group.type === "INSPECTION_VIDEO") {
-          // Video upload via direct Google Resumable Upload
-          await uploadVideoResumable(f, orderFolderId);
+        const rawUrl = uploadUrls[f.key];
+        if (!rawUrl) throw new Error(`Missing upload URL for file key: ${f.key}`);
+        
+        let fileToUpload = f;
+        if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+          const compressed = await compressImage(f.blob, 0.8);
+          console.log(`[Upload Retry] Compressed large image ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
+          fileToUpload = { ...f, blob: compressed };
+        }
+
+        if (fileToUpload.blob.size > 4_000_000) {
+          console.log(`[Upload Retry] File ${f.name} is large (${(fileToUpload.blob.size / 1024 / 1024).toFixed(1)} MB) — using resumable upload.`);
+          await uploadVideoResumable(fileToUpload, orderFolderId);
         } else {
-          // Small images
-          const rawUrl = uploadUrls[f.key];
-          if (!rawUrl) throw new Error(`Missing raw upload URL for file key: ${f.key}`);
-          await uploadSmallFile(f, rawUrl);
+          await uploadSmallFile(fileToUpload, rawUrl);
         }
       }
 
