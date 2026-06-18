@@ -157,7 +157,6 @@ model CronJobState {
 model ItemStatus {
   lpn                String    @id
   temp_id            String?   @unique
-  temp_id            String?   @unique
   status             String
   recoveryType       String?
   orderId            String?
@@ -172,6 +171,7 @@ model ItemStatus {
   @@index([manifestId])
   @@index([status])
   @@index([orderId])
+
 
 }
 
