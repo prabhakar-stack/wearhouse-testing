@@ -479,3 +479,40 @@ model HardwareStatus {
   status    String
   createdAt DateTime @default(now())
 }
+
+model AMAZON_B2C_SMARTHUB {
+  id                      Int       @id @default(autoincrement())
+  returnTrackingId        String    @map("return_tracking_id") @default("")
+  rmaId                   String    @map("rma_id") @default("")
+  returnType              String    @map("return_type") @default("")
+  customerOrderId         String    @map("customer_order_id") @default("")
+  forwardLegShipmentId    String    @map("forward_leg_shipment_id") @default("")
+  forwardLegTrackingId    String    @map("forward_leg_tracking_id") @default("")
+  channelSku              String    @map("channel_sku") @default("")
+  units                   Int?
+  salesChannel            String    @map("sales_channel") @default("")
+  returnStatus            String    @map("return_status") @default("")
+  carrier                 String    @map("carrier") @default("")
+  returnCreationDate      DateTime? @map("return_creation_date")
+  pickUpDate              DateTime? @map("pick_up_date")
+  lastUpdatedOn           DateTime? @map("last_updated_on")
+  daysInTransit           Int?      @map("days_in_transit")
+  returnReason            String?   @map("return_reason")
+  exchangeOrderId         String    @map("exchange_order_id") @default("")
+  createdAt               DateTime  @default(now()) @map("created_at")
+
+  @@unique([returnTrackingId, rmaId, customerOrderId, channelSku], name: "unique_returns")
+  @@map("AMAZON_B2C_SMARTHUB")
+}
+
+model DeliveryOtp {
+  id         String    @id
+  trackingId String?
+  otp        String
+  source     String?
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("DeliveryOtp")
+}
+

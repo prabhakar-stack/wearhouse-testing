@@ -13,6 +13,8 @@ coverage/
 # Ignore browser automation profiles and states
 claims-process/amazon-profile/
 claims-process/bot_state/
+scripts/bot_state/
+scripts/amazon-profile/
 *.png
 !app/icon.png
 !public/icon.png
