@@ -382,6 +382,7 @@ model ClaimsStatus {
 
   @@unique([orderId, trackingId])
   @@map("claims_status")
+  @@unique([trackingId], map: "claims_status_trackingId_unique")
 }
 
 
@@ -424,6 +425,7 @@ enum Role {
 
 enum Marketplace {
   AMAZON
+  AMAZON_FBA
   SHOPIFY
 }
 
