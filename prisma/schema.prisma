@@ -363,10 +363,10 @@ model ReturnItem {
   reason              String?   @map("reason")
   customerComments    String?   @map("customer-comments")
   removalOrderType    String?   @map("removal-order-type")
-  marketplace         String?   @default("amazon")
+  marketplace         String    @default("AMAZON")
   orderId             String?
-  itemPrice           Float?
   isInspected         Boolean   @default(false) @map("is_inspected")
+  removalOrderId      String?
 
   @@map("ReturnItem")
 }
