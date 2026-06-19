@@ -17,7 +17,7 @@ export interface Claim {
   driveLink?: string;
   orderDriveLink?: string;
   trackingId?: string;
-  orderId: string;
+  orderId?: string;
   amazonOrderId?: string;
   productName?: string;
   status: ClaimStatus;

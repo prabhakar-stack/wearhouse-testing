@@ -441,7 +441,7 @@ Evidence: ${claim.driveLink || 'N/A'}
                     {/* C4: Drive Link */}
                     <td className="px-4 py-4">
                       {(() => {
-                        const match = claims.find(c => c.orderId === claim.orderId);
+                        const match = claims.find(c => (claim.trackingId && c.trackingId === claim.trackingId) || c.orderId === claim.orderId);
                         const resolvedLink = match?.orderDriveLink || match?.driveLink || claim.orderDriveLink || claim.driveLink;
                         if (resolvedLink) {
                           return (
