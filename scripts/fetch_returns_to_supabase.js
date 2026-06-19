@@ -19,7 +19,9 @@ const sp = new SellingPartnerAPI({
 });
 
 const MARKETPLACE_ID = process.env.MARKETPLACE_ID;
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
+});
 
 const RETURNS_REPORT_TYPE       = "GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA";
 const REIMBURSEMENTS_REPORT_TYPE= "GET_FBA_REIMBURSEMENTS_DATA";
@@ -203,31 +205,83 @@ async function stageRemovalOrders(rows) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function stageRemovalShipments(rows) {
-  let count = 0;
+  // Step 1: load all keys already in DB so we never double-count quantities
+  // when the same row appears in overlapping report windows.
+  const existing = await prisma.aMZRemovalShipment.findMany({
+    select: { orderId: true, sku: true, trackingNumber: true, shipmentDate: true },
+  });
+  const existingKeys = new Set(
+    existing.map(s => `${s.orderId}_${s.sku}_${s.trackingNumber}_${s.shipmentDate?.getTime()}`)
+  );
+
+  // Step 2: group incoming rows by composite key, summing quantities.
+  // Rows whose key already exists in the DB are skipped entirely.
+  const grouped = new Map();
   for (const raw of rows) {
-    const orderId = pick(raw["order-id"]);
-    const sku     = pick(raw["sku"]);
+    const orderId      = pick(raw["order-id"]);
+    const sku          = pick(raw["sku"]);
     if (!orderId && !sku) continue;
-    const data = {
-      requestDate:    toDate(pick(raw["request-date"])),
-      orderId,
-      shipmentDate:   toDate(pick(raw["shipment-date"])),
-      sku,
-      fnsku:          pick(raw["fnsku"]),
-      disposition:    pick(raw["disposition"]),
-      shippedQuantity:toInt(pick(raw["shipped-quantity"])),
-      carrier:        pick(raw["carrier"]),
-      trackingNumber: pick(raw["tracking-number"]),
-      shipmentStatus: pick(raw["shipment-status"]),
-    };
-    try {
-      const existing = await prisma.aMZRemovalShipment.findFirst({
-        where: { orderId, sku, trackingNumber: data.trackingNumber },
+
+    const trackingNumber = pick(raw["tracking-number"]) ?? "";
+    const shipmentDate   = toDate(pick(raw["shipment-date"])) ?? new Date(0);
+    const key = `${orderId}_${sku}_${trackingNumber}_${shipmentDate.getTime()}`;
+
+    if (existingKeys.has(key)) continue;
+
+    if (grouped.has(key)) {
+      grouped.get(key).shippedQuantity =
+        (grouped.get(key).shippedQuantity || 0) + (toInt(pick(raw["shipped-quantity"])) || 0);
+    } else {
+      grouped.set(key, {
+        requestDate:     toDate(pick(raw["request-date"])),
+        orderId,
+        shipmentDate,
+        sku,
+        fnsku:           pick(raw["fnsku"]),
+        disposition:     pick(raw["disposition"]),
+        shippedQuantity: toInt(pick(raw["shipped-quantity"])) || 0,
+        carrier:         pick(raw["carrier"]),
+        trackingNumber,
+        shipmentStatus:  pick(raw["shipment-status"]),
       });
-      if (existing) await prisma.aMZRemovalShipment.update({ where: { id: existing.id }, data });
-      else await prisma.aMZRemovalShipment.create({ data });
-      count++;
-    } catch (e) { console.error(`[ERROR] AMZRemovalShipment order=${orderId} sku=${sku}:`, e.message); }
+    }
+  }
+
+  // Step 3: batch-insert all new rows in one statement — all keys are guaranteed new (Step 2 filtered them)
+  const newRows = [...grouped.values()];
+  if (newRows.length === 0) return 0;
+
+  let count = 0;
+  for (const chunk of chunkArray(newRows, 100)) {
+    try {
+      const result = await prisma.aMZRemovalShipment.createMany({
+        data: chunk,
+        skipDuplicates: true,
+      });
+      count += result.count;
+    } catch (e) {
+      console.error(`[ERROR] AMZRemovalShipment batch insert:`, e.message);
+      // fallback: upsert individually so we don't lose the whole chunk
+      for (const data of chunk) {
+        try {
+          await prisma.aMZRemovalShipment.upsert({
+            where: {
+              orderId_sku_tracking_date: {
+                orderId: data.orderId ?? "",
+                sku: data.sku,
+                trackingNumber: data.trackingNumber ?? "",
+                shipmentDate: data.shipmentDate ?? new Date(0),
+              },
+            },
+            update: data,
+            create: data,
+          });
+          count++;
+        } catch (e2) {
+          console.error(`[ERROR] AMZRemovalShipment order=${data.orderId} sku=${data.sku}:`, e2.message);
+        }
+      }
+    }
   }
   return count;
 }
@@ -237,33 +291,37 @@ async function stageRemovalShipments(rows) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function stageReimbursements(rows) {
+  const validRows = rows.filter(raw => !!pick(raw["reimbursement-id"]));
   let count = 0;
-  for (const raw of rows) {
-    const reimbursementId = pick(raw["reimbursement-id"]);
-    if (!reimbursementId) continue;
-    const data = {
-      approvalDate:               toDate(pick(raw["approval-date"])),
-      caseId:                     pick(raw["case-id"]),
-      amazonOrderId:              pick(raw["amazon-order-id"]),
-      reason:                     pick(raw["reason"]),
-      sku:                        pick(raw["sku"]),
-      fnsku:                      pick(raw["fnsku"]),
-      asin:                       pick(raw["asin"]),
-      productName:                pick(raw["product-name"]),
-      condition:                  pick(raw["condition"]),
-      currencyUnit:               pick(raw["currency-unit"]),
-      amountPerUnit:              toFloat(pick(raw["amount-per-unit"])),
-      amountTotal:                toFloat(pick(raw["amount-total"])),
-      quantityReimbursedCash:     toInt(pick(raw["quantity-reimbursed-cash"])),
-      quantityReimbursedInventory:toInt(pick(raw["quantity-reimbursed-inventory"])),
-      quantityReimbursedTotal:    toInt(pick(raw["quantity-reimbursed-total"])),
-      originalReimbursementId:    pick(raw["original-reimbursement-id"]),
-      originalReimbursementType:  pick(raw["original-reimbursement-type"]),
-    };
-    try {
+
+  for (const chunk of chunkArray(validRows, 10)) {
+    const results = await Promise.allSettled(chunk.map(async (raw) => {
+      const reimbursementId = pick(raw["reimbursement-id"]);
+      const data = {
+        approvalDate:               toDate(pick(raw["approval-date"])),
+        caseId:                     pick(raw["case-id"]),
+        amazonOrderId:              pick(raw["amazon-order-id"]),
+        reason:                     pick(raw["reason"]),
+        sku:                        pick(raw["sku"]),
+        fnsku:                      pick(raw["fnsku"]),
+        asin:                       pick(raw["asin"]),
+        productName:                pick(raw["product-name"]),
+        condition:                  pick(raw["condition"]),
+        currencyUnit:               pick(raw["currency-unit"]),
+        amountPerUnit:              toFloat(pick(raw["amount-per-unit"])),
+        amountTotal:                toFloat(pick(raw["amount-total"])),
+        quantityReimbursedCash:     toInt(pick(raw["quantity-reimbursed-cash"])),
+        quantityReimbursedInventory:toInt(pick(raw["quantity-reimbursed-inventory"])),
+        quantityReimbursedTotal:    toInt(pick(raw["quantity-reimbursed-total"])),
+        originalReimbursementId:    pick(raw["original-reimbursement-id"]),
+        originalReimbursementType:  pick(raw["original-reimbursement-type"]),
+      };
       await prisma.aMZReimbursement.upsert({ where: { reimbursementId }, update: data, create: { reimbursementId, ...data } });
-      count++;
-    } catch (e) { console.error(`[ERROR] AMZReimbursement ${reimbursementId}:`, e.message); }
+    }));
+    for (const r of results) {
+      if (r.status === "fulfilled") count++;
+      else console.error(`[ERROR] AMZReimbursement:`, r.reason?.message);
+    }
   }
   return count;
 }
@@ -273,32 +331,36 @@ async function stageReimbursements(rows) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function stageCustomerReturns(rows) {
+  const validRows = rows.filter(raw => !!pick(raw["license-plate-number"]));
   let count = 0;
-  for (const raw of rows) {
-    const lpn = pick(raw["license-plate-number"]);
-    if (!lpn) continue;
-    const data = {
-      returnDate:          toDate(pick(raw["return-date"])),
-      orderId:             pick(raw["order-id"]),
-      sku:                 pick(raw["sku"]),
-      asin:                pick(raw["asin"]),
-      fnsku:               pick(raw["fnsku"]),
-      productName:         pick(raw["product-name"]),
-      quantity:            toInt(pick(raw["quantity"])),
-      fulfillmentCenterId: pick(raw["fulfillment-center-id"]),
-      detailedDisposition: pick(raw["detailed-disposition"]),
-      reason:              pick(raw["reason"]),
-      customerComments:    pick(raw["customer-comments"]),
-      removalOrderType:    pick(raw["removal-order-type"]),
-    };
-    try {
+
+  for (const chunk of chunkArray(validRows, 10)) {
+    const results = await Promise.allSettled(chunk.map(async (raw) => {
+      const lpn = pick(raw["license-plate-number"]);
+      const data = {
+        returnDate:          toDate(pick(raw["return-date"])),
+        orderId:             pick(raw["order-id"]),
+        sku:                 pick(raw["sku"]),
+        asin:                pick(raw["asin"]),
+        fnsku:               pick(raw["fnsku"]),
+        productName:         pick(raw["product-name"]),
+        quantity:            toInt(pick(raw["quantity"])),
+        fulfillmentCenterId: pick(raw["fulfillment-center-id"]),
+        detailedDisposition: pick(raw["detailed-disposition"]),
+        reason:              pick(raw["reason"]),
+        customerComments:    pick(raw["customer-comments"]),
+        removalOrderType:    pick(raw["removal-order-type"]),
+      };
       await prisma.aMZCustomerReturn.upsert({
         where: { lpn },
         update: data,
         create: { lpn, ...data },
       });
-      count++;
-    } catch (e) { console.error(`[ERROR] AMZCustomerReturn ${lpn}:`, e.message); }
+    }));
+    for (const r of results) {
+      if (r.status === "fulfilled") count++;
+      else console.error(`[ERROR] AMZCustomerReturn:`, r.reason?.message);
+    }
   }
   return count;
 }

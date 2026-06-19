@@ -1,12 +1,1693 @@
 [
   {
-    "id": 1371553115,
+    "id": 1406310071,
     "channel_id": 3938392,
     "channel_name": "CUSTOM",
     "store_name": "CUSTOM (3938392)",
     "channel_status": 1,
     "base_channel_code": "CS",
-    "channel_order_id": "R_202000310813",
+    "channel_order_id": "EXC502#202000313842RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "793014",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, EAST KHASI HILLS, Meghalaya, India",
+    "payment_status": "",
+    "total": "3317.09",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN PICKUP GENERATED",
+    "status_code": 28,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "18 Jun 2026, 12:00 AM",
+    "created_at": "18 Jun 2026, 05:57 PM",
+    "products": [
+      {
+        "id": 2089077523,
+        "name": "SAOCube - Tornado V3 Premium Flagship UV",
+        "channel_sku": "1031007",
+        "channel_order_product_id": "2089077523",
+        "quantity": 1,
+        "product_id": 287011936,
+        "sku": "1031007",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "95036090",
+        "channel_product_id": "2089077523"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1402565101,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.23",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522723258",
+        "etd": "2026-06-27 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2089077523,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "SAOCube - Tornado V3 Premium Flagship UV",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "QiYi",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/QYFS019__o.jpg?v=1779347028",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "3317.09",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 3317.09,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "EAST KHASI HILLS",
+      "state": "Meghalaya",
+      "pin_code": "793014",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "is_mysr_order": true,
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1404493880,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC496#202000313350RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "143001",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, AMRITSAR, Punjab, India",
+    "payment_status": "",
+    "total": "2326.53",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN IN TRANSIT",
+    "status_code": 25,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "17 Jun 2026, 12:00 AM",
+    "created_at": "17 Jun 2026, 04:47 PM",
+    "products": [
+      {
+        "id": 2086291056,
+        "name": "QiYi X-Man Tornado v3 Premium 3x3 Magnetic - Fla",
+        "channel_sku": "1030710",
+        "channel_order_product_id": "2086291056",
+        "quantity": 1,
+        "product_id": 241698969,
+        "sku": "1030710",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2086291056"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1400749171,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.23",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522723224",
+        "etd": "2026-06-23 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_98bf4efe-8e51-4a9c-8b3f-7e76aa653649.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_38bd35b6-d271-40ca-90d7-35aa15d4f81e.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_b889ea99-949f-43de-a412-c9af48e56c44.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_ce21feb9-dd51-4cfe-a793-94f56b975db0.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2086291056,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "QiYi X-Man Tornado v3 Premium 3x3 (Magnetic) - Fla",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "QiYi",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/66809026Glp.jpg?v=1767098485",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "2326.53",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 2326.53,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "AMRITSAR",
+      "state": "Punjab",
+      "pin_code": "143001",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_98bf4efe-8e51-4a9c-8b3f-7e76aa653649.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_38bd35b6-d271-40ca-90d7-35aa15d4f81e.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_b889ea99-949f-43de-a412-c9af48e56c44.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723224_ce21feb9-dd51-4cfe-a793-94f56b975db0.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1402928109,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC497#202000313917RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "501510",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, RANGA REDDY, Telangana, India",
+    "payment_status": "",
+    "total": "1599.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN PICKUP GENERATED",
+    "status_code": 28,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "16 Jun 2026, 12:00 AM",
+    "created_at": "16 Jun 2026, 05:32 PM",
+    "products": [
+      {
+        "id": 2083925308,
+        "name": "Vin Cube 2x2 Magnetic - Ball Core UV",
+        "channel_sku": "1020143",
+        "channel_order_product_id": "2083925308",
+        "quantity": 1,
+        "product_id": 193627399,
+        "sku": "1020143",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2083925308"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1399183574,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees Reverse QC",
+        "sr_courier_id": 156,
+        "weight": "0.07",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24319860925596",
+        "etd": "2026-06-20 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2083925308,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Vin Cube 2x2 (Magnetic) - Ball Core UV",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Vin Cube",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/sku_adbe9fb4-8ab9-4a96-a6b7-50ddaf7ff7b4.jpg?v=1736248453",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "1599.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 1599,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "RANGA REDDY",
+      "state": "Telangana",
+      "pin_code": "501510",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 156,
+          "courier_name": "Xpressbees Reverse QC",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1402324992,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC500#202000314119RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "361005",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, JAMNAGAR, Gujarat, India",
+    "payment_status": "",
+    "total": "630.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN PENDING",
+    "status_code": 21,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "16 Jun 2026, 12:00 AM",
+    "created_at": "16 Jun 2026, 12:02 PM",
+    "products": [
+      {
+        "id": 2082997665,
+        "name": "CubeInk Speed Solving Mode - ON T-Shirt - White",
+        "channel_sku": "ssmON_20WHI02",
+        "channel_order_product_id": "2082997665",
+        "quantity": 1,
+        "product_id": 151500048,
+        "sku": "ssmON_20WHI02",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "610510",
+        "channel_product_id": "2082997665"
+      },
+      {
+        "id": 2082997669,
+        "name": "CubeInk Addicted To The Cube T-Shirt - RED  XS",
+        "channel_sku": "ADDICT_20RED03",
+        "channel_order_product_id": "2082997669",
+        "quantity": 1,
+        "product_id": 151499198,
+        "sku": "ADDICT_20RED03",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "610510",
+        "channel_product_id": "2082997669"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1398580544,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "",
+        "sr_courier_id": "",
+        "weight": "0.32",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "",
+        "etd": null
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 2,
+    "qc_settings": [
+      {
+        "product_id": 2082997665,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "CubeInk Speed Solving Mode - ON T-Shirt - White / ",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "CubeInk",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/products/solvingmodeon-0.jpg?v=1610960513",
+            "name": "Product Image"
+          }
+        }
+      },
+      {
+        "product_id": 2082997669,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "CubeInk Addicted To The Cube T-Shirt - RED / XS",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "CubeInk",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/products/AddictedtotheCubeRed.png?v=1631081683",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "630.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 630,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "JAMNAGAR",
+      "state": "Gujarat",
+      "pin_code": "361005",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1400368005,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC492#202000313845RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "141008",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, LUDHIANA, Punjab, India",
+    "payment_status": "",
+    "total": "3249.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN IN TRANSIT",
+    "status_code": 25,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "15 Jun 2026, 12:00 AM",
+    "created_at": "15 Jun 2026, 09:47 AM",
+    "products": [
+      {
+        "id": 2080081877,
+        "name": "Vin Cube 4x4 v2 M Magnetic - Apex",
+        "channel_sku": "1040149",
+        "channel_order_product_id": "2080081877",
+        "quantity": 1,
+        "product_id": 229292485,
+        "sku": "1040149",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2080081877"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1396623880,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.05",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522723165",
+        "etd": "2026-06-20 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_3ca31bd5-09e7-4d6d-852d-6e617696a710.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_aade318b-998f-433c-be9c-b12406394ece.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_79b5e4e3-cb9a-4e8b-8a55-8e90bd09c823.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_c5667096-e67d-47d1-a79e-ae627a0fcc3e.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2080081877,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Vin Cube 4x4 v2 M (Magnetic) - Apex",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Vin Cube",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/62158595LLj.jpg?v=1762755003",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "3249.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 3249,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "LUDHIANA",
+      "state": "Punjab",
+      "pin_code": "141008",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_3ca31bd5-09e7-4d6d-852d-6e617696a710.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_aade318b-998f-433c-be9c-b12406394ece.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_79b5e4e3-cb9a-4e8b-8a55-8e90bd09c823.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522723165_c5667096-e67d-47d1-a79e-ae627a0fcc3e.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1389548286,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC487#202000313108RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "636005",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, SALEM, Tamil Nadu, India",
+    "payment_status": "",
+    "total": "940.20",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "9 Jun 2026, 12:00 AM",
+    "created_at": "9 Jun 2026, 11:36 AM",
+    "products": [
+      {
+        "id": 2064148899,
+        "name": "Drift Cube Bag",
+        "channel_sku": "1380214",
+        "channel_order_product_id": "2064148899",
+        "quantity": 1,
+        "product_id": 195031269,
+        "sku": "1380214",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2064148899"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1385805611,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.37",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522729996",
+        "etd": "2026-06-15 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_d799db15-6e42-4c57-a35a-22592a92ce17.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_92f1187e-dac2-486e-a0cf-71d7b4f5662f.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_84d3beba-3ceb-444b-82bb-e067c00fb62b.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_6be32c2b-906a-4aa9-b65d-a0914dd0ef20.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2064148899,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Drift Cube Bag",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Cubelelo",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/0_9c7220d7-12ff-4861-a164-e5531e188c73.png?v=1778502849",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "940.20",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 940.2,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": true,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "SALEM",
+      "state": "Tamil Nadu",
+      "pin_code": "636005",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_d799db15-6e42-4c57-a35a-22592a92ce17.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_92f1187e-dac2-486e-a0cf-71d7b4f5662f.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_84d3beba-3ceb-444b-82bb-e067c00fb62b.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522729996_6be32c2b-906a-4aa9-b65d-a0914dd0ef20.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1388354284,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC484#202000313121RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "110063",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, WEST, Delhi, India",
+    "payment_status": "",
+    "total": "933.58",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "8 Jun 2026, 12:00 AM",
+    "created_at": "8 Jun 2026, 05:21 PM",
+    "products": [
+      {
+        "id": 2062445902,
+        "name": "Drift Cube Bag",
+        "channel_sku": "1380214",
+        "channel_order_product_id": "2062445902",
+        "quantity": 1,
+        "product_id": 195031269,
+        "sku": "1380214",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2062445902"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1384611786,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.37",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522759521",
+        "etd": "2026-06-13 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_061d09a4-ec3c-4d55-900b-02fec5606eee.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_9c5d9519-6f8b-4d35-b4d1-38ff97eec62b.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_84162126-e71c-4e87-b4c3-89d4da3277fd.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_5f9332e7-46af-4907-b2be-20eb3f415c7c.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2062445902,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Drift Cube Bag",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Cubelelo",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/0_9c7220d7-12ff-4861-a164-e5531e188c73.png?v=1778502849",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "933.58",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 933.58,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": true,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "WEST",
+      "state": "Delhi",
+      "pin_code": "110063",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_061d09a4-ec3c-4d55-900b-02fec5606eee.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_9c5d9519-6f8b-4d35-b4d1-38ff97eec62b.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_84162126-e71c-4e87-b4c3-89d4da3277fd.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759521_5f9332e7-46af-4907-b2be-20eb3f415c7c.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": "Customer Not Available / Phone no. Not Contactable",
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1384619141,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC474#202000312891RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "302034",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, JAIPUR, Rajasthan, India",
+    "payment_status": "",
+    "total": "5799.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "6 Jun 2026, 12:00 AM",
+    "created_at": "6 Jun 2026, 06:00 PM",
+    "products": [
+      {
+        "id": 2056875583,
+        "name": "QiYi X-Man Tornado v4 AI 3x3 Cube Magnetic Smart",
+        "channel_sku": "1030582",
+        "channel_order_product_id": "2056875583",
+        "quantity": 1,
+        "product_id": 223193361,
+        "sku": "1030582",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2056875583"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1380877093,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.46",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522759433",
+        "etd": "2026-06-11 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_9db4c760-d378-4956-852e-a7a256b1dc02.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_b6b2eb20-1bdd-41c3-a536-0828fc9a9cb2.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_c3b582d2-f85e-469a-a6c6-7a464a53fa2a.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_b6c0a208-e787-4253-a147-15f00eba71a9.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2056875583,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "QiYi X-Man Tornado v4 AI 3x3 Cube (Magnetic Smart ",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "QiYi",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/QYFS010_88aa42ad-e771-4da3-9809-d91a8d410292.jpg?v=1757761999",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "5799.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 5799,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": false,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "JAIPUR",
+      "state": "Rajasthan",
+      "pin_code": "302034",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_9db4c760-d378-4956-852e-a7a256b1dc02.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_b6b2eb20-1bdd-41c3-a536-0828fc9a9cb2.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_c3b582d2-f85e-469a-a6c6-7a464a53fa2a.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759433_b6c0a208-e787-4253-a147-15f00eba71a9.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1384596804,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC483#202000312802RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "560016",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, BANGALORE, Karnataka, India",
+    "payment_status": "",
+    "total": "1649.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "6 Jun 2026, 12:00 AM",
+    "created_at": "6 Jun 2026, 05:44 PM",
+    "products": [
+      {
+        "id": 2056840785,
+        "name": "YJ MGC2 Beta 2x2 Magnetic - Ball-Core  UV",
+        "channel_sku": "1020149",
+        "channel_order_product_id": "2056840785",
+        "quantity": 1,
+        "product_id": 225200251,
+        "sku": "1020149",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2056840785"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1380854753,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees QC 5KG",
+        "sr_courier_id": 158,
+        "weight": "0.14",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "24414522759444",
+        "etd": "2026-06-11 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "QC PASSED",
+    "qc_failed_reason": null,
+    "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_d5dc1586-2f9c-443e-b132-c671b5c16708.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_7394348c-586b-425c-bcbc-1f4805400430.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_c65a0799-6530-4f45-b2a5-8b1d16fc2782.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_f13c1289-322a-4f74-9383-2ac72f2e02e3.png",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2056840785,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "YJ MGC2 Beta 2x2 (Magnetic) - Ball-Core + UV",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "YJ",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/57493684tNL.jpg?v=1758608813",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "1649.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 1649,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": true,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "BANGALORE",
+      "state": "Karnataka",
+      "pin_code": "560016",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_image": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_d5dc1586-2f9c-443e-b132-c671b5c16708.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_7394348c-586b-425c-bcbc-1f4805400430.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_c65a0799-6530-4f45-b2a5-8b1d16fc2782.png,https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/courier/158/qc_images/24414522759444_f13c1289-322a-4f74-9383-2ac72f2e02e3.png",
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 158,
+          "courier_name": "Xpressbees QC 5KG",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": "Pickup Not Attempted",
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1380605133,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "R_202000312193",
     "customer_name": "Brainlytic Solutions Private Limited (CUBELELO) ",
     "customer_email": "shipping@cubelelo.com",
     "customer_phone": "xxxxxxxxxx",
@@ -15,65 +1696,65 @@
     "pickup_person_name": "Not Authorized",
     "pickup_person_email": "Not Authorized",
     "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "620027",
+    "pickup_code": "560040",
     "delivery_address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, Tiruchirappalli, Tamil Nadu, India",
+    "pickup_location": "Not Authorized, Not Authorized, Bangalore, Karnataka, India",
     "payment_status": "",
-    "total": "2300.00",
+    "total": "1500.00",
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
-    "status": "RETURN CANCELLED",
-    "status_code": 27,
+    "status": "RETURN PENDING",
+    "status_code": 21,
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
-    "channel_created_at": "30 May 2026, 12:00 AM",
-    "created_at": "30 May 2026, 12:05 PM",
+    "channel_created_at": "4 Jun 2026, 12:00 AM",
+    "created_at": "4 Jun 2026, 01:05 PM",
     "products": [
       {
-        "id": 2037248544,
-        "name": "QiYi X-Man Tornado 3x3 V3 Premium Magnetic Flagship UV",
-        "channel_sku": "1030710",
-        "channel_order_product_id": "1983281752",
+        "id": 2050724164,
+        "name": "Ninja 3x3 Ghost Cube with M stickers",
+        "channel_sku": "1631001",
+        "channel_order_product_id": "2021897820",
         "quantity": 1,
-        "product_id": 241698969,
-        "sku": "1030710",
+        "product_id": 276643168,
+        "sku": "1631001",
         "custom_field": "",
         "custom_field_value": "",
-        "status": "CANCELED",
+        "status": "UNDEFINED",
         "hsn": "95036090",
-        "channel_product_id": "1983281752"
+        "channel_product_id": "2021897820"
       },
       {
-        "id": 2037248547,
-        "name": "Cubing Theme Fridge Magnet",
-        "channel_sku": "7100008",
-        "channel_order_product_id": "1983281754",
+        "id": 2050724170,
+        "name": "Cubelelo cube Stand Black",
+        "channel_sku": "1410001",
+        "channel_order_product_id": "2021897825",
         "quantity": 1,
-        "product_id": 208968888,
-        "sku": "7100008",
+        "product_id": 129376617,
+        "sku": "1410001",
         "custom_field": "",
         "custom_field_value": "",
-        "status": "CANCELED",
-        "hsn": "95036090",
-        "channel_product_id": "1983281754"
+        "status": "UNDEFINED",
+        "hsn": "9503",
+        "channel_product_id": "2021897825"
       }
     ],
     "delivery_code": "492001",
     "cod": 0,
-    "shipment_id": 1367814075,
+    "shipment_id": 1376863647,
     "in_queue": 0,
     "shipments": [
       {
         "isd_code": "+91",
         "courier": "",
         "sr_courier_id": "",
-        "weight": "0.28",
-        "length": "7.4",
-        "breadth": "8.5",
-        "height": "12",
-        "volumetric_weight": 0.15,
+        "weight": "0.15",
+        "length": "8",
+        "breadth": "7",
+        "height": "6.6",
+        "volumetric_weight": 0.073,
         "awb": "",
         "etd": null
       }
@@ -95,27 +1776,27 @@
     "qc_count": 2,
     "qc_settings": [
       {
-        "product_id": 2037248544,
+        "product_id": 2050724164,
         "qc_values": {
           "qc_product_name": {
-            "value": "QiYi X-Man Tornado 3x3 V3 Premium Magnetic Flagship UV",
+            "value": "Ninja 3x3 Ghost Cube with M stickers",
             "name": "Product Name"
           },
           "qc_brand": {
-            "value": "QiYi",
+            "value": "Ninja",
             "name": "Brand"
           },
           "qc_product_image": {
-            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1780033620_66809026Glp.jpg",
+            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1780489689_2_468c8788-5701-4238-8ee2-ccea957216c4.png",
             "name": "Product Image"
           }
         }
       },
       {
-        "product_id": 2037248547,
+        "product_id": 2050724170,
         "qc_values": {
           "qc_product_name": {
-            "value": "Cubing Theme Fridge Magnet",
+            "value": "Cubelelo cube Stand Black",
             "name": "Product Name"
           },
           "qc_brand": {
@@ -123,7 +1804,7 @@
             "name": "Brand"
           },
           "qc_product_image": {
-            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1779866767_fridge_magnet_mockup.png",
+            "value": "https://kr-shipmultichannel-mum.s3.ap-south-1.amazonaws.com/3543223/products/images/1780489691_CLB0191_1.png",
             "name": "Product Image"
           }
         }
@@ -133,7 +1814,7 @@
     "refunded_action": "",
     "refund_status": "NA",
     "refund_acknowledged_date": "",
-    "return_amount_shopify": "2300.00",
+    "return_amount_shopify": "1500.00",
     "refund_error_remarks": "",
     "coupon_code": "",
     "refund_utr": "",
@@ -142,7 +1823,7 @@
     "previous_cancelation_reason": "",
     "is_insurance_opt": null,
     "return_fees": 0,
-    "refund_amount": 2300,
+    "refund_amount": 1500,
     "buyer_comments": "",
     "seller_comments": "",
     "seller_request": null,
@@ -151,9 +1832,9 @@
     "return_pickup_address": {
       "address": "Not Authorized",
       "address_2": "Not Authorized",
-      "city": "Tiruchirappalli",
-      "state": "Tamil Nadu",
-      "pin_code": "620027",
+      "city": "Bangalore",
+      "state": "Karnataka",
+      "pin_code": "560040",
       "country": "India",
       "name": "Not Authorized",
       "phone": "xxxxxxxxxx"
@@ -175,7 +1856,7 @@
       "fynd_scheme_id": "SR-ECO",
       "forward_order_id": "",
       "is_promise_assured": 0,
-      "other_courier_dg_status": true,
+      "other_courier_dg_status": false,
       "insurace_opted_at_order_creation": false,
       "is_wac_insurance_auto_secure_force_enabled": 0
     },
@@ -186,13 +1867,13 @@
     "return_shipping_charges": 0
   },
   {
-    "id": 1369637066,
+    "id": 1380597597,
     "channel_id": 3938392,
     "channel_name": "CUSTOM",
     "store_name": "CUSTOM (3938392)",
     "channel_status": 1,
     "base_channel_code": "CS",
-    "channel_order_id": "RET463#202000310813RPR",
+    "channel_order_id": "RET466#202000312193RPR",
     "customer_name": "Cubelelo Warehouse ",
     "customer_email": "siddhi@cubelelo.com",
     "customer_phone": "xxxxxxxxxx",
@@ -201,11 +1882,11 @@
     "pickup_person_name": "Not Authorized",
     "pickup_person_email": "Not Authorized",
     "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "620009",
+    "pickup_code": "560003",
     "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, TIRUCHIRAPPALLI, Tamil Nadu, India",
+    "pickup_location": "Not Authorized, Not Authorized, BANGALORE, Karnataka, India",
     "payment_status": "",
-    "total": "2299.00",
+    "total": "1499.00",
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
@@ -214,406 +1895,41 @@
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
-    "channel_created_at": "29 May 2026, 12:00 AM",
-    "created_at": "29 May 2026, 11:17 AM",
+    "channel_created_at": "4 Jun 2026, 12:00 AM",
+    "created_at": "4 Jun 2026, 01:01 PM",
     "products": [
       {
-        "id": 2034488396,
-        "name": "QiYi X-Man Tornado v3 Premium 3x3 Magnetic - Fla",
-        "channel_sku": "1030710",
-        "channel_order_product_id": "2034488396",
+        "id": 2050713174,
+        "name": "Cubelelo Cube Stand Assorted - Black",
+        "channel_sku": "1410001",
+        "channel_order_product_id": "2050713174",
         "quantity": 1,
-        "product_id": 241698969,
-        "sku": "1030710",
+        "product_id": 129376617,
+        "sku": "1410001",
         "custom_field": "",
         "custom_field_value": "",
         "status": "UNDEFINED",
-        "hsn": "",
-        "channel_product_id": "2034488396"
+        "hsn": "9503",
+        "channel_product_id": "2050713174"
       },
       {
-        "id": 2034488400,
-        "name": "Fridge Magnet",
-        "channel_sku": "7100008",
-        "channel_order_product_id": "2034488400",
+        "id": 2050713177,
+        "name": "Ninja Ghost Cube 3x3 - Black with M Stickers",
+        "channel_sku": "1631001",
+        "channel_order_product_id": "2050713177",
         "quantity": 1,
-        "product_id": 208968888,
-        "sku": "7100008",
+        "product_id": 276643168,
+        "sku": "1631001",
         "custom_field": "",
         "custom_field_value": "",
         "status": "UNDEFINED",
-        "hsn": "",
-        "channel_product_id": "2034488400"
+        "hsn": "95036090",
+        "channel_product_id": "2050713177"
       }
     ],
     "delivery_code": "492013",
     "cod": 0,
-    "shipment_id": 1365900544,
-    "in_queue": 0,
-    "shipments": [
-      {
-        "isd_code": "+91",
-        "courier": "",
-        "sr_courier_id": "",
-        "weight": "0.28",
-        "length": "27",
-        "breadth": "22",
-        "height": "3",
-        "volumetric_weight": 0.356,
-        "awb": "",
-        "etd": null
-      }
-    ],
-    "return_reason": "NA",
-    "insurance_excluded": false,
-    "refund_method": "NA",
-    "suggested_refund_method": null,
-    "suggested_refund_amount": 0,
-    "upi_address": "N/A",
-    "bank_ifsc": "N/A",
-    "account_number": "N/A",
-    "account_holder_name": "N/A",
-    "bank_name": "N/A",
-    "qc_status": "Yes",
-    "qc_status_value": "",
-    "qc_failed_reason": null,
-    "qc_image": "",
-    "qc_count": 2,
-    "qc_settings": [
-      {
-        "product_id": 2034488396,
-        "qc_values": {
-          "qc_product_name": {
-            "value": "QiYi X-Man Tornado v3 Premium 3x3 (Magnetic) - Fla",
-            "name": "Product Name"
-          },
-          "qc_brand": {
-            "value": "QiYi",
-            "name": "Brand"
-          },
-          "qc_product_image": {
-            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/66809026Glp.jpg?v=1767098485",
-            "name": "Product Image"
-          }
-        }
-      },
-      {
-        "product_id": 2034488400,
-        "qc_values": {
-          "qc_product_name": {
-            "value": "Fridge Magnet",
-            "name": "Product Name"
-          },
-          "qc_brand": {
-            "value": "Cubelelo",
-            "name": "Brand"
-          },
-          "qc_product_image": {
-            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/fridge_magnet_mockup.png?v=1776336596",
-            "name": "Product Image"
-          }
-        }
-      }
-    ],
-    "mark_as_refunded_date": "",
-    "refunded_action": "",
-    "refund_status": "NA",
-    "refund_acknowledged_date": "",
-    "return_amount_shopify": "2299.00",
-    "refund_error_remarks": "",
-    "coupon_code": "",
-    "refund_utr": "",
-    "tooltip_log": "",
-    "previously_cancelled_via": "",
-    "previous_cancelation_reason": "",
-    "is_insurance_opt": null,
-    "return_fees": 0,
-    "refund_amount": 2299,
-    "buyer_comments": "",
-    "seller_comments": "",
-    "seller_request": null,
-    "buyer_images": [],
-    "seller_ack_comment": "",
-    "return_pickup_address": {
-      "address": "Not Authorized",
-      "address_2": "Not Authorized",
-      "city": "TIRUCHIRAPPALLI",
-      "state": "Tamil Nadu",
-      "pin_code": "620009",
-      "country": "India",
-      "name": "Not Authorized",
-      "phone": "xxxxxxxxxx"
-    },
-    "return_delivery_address": {
-      "name": "Cubelelo Warehouse ",
-      "phone": "xxxxxxxxxx",
-      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
-      "address2": "",
-      "city": "Raipur",
-      "state": "Chhattisgarh",
-      "country": "India",
-      "pincode": "492013"
-    },
-    "extra_info": {
-      "qc_check": 1,
-      "qc_params": "Product Name,Brand,Product Image",
-      "order_type": "",
-      "is_mysr_order": true,
-      "fynd_scheme_id": "SR-ECO",
-      "forward_order_id": "",
-      "is_promise_assured": 0,
-      "other_courier_dg_status": true,
-      "insurace_opted_at_order_creation": false,
-      "is_wac_insurance_auto_secure_force_enabled": 0
-    },
-    "pickup_exception_remark": null,
-    "refund_detail": {
-      "return_reason": "NA"
-    },
-    "return_shipping_charges": 0
-  },
-  {
-    "id": 1368370442,
-    "channel_id": 3938392,
-    "channel_name": "CUSTOM",
-    "store_name": "CUSTOM (3938392)",
-    "channel_status": 1,
-    "base_channel_code": "CS",
-    "channel_order_id": "RET461#202000312262RPR",
-    "customer_name": "Cubelelo Warehouse ",
-    "customer_email": "siddhi@cubelelo.com",
-    "customer_phone": "xxxxxxxxxx",
-    "customer_alternate_phone": "",
-    "customer_pincode": "492013",
-    "pickup_person_name": "Not Authorized",
-    "pickup_person_email": "Not Authorized",
-    "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "110025",
-    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, SOUTH EAST, Delhi, India",
-    "payment_status": "",
-    "total": "6799.00",
-    "expedited": 0,
-    "sla": "2 days",
-    "shipping_method": "SR",
-    "status": "RETURN PICKED UP",
-    "status_code": 32,
-    "payment_method": "prepaid",
-    "is_international": 0,
-    "purpose_of_shipment": 0,
-    "channel_created_at": "28 May 2026, 12:00 AM",
-    "created_at": "28 May 2026, 02:46 PM",
-    "products": [
-      {
-        "id": 2032636025,
-        "name": "GAN 15 UV New Black Edition 3x3 Magnetic-null",
-        "channel_sku": "1030549",
-        "channel_order_product_id": "2032636025",
-        "quantity": 1,
-        "product_id": 201801846,
-        "sku": "1030549",
-        "custom_field": "",
-        "custom_field_value": "",
-        "status": "UNDEFINED",
-        "hsn": "",
-        "channel_product_id": "2032636025"
-      },
-      {
-        "id": 2032636031,
-        "name": "Fridge Magnet-null",
-        "channel_sku": "7100008",
-        "channel_order_product_id": "2032636031",
-        "quantity": 1,
-        "product_id": 208968888,
-        "sku": "7100008",
-        "custom_field": "",
-        "custom_field_value": "",
-        "status": "UNDEFINED",
-        "hsn": "",
-        "channel_product_id": "2032636031"
-      }
-    ],
-    "delivery_code": "492013",
-    "cod": 0,
-    "shipment_id": 1364634184,
-    "in_queue": 0,
-    "shipments": [
-      {
-        "isd_code": "+91",
-        "courier": "Xpressbees Reverse Surface 5kg",
-        "sr_courier_id": 145,
-        "weight": "0.31",
-        "length": "27",
-        "breadth": "22",
-        "height": "3",
-        "volumetric_weight": 0.356,
-        "awb": "24319822592661",
-        "etd": "2026-06-02 00:00:00"
-      }
-    ],
-    "return_reason": "NA",
-    "insurance_excluded": false,
-    "refund_method": "NA",
-    "suggested_refund_method": null,
-    "suggested_refund_amount": 0,
-    "upi_address": "N/A",
-    "bank_ifsc": "N/A",
-    "account_number": "N/A",
-    "account_holder_name": "N/A",
-    "bank_name": "N/A",
-    "qc_status": "N/A",
-    "qc_status_value": "",
-    "qc_failed_reason": null,
-    "qc_image": "",
-    "qc_count": 0,
-    "qc_settings": [],
-    "mark_as_refunded_date": "",
-    "refunded_action": "",
-    "refund_status": "NA",
-    "refund_acknowledged_date": "",
-    "return_amount_shopify": "6799.00",
-    "refund_error_remarks": "",
-    "coupon_code": "",
-    "refund_utr": "",
-    "tooltip_log": "",
-    "previously_cancelled_via": "",
-    "previous_cancelation_reason": "",
-    "is_insurance_opt": null,
-    "return_fees": 0,
-    "refund_amount": 6799,
-    "buyer_comments": "",
-    "seller_comments": "",
-    "seller_request": null,
-    "buyer_images": [],
-    "seller_ack_comment": "",
-    "return_pickup_address": {
-      "address": "Not Authorized",
-      "address_2": "Not Authorized",
-      "city": "SOUTH EAST",
-      "state": "Delhi",
-      "pin_code": "110025",
-      "country": "India",
-      "name": "Not Authorized",
-      "phone": "xxxxxxxxxx"
-    },
-    "return_delivery_address": {
-      "name": "Cubelelo Warehouse ",
-      "phone": "xxxxxxxxxx",
-      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
-      "address2": "",
-      "city": "Raipur",
-      "state": "Chhattisgarh",
-      "country": "India",
-      "pincode": "492013"
-    },
-    "extra_info": {
-      "qc_check": 0,
-      "qc_params": "",
-      "order_type": "",
-      "is_mysr_order": true,
-      "fynd_scheme_id": "SR-ECO",
-      "order_metadata": [],
-      "forward_order_id": "",
-      "is_promise_assured": 0,
-      "other_courier_dg_status": true,
-      "insurance_config_snapshot": {
-        "tier_config": {
-          "maximum_insurance_liability": 475000,
-          "minimum_insurance_threshold": 2500
-        },
-        "seller_config": {
-          "rto_claim_percent": 40,
-          "insurance_config_set": 0,
-          "return_claim_percent": 50,
-          "secure_shipment_disabled": 0,
-          "maximum_insurance_liability": 475000,
-          "minimum_insurance_threshold": 2500,
-          "secure_shipment_disabled_ip": 0,
-          "disable_insurance_dynamic_pricing": 0
-        },
-        "courier_config": {
-          "courier_id": 145,
-          "courier_name": "Xpressbees Reverse Surface 5kg",
-          "secure_shipment_disabled": 0,
-          "maximum_insurance_liability": 475000
-        },
-        "config_overwrite_by_seller": 0,
-        "final_maximum_insurance_liability": 475000,
-        "final_minimum_insurance_threshold": 2500
-      },
-      "insurace_opted_at_order_creation": false,
-      "is_wac_insurance_auto_secure_force_enabled": 0
-    },
-    "pickup_exception_remark": "Customer Not Available / Phone no. Not Contactable",
-    "refund_detail": {
-      "return_reason": "NA"
-    },
-    "return_shipping_charges": 0
-  },
-  {
-    "id": 1366193207,
-    "channel_id": 3938392,
-    "channel_name": "CUSTOM",
-    "store_name": "CUSTOM (3938392)",
-    "channel_status": 1,
-    "base_channel_code": "CS",
-    "channel_order_id": "RET458#202000312539RPR",
-    "customer_name": "Cubelelo Warehouse ",
-    "customer_email": "siddhi@cubelelo.com",
-    "customer_phone": "xxxxxxxxxx",
-    "customer_alternate_phone": "",
-    "customer_pincode": "492013",
-    "pickup_person_name": "Not Authorized",
-    "pickup_person_email": "Not Authorized",
-    "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "492013",
-    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, THANE, Maharashtra, India",
-    "payment_status": "",
-    "total": "2.00",
-    "expedited": 0,
-    "sla": "2 days",
-    "shipping_method": "SR",
-    "status": "RETURN CANCELLED",
-    "status_code": 27,
-    "payment_method": "prepaid",
-    "is_international": 0,
-    "purpose_of_shipment": 0,
-    "channel_created_at": "27 May 2026, 12:00 AM",
-    "created_at": "27 May 2026, 12:56 PM",
-    "products": [
-      {
-        "id": 2029524011,
-        "name": "QiYi X-Man XT3 v1 3x3 Magnetic - Pioneer",
-        "channel_sku": "1030534",
-        "channel_order_product_id": "2029524011",
-        "quantity": 1,
-        "product_id": 187505945,
-        "sku": "1030534",
-        "custom_field": "",
-        "custom_field_value": "",
-        "status": "CANCELED",
-        "hsn": "",
-        "channel_product_id": "2029524011"
-      },
-      {
-        "id": 2029524016,
-        "name": "Fridge Magnet",
-        "channel_sku": "7100008",
-        "channel_order_product_id": "2029524016",
-        "quantity": 1,
-        "product_id": 208968888,
-        "sku": "7100008",
-        "custom_field": "",
-        "custom_field_value": "",
-        "status": "CANCELED",
-        "hsn": "",
-        "channel_product_id": "2029524016"
-      }
-    ],
-    "delivery_code": "492013",
-    "cod": 0,
-    "shipment_id": 1362457347,
+    "shipment_id": 1376856109,
     "in_queue": 0,
     "shipments": [
       {
@@ -643,21 +1959,38 @@
     "qc_status_value": "",
     "qc_failed_reason": null,
     "qc_image": "",
-    "qc_count": 1,
+    "qc_count": 2,
     "qc_settings": [
       {
-        "product_id": 2029524011,
+        "product_id": 2050713174,
         "qc_values": {
           "qc_product_name": {
-            "value": "QiYi X-Man XT3 v1 3x3 (Magnetic) - Pioneer",
+            "value": "Cubelelo Cube Stand (Assorted) - Black",
             "name": "Product Name"
           },
           "qc_brand": {
-            "value": "QiYi",
+            "value": "Cubelelo",
             "name": "Brand"
           },
           "qc_product_image": {
-            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/14_585c19a1-0ac0-46aa-aa05-c7ef98c81dbc.png?v=1730972920",
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/CLB0191_1.png?v=1692445606",
+            "name": "Product Image"
+          }
+        }
+      },
+      {
+        "product_id": 2050713177,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Ninja Ghost Cube 3x3 - Black with M Stickers",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Ninja",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/2_468c8788-5701-4238-8ee2-ccea957216c4.png?v=1777445207",
             "name": "Product Image"
           }
         }
@@ -667,7 +2000,7 @@
     "refunded_action": "",
     "refund_status": "NA",
     "refund_acknowledged_date": "",
-    "return_amount_shopify": "2.00",
+    "return_amount_shopify": "1499.00",
     "refund_error_remarks": "",
     "coupon_code": "",
     "refund_utr": "",
@@ -676,7 +2009,7 @@
     "previous_cancelation_reason": "",
     "is_insurance_opt": null,
     "return_fees": 0,
-    "refund_amount": 2,
+    "refund_amount": 1499,
     "buyer_comments": "",
     "seller_comments": "",
     "seller_request": null,
@@ -685,9 +2018,9 @@
     "return_pickup_address": {
       "address": "Not Authorized",
       "address_2": "Not Authorized",
-      "city": "THANE",
-      "state": "Maharashtra",
-      "pin_code": "492013",
+      "city": "BANGALORE",
+      "state": "Karnataka",
+      "pin_code": "560003",
       "country": "India",
       "name": "Not Authorized",
       "phone": "xxxxxxxxxx"
@@ -706,11 +2039,10 @@
       "qc_check": 1,
       "qc_params": "Product Name,Brand,Product Image",
       "order_type": "",
-      "is_mysr_order": true,
       "fynd_scheme_id": "SR-ECO",
       "forward_order_id": "",
       "is_promise_assured": 0,
-      "other_courier_dg_status": true,
+      "other_courier_dg_status": false,
       "insurace_opted_at_order_creation": false,
       "is_wac_insurance_auto_secure_force_enabled": 0
     },
@@ -721,26 +2053,212 @@
     "return_shipping_charges": 0
   },
   {
-    "id": 1365973141,
+    "id": 1379416023,
     "channel_id": 3938392,
     "channel_name": "CUSTOM",
     "store_name": "CUSTOM (3938392)",
     "channel_status": 1,
     "base_channel_code": "CS",
-    "channel_order_id": "RET456#202000311293RPR",
+    "channel_order_id": "RET465#202000312193RPR",
     "customer_name": "Cubelelo Warehouse ",
-    "customer_email": "shipping@cubelelo.com",
+    "customer_email": "siddhi@cubelelo.com",
     "customer_phone": "xxxxxxxxxx",
     "customer_alternate_phone": "",
     "customer_pincode": "492013",
     "pickup_person_name": "Not Authorized",
     "pickup_person_email": "Not Authorized",
     "pickup_person_phone": "xxxxxxxxxx",
-    "pickup_code": "822116",
+    "pickup_code": "560010",
     "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
-    "pickup_location": "Not Authorized, Not Authorized, PALAMAU, Jharkhand, India",
+    "pickup_location": "Not Authorized, Not Authorized, BANGALORE, Karnataka, India",
     "payment_status": "",
-    "total": "260.10",
+    "total": "1499.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN PENDING",
+    "status_code": 21,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "3 Jun 2026, 12:00 AM",
+    "created_at": "3 Jun 2026, 05:58 PM",
+    "products": [
+      {
+        "id": 2048941760,
+        "name": "Ninja Ghost Cube 3x3 - Black with M Stickers",
+        "channel_sku": "1631001",
+        "channel_order_product_id": "2048941760",
+        "quantity": 1,
+        "product_id": 276643168,
+        "sku": "1631001",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "95036090",
+        "channel_product_id": "2048941760"
+      },
+      {
+        "id": 2048941762,
+        "name": "Cubelelo Cube Stand Assorted - Black",
+        "channel_sku": "1410001",
+        "channel_order_product_id": "2048941762",
+        "quantity": 1,
+        "product_id": 129376617,
+        "sku": "1410001",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "9503",
+        "channel_product_id": "2048941762"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1375674732,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "",
+        "sr_courier_id": "",
+        "weight": "0.14",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "",
+        "etd": null
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 2,
+    "qc_settings": [
+      {
+        "product_id": 2048941760,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Ninja Ghost Cube 3x3 - Black with M Stickers",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Ninja",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/2_468c8788-5701-4238-8ee2-ccea957216c4.png?v=1777445207",
+            "name": "Product Image"
+          }
+        }
+      },
+      {
+        "product_id": 2048941762,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "Cubelelo Cube Stand (Assorted) - Black",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "Cubelelo",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/files/CLB0191_1.png?v=1692445606",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "1499.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 1499,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "BANGALORE",
+      "state": "Karnataka",
+      "pin_code": "560010",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1377129286,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC467#202000312060RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "400030",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, MUMBAI, Maharashtra, India",
+    "payment_status": "",
+    "total": "5099.00",
     "expedited": 0,
     "sla": "2 days",
     "shipping_method": "SR",
@@ -749,40 +2267,221 @@
     "payment_method": "prepaid",
     "is_international": 0,
     "purpose_of_shipment": 0,
-    "channel_created_at": "27 May 2026, 12:00 AM",
-    "created_at": "27 May 2026, 11:16 AM",
+    "channel_created_at": "2 Jun 2026, 12:00 AM",
+    "created_at": "2 Jun 2026, 12:46 PM",
     "products": [
       {
-        "id": 2029201948,
-        "name": "Drift 4x4 Stickered - Drift 4x4-Drift 4x4",
-        "channel_sku": "1040300",
-        "channel_order_product_id": "2029201948",
+        "id": 2045483282,
+        "name": "GAN 12 MagLev 3x3 Magnetic - UV Coated",
+        "channel_sku": "1030470",
+        "channel_order_product_id": "2045483282",
         "quantity": 1,
-        "product_id": 129413841,
-        "sku": "1040300",
+        "product_id": 129381671,
+        "sku": "1030470",
         "custom_field": "",
         "custom_field_value": "",
         "status": "CANCELED",
         "hsn": "9503",
-        "channel_product_id": "2029201948"
+        "channel_product_id": "2045483282"
       }
     ],
     "delivery_code": "492013",
     "cod": 0,
-    "shipment_id": 1362237344,
+    "shipment_id": 1373388343,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Ekart Reverse QC",
+        "sr_courier_id": 173,
+        "weight": "0.06",
+        "length": "27",
+        "breadth": "22",
+        "height": "3",
+        "volumetric_weight": 0.356,
+        "awb": "SRSR1292864352",
+        "etd": "2026-06-06 00:00:00"
+      }
+    ],
+    "return_reason": "NA",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "Yes",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 1,
+    "qc_settings": [
+      {
+        "product_id": 2045483282,
+        "qc_values": {
+          "qc_product_name": {
+            "value": "GAN 12 MagLev 3x3 (Magnetic) - UV Coated",
+            "name": "Product Name"
+          },
+          "qc_brand": {
+            "value": "GAN",
+            "name": "Brand"
+          },
+          "qc_product_image": {
+            "value": "https://cdn.shopify.com/s/files/1/0270/0342/0758/products/1uFkS_W9lz7uof-1wIzGmDR2iKA9UhNs4.jpg?v=1743671736",
+            "name": "Product Image"
+          }
+        }
+      }
+    ],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "5099.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 5099,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": null,
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "MUMBAI",
+      "state": "Maharashtra",
+      "pin_code": "400030",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Cubelelo Warehouse ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1",
+      "address2": "",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492013"
+    },
+    "extra_info": {
+      "qc_check": 1,
+      "qc_params": "Product Name,Brand,Product Image",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 173,
+          "courier_name": "Ekart Reverse QC",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1377089989,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "EXC468#202000311638RPR",
+    "customer_name": "Cubelelo Warehouse ",
+    "customer_email": "siddhi@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492013",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "211019",
+    "delivery_address": "Khasra no3255  32522 Near Didwaniya Complex Shree Siddhi Vinayak Marriage Palace DD Nagar Ring Road No 1, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, ALLAHABAD, Uttar Pradesh, India",
+    "payment_status": "",
+    "total": "4749.05",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "2 Jun 2026, 12:00 AM",
+    "created_at": "2 Jun 2026, 12:29 PM",
+    "products": [
+      {
+        "id": 2045424416,
+        "name": "QiYi X-Man Tornado v5 3x3 Magnetic - Pioneer UV",
+        "channel_sku": "1031003",
+        "channel_order_product_id": "2045424416",
+        "quantity": 1,
+        "product_id": 284360033,
+        "sku": "1031003",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "95036090",
+        "channel_product_id": "2045424416"
+      }
+    ],
+    "delivery_code": "492013",
+    "cod": 0,
+    "shipment_id": 1373349057,
     "in_queue": 0,
     "shipments": [
       {
         "isd_code": "+91",
         "courier": "Xpressbees Reverse Surface 5kg",
         "sr_courier_id": 145,
-        "weight": "0.16",
+        "weight": "0.27",
         "length": "27",
         "breadth": "22",
         "height": "3",
         "volumetric_weight": 0.356,
-        "awb": "24319822592587",
-        "etd": "2026-06-04 00:00:00"
+        "awb": "24319822536607",
+        "etd": "2026-06-09 00:00:00"
       }
     ],
     "return_reason": "NA",
@@ -805,7 +2504,7 @@
     "refunded_action": "",
     "refund_status": "NA",
     "refund_acknowledged_date": "",
-    "return_amount_shopify": "260.10",
+    "return_amount_shopify": "4749.05",
     "refund_error_remarks": "",
     "coupon_code": "",
     "refund_utr": "",
@@ -814,18 +2513,28 @@
     "previous_cancelation_reason": "",
     "is_insurance_opt": null,
     "return_fees": 0,
-    "refund_amount": 260.1,
+    "refund_amount": 4749.05,
     "buyer_comments": "",
     "seller_comments": "",
-    "seller_request": null,
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": false,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
     "buyer_images": [],
     "seller_ack_comment": "",
     "return_pickup_address": {
       "address": "Not Authorized",
       "address_2": "Not Authorized",
-      "city": "PALAMAU",
-      "state": "Jharkhand",
-      "pin_code": "822116",
+      "city": "ALLAHABAD",
+      "state": "Uttar Pradesh",
+      "pin_code": "211019",
       "country": "India",
       "name": "Not Authorized",
       "phone": "xxxxxxxxxx"
@@ -844,7 +2553,6 @@
       "qc_check": 0,
       "qc_params": "",
       "order_type": "",
-      "is_mysr_order": true,
       "fynd_scheme_id": "SR-ECO",
       "order_metadata": [],
       "forward_order_id": "",
@@ -881,6 +2589,180 @@
     "pickup_exception_remark": null,
     "refund_detail": {
       "return_reason": "NA"
+    },
+    "return_shipping_charges": 0
+  },
+  {
+    "id": 1372185050,
+    "channel_id": 3938392,
+    "channel_name": "CUSTOM",
+    "store_name": "CUSTOM (3938392)",
+    "channel_status": 1,
+    "base_channel_code": "CS",
+    "channel_order_id": "R_202000312666",
+    "customer_name": "Brainlytic Solutions Private Limited (CUBELELO) ",
+    "customer_email": "shipping@cubelelo.com",
+    "customer_phone": "xxxxxxxxxx",
+    "customer_alternate_phone": "",
+    "customer_pincode": "492001",
+    "pickup_person_name": "Not Authorized",
+    "pickup_person_email": "Not Authorized",
+    "pickup_person_phone": "xxxxxxxxxx",
+    "pickup_code": "500010",
+    "delivery_address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex, Raipur, Chhattisgarh, India",
+    "pickup_location": "Not Authorized, Not Authorized, Hyderabad, Telangana, India",
+    "payment_status": "",
+    "total": "599.00",
+    "expedited": 0,
+    "sla": "2 days",
+    "shipping_method": "SR",
+    "status": "RETURN DELIVERED",
+    "status_code": 26,
+    "payment_method": "prepaid",
+    "is_international": 0,
+    "purpose_of_shipment": 0,
+    "channel_created_at": "30 May 2026, 12:00 AM",
+    "created_at": "30 May 2026, 05:26 PM",
+    "products": [
+      {
+        "id": 2038196670,
+        "name": "QiYi Warrior M Pro 3x3",
+        "channel_sku": "1030535",
+        "channel_order_product_id": "2032857094",
+        "quantity": 1,
+        "product_id": 192168341,
+        "sku": "1030535",
+        "custom_field": "",
+        "custom_field_value": "",
+        "status": "UNDEFINED",
+        "hsn": "",
+        "channel_product_id": "2032857094"
+      }
+    ],
+    "delivery_code": "492001",
+    "cod": 0,
+    "shipment_id": 1368445922,
+    "in_queue": 0,
+    "shipments": [
+      {
+        "isd_code": "+91",
+        "courier": "Xpressbees Reverse Surface",
+        "sr_courier_id": 125,
+        "weight": "0.1",
+        "length": "5.6",
+        "breadth": "5.6",
+        "height": "5.6",
+        "volumetric_weight": 0.035,
+        "awb": "24319860326836",
+        "etd": "2026-06-02 00:00:00"
+      }
+    ],
+    "return_reason": "Changed my mind",
+    "insurance_excluded": false,
+    "refund_method": "NA",
+    "suggested_refund_method": null,
+    "suggested_refund_amount": 0,
+    "upi_address": "N/A",
+    "bank_ifsc": "N/A",
+    "account_number": "N/A",
+    "account_holder_name": "N/A",
+    "bank_name": "N/A",
+    "qc_status": "N/A",
+    "qc_status_value": "",
+    "qc_failed_reason": null,
+    "qc_image": "",
+    "qc_count": 0,
+    "qc_settings": [],
+    "mark_as_refunded_date": "",
+    "refunded_action": "",
+    "refund_status": "NA",
+    "refund_acknowledged_date": "",
+    "return_amount_shopify": "599.00",
+    "refund_error_remarks": "",
+    "coupon_code": "",
+    "refund_utr": "",
+    "tooltip_log": "",
+    "previously_cancelled_via": "",
+    "previous_cancelation_reason": "",
+    "is_insurance_opt": null,
+    "return_fees": 0,
+    "refund_amount": 599,
+    "buyer_comments": "",
+    "seller_comments": "",
+    "seller_request": {
+      "can_request_pod": false,
+      "show_pod_actions": true,
+      "can_raise_dispute": false,
+      "can_raise_dispute_attempt": false,
+      "pod_dispute": "",
+      "pod_requested": false,
+      "status": "",
+      "lops_remark": "",
+      "status_value": ""
+    },
+    "buyer_images": [],
+    "seller_ack_comment": "",
+    "return_pickup_address": {
+      "address": "Not Authorized",
+      "address_2": "Not Authorized",
+      "city": "Hyderabad",
+      "state": "Telangana",
+      "pin_code": "500010",
+      "country": "India",
+      "name": "Not Authorized",
+      "phone": "xxxxxxxxxx"
+    },
+    "return_delivery_address": {
+      "name": "Brainlytic Solutions Private Limited (CUBELELO) ",
+      "phone": "xxxxxxxxxx",
+      "address": "Khasra no.325/5 & 325/22, Near Didwaniya Complex",
+      "address2": "Shree Siddhi Vinayak Marriage Palace, DD Nagar, Ring Road No 1",
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "country": "India",
+      "pincode": "492001"
+    },
+    "extra_info": {
+      "qc_check": 0,
+      "qc_params": "",
+      "order_type": "",
+      "fynd_scheme_id": "SR-ECO",
+      "order_metadata": [],
+      "forward_order_id": "",
+      "is_promise_assured": 0,
+      "is_revenue_assured_opt": false,
+      "other_courier_dg_status": false,
+      "insurance_config_snapshot": {
+        "tier_config": {
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500
+        },
+        "seller_config": {
+          "rto_claim_percent": 40,
+          "insurance_config_set": 0,
+          "return_claim_percent": 50,
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000,
+          "minimum_insurance_threshold": 2500,
+          "secure_shipment_disabled_ip": 0,
+          "disable_insurance_dynamic_pricing": 0
+        },
+        "courier_config": {
+          "courier_id": 125,
+          "courier_name": "Xpressbees Reverse Surface",
+          "secure_shipment_disabled": 0,
+          "maximum_insurance_liability": 475000
+        },
+        "config_overwrite_by_seller": 0,
+        "final_maximum_insurance_liability": 475000,
+        "final_minimum_insurance_threshold": 2500
+      },
+      "insurace_opted_at_order_creation": false,
+      "is_wac_insurance_auto_secure_force_enabled": 0
+    },
+    "pickup_exception_remark": null,
+    "refund_detail": {
+      "return_reason": "Changed my mind"
     },
     "return_shipping_charges": 0
   }

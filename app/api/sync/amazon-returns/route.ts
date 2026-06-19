@@ -1,7 +1,7 @@
 // app/api/sync/amazon-returns/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { runSync } from '@/scripts/syncAmzReturns';
+import { runSync } from '@/lib/syncAmzReturns';
 
 export async function POST(req: NextRequest) {
   // Simple auth – require admin role header (adjust as needed)

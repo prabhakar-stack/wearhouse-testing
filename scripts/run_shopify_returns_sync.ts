@@ -33,22 +33,6 @@ async function main() {
       },
     });
 
-    console.log(`\nTRACKING ROWS CREATED/UPDATED DURING SYNC: ${trackingRows.length}`);
-    if (trackingRows.length > 0) {
-      for (const row of trackingRows) {
-        console.log(`- Tracking Number/Key: ${row.trackingNumber}`);
-        console.log(`  Source: ${row.sourceType} (ID: ${row.sourceId})`);
-        console.log(`  Courier: ${row.courierName || "N/A"} (${row.courierSlug || "N/A"})`);
-        console.log(`  Latest Status: ${row.latestStatus || "N/A"}`);
-        console.log(`  Latest Location: ${row.latestLocation || "N/A"}`);
-        console.log(`  Checkpoints: ${row.checkpointCount}`);
-        console.log(`  Fetched At: ${row.fetchedAt.toISOString()}`);
-        console.log("  --------------------------------------------------");
-      }
-    } else {
-      console.log("No tracking rows were created or updated in this run (they may have been skipped due to the freshness threshold).");
-    }
-
   } catch (error: any) {
     console.error("Synchronization Failed with Error:", error);
     process.exit(1);

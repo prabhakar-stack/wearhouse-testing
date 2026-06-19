@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "./prisma.ts";
 
 const DEFAULT_OTP_BRIDGE_SECRET = "secret-otp-token";
 

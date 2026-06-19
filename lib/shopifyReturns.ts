@@ -351,7 +351,7 @@ function mapReturnPrimeReturn(record: JsonRecord, item: JsonRecord) {
       record.order?.name !== undefined && record.order?.name !== null
         ? String(record.order.name)
         : null,
-    recevied_status: record.received?.status ?? null,
+    received_status: record.received?.status ?? null,
     rejected_status: record.rejected?.status ?? null,
     archived_status: record.archived?.status ?? null,
     refund_status: refund?.status || null,
@@ -360,7 +360,7 @@ function mapReturnPrimeReturn(record: JsonRecord, item: JsonRecord) {
       item.original_product?.sku !== null
         ? String(item.original_product.sku)
         : null,
-    traking_number: trackingLookup.awbCode || trackingLookup.shipmentId || null,
+    tracking_number: trackingLookup.awbCode || trackingLookup.shipmentId || null,
     quantity:
       item.quantity !== undefined && item.quantity !== null
         ? parseInt(String(item.quantity), 10)

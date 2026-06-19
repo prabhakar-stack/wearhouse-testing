@@ -12,11 +12,20 @@
     "clean": "next clean",
     "seed:test-order": "node prisma/seed-test-order.js",
     "postbuild": "prisma migrate deploy",
+    "pipeline": "node scripts/pipeline.mjs",
+    "pipeline:amazon": "node scripts/pipeline.mjs amazon",
+    "pipeline:smarthub": "node scripts/pipeline.mjs smarthub",
+    "pipeline:shopify": "node scripts/pipeline.mjs shopify",
+    "pipeline:tracking": "node scripts/pipeline.mjs tracking",
     "sync:shopify-returns": "ts-node --esm scripts/run_shopify_returns_sync.ts",
     "sync:amazon-returns": "node scripts/fetch_returns_to_supabase.js",
     "sync:amazon-live": "node scripts/fetch_amz_raw_reports.js",
     "sync:amazon-custom": "node scripts/fetch_amz_custom_range.js",
-    "sync:amazon-local": "node scripts/stage_local_tsvs.js"
+    "sync:amazon-local": "node scripts/stage_local_tsvs.js",
+    "smarthub:setup": "node scripts/save_smarthub_session.js",
+    "smarthub:download": "node scripts/download_smarthub_csv.js",
+    "smarthub:push": "node scripts/push_smarthub_csv_to_supabase.js",
+    "tracking": "npx ts-node --esm scripts/run_tracking_job.ts"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",

@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { slugifyCourierName } from "@/lib/utils";
+import { slugifyCourierName } from "./utils.ts";
 
 export type TrackingCheckpoint = {
   date: string;
@@ -275,7 +275,7 @@ export async function fetchTrackingSnapshot(
           await page
             .locator('input[placeholder="Enter tracking number here."]')
             .click({ timeout: 3000 })
-            .catch(() => {});
+            .catch(() => { });
         }
 
         await page.waitForTimeout(250);
@@ -287,7 +287,7 @@ export async function fetchTrackingSnapshot(
           await page
             .locator('input[placeholder="Enter tracking number here."]')
             .fill(trackingNumber)
-            .catch(() => {});
+            .catch(() => { });
         }
 
         try {
@@ -302,7 +302,7 @@ export async function fetchTrackingSnapshot(
           await page
             .locator('button:has-text("Track")')
             .click()
-            .catch(() => {});
+            .catch(() => { });
         }
 
         try {

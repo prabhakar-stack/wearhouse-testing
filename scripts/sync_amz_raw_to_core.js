@@ -2,14 +2,24 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { main as repopulateMain } from "./repopulate_incremental.js";
 
-const prisma = new PrismaClient();
+// Scripts bypass the PgBouncer session-mode pooler (pool_size=15) by preferring
+// DIRECT_URL, which connects straight to Postgres and has no session-mode cap.
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
+});
+
+const CHUNK = 10;
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
 
 async function syncRemovalShipmentsToOrders() {
   console.log("Syncing Removal Shipments from Staging table (AMZ_removal_shipments) to operational Order & Manifest tables (tracking-first)...");
   const rawShipments = await prisma.aMZRemovalShipment.findMany();
 
-  // ── Group by trackingNumber — one Manifest per physical shipment box ──────────
-  // Rows without a tracking number are skipped (admin alert fires via cron).
   const shipmentsByTrackingId = {};
   const skippedNoTracking = [];
 
@@ -28,32 +38,36 @@ async function syncRemovalShipmentsToOrders() {
     console.warn(`[WARN] ${skippedNoTracking.length} shipment row(s) have no trackingNumber — skipping manifest creation for these.`);
   }
 
-  let successCount = 0;
+  const allTrackingNumbers = Object.keys(shipmentsByTrackingId);
 
-  for (const [trackingNumber, group] of Object.entries(shipmentsByTrackingId)) {
-    try {
-      // orderId is now metadata on the manifest (not the grouping key)
+  // Pre-fetch all manifests in one batch query instead of N individual lookups
+  // Orders use upsert internally, so no pre-fetch needed for them
+  const existingManifests = await prisma.manifest.findMany({
+    where: { trackingId: { in: allTrackingNumbers } },
+    select: { id: true, trackingId: true },
+  });
+  const manifestMap = new Map(existingManifests.map(m => [m.trackingId, m]));
+
+  let successCount = 0;
+  const entries = Object.entries(shipmentsByTrackingId);
+
+  for (const chunk of chunkArray(entries, CHUNK)) {
+    const results = await Promise.allSettled(chunk.map(async ([trackingNumber, group]) => {
       const orderId = group[0]?.orderId || null;
       const totalQuantity = group.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
       const firstItem = group[0];
       const orderMarketplace = "AMAZON";
 
-      // ── Create or update Manifest keyed by trackingNumber ─────────────────────
-      const existingManifest = await prisma.manifest.findUnique({
-        where: { trackingId: trackingNumber },
-      });
-
-      if (existingManifest) {
+      if (manifestMap.has(trackingNumber)) {
         await prisma.manifest.update({
           where: { trackingId: trackingNumber },
           data: {
             marketplace: orderMarketplace,
-            // Keep removalOrderId as metadata reference
             ...(orderId ? { removalOrderId: orderId } : {}),
           },
         });
       } else {
-        await prisma.manifest.create({
+        const created = await prisma.manifest.create({
           data: {
             trackingId: trackingNumber,
             status: "IN_TRANSIT",
@@ -62,11 +76,10 @@ async function syncRemovalShipmentsToOrders() {
             expectedDate: null,
           },
         });
+        manifestMap.set(trackingNumber, created);
         console.log(`[MANIFEST CREATED] trackingId=${trackingNumber} orderId=${orderId}`);
       }
 
-      // ── Upsert Order — independent, no manifestId FK ──────────────────────────
-      // Order is used only for order-level metadata and reimbursement window alerts.
       if (orderId) {
         await prisma.order.upsert({
           where: { platformOrderId: orderId },
@@ -87,14 +100,15 @@ async function syncRemovalShipmentsToOrders() {
           },
         });
       }
+    }));
 
-      successCount++;
-    } catch (e) {
-      console.error(`[ERROR] Failed to sync Manifest & Order for trackingNumber=${trackingNumber}:`, e.message);
+    for (const r of results) {
+      if (r.status === "fulfilled") successCount++;
+      else console.error(`[ERROR] Failed to sync Manifest & Order:`, r.reason?.message);
     }
   }
 
-  console.log(`Successfully synced ${successCount}/${Object.keys(shipmentsByTrackingId).length} unique tracking IDs to Manifest & Order tables.`);
+  console.log(`Successfully synced ${successCount}/${allTrackingNumbers.length} unique tracking IDs to Manifest & Order tables.`);
   if (skippedNoTracking.length > 0) {
     console.log(`[INFO] ${skippedNoTracking.length} shipment rows skipped (no tracking number). These will surface as ORDER_NO_TRACKING_ID alerts.`);
   }
@@ -104,21 +118,17 @@ async function syncRemovalShipmentsToOrders() {
 async function syncCustomerReturns() {
   console.log("Syncing Customer Returns from Staging table (AMZ_customer_returns) to operational ReturnItem table...");
   const rawReturns = await prisma.aMZCustomerReturn.findMany();
+  const validReturns = rawReturns.filter(item => !!item.lpn);
   let successCount = 0;
+  const syncedLpns = [];
 
-  for (const item of rawReturns) {
-    if (!item.lpn) continue;
-    try {
-      // ----------------------------------------------------
-      // [DATABASE LOAD & SYNC PROCESS] Core Operational Sync
-      // Target: ReturnItem (Operational Table)
-      // Operation: Upsert return items linking LPN with NO fallbacks (null if empty)
-      // ----------------------------------------------------
+  for (const chunk of chunkArray(validReturns, CHUNK)) {
+    const results = await Promise.allSettled(chunk.map(async (item) => {
       await prisma.returnItem.upsert({
         where: { lpn: item.lpn },
         update: {
           orderId: item.orderId,
-          sku: item.sku || null, // No fallback for SKU, just null if empty
+          sku: item.sku || null,
           asin: item.asin,
           fnsku: item.fnsku,
           productName: item.productName,
@@ -130,7 +140,7 @@ async function syncCustomerReturns() {
         },
         create: {
           orderId: item.orderId,
-          sku: item.sku || null, // No fallback for SKU, just null if empty
+          sku: item.sku || null,
           lpn: item.lpn,
           asin: item.asin,
           fnsku: item.fnsku,
@@ -142,25 +152,47 @@ async function syncCustomerReturns() {
           detailedDisposition: item.detailedDisposition,
         },
       });
-      successCount++;
-    } catch (e) {
-      console.error(`[ERROR] Failed to upsert Core Return lpn=${item.lpn}:`, e.message);
+      return item.lpn;
+    }));
+
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        successCount++;
+        syncedLpns.push(r.value);
+      } else {
+        console.error(`[ERROR] Failed to upsert Core Return:`, r.reason?.message);
+      }
     }
   }
-  console.log(`Successfully synced ${successCount}/${rawReturns.length} Customer Returns to Core Tables.`);
+
+  // Delete all successfully synced staging rows in one batch — keeps the table small
+  if (syncedLpns.length > 0) {
+    await prisma.aMZCustomerReturn.deleteMany({ where: { lpn: { in: syncedLpns } } });
+    console.log(`[CLEANUP] Removed ${syncedLpns.length} synced rows from AMZCustomerReturn staging table.`);
+  }
+
+  console.log(`Successfully synced ${successCount}/${validReturns.length} Customer Returns to Core Tables.`);
   return successCount;
 }
 
 async function syncReimbursements() {
   console.log("Syncing Reimbursements from Staging table (AMZ_reimbursements) to operational Tables...");
   const rawReimbursements = await prisma.aMZReimbursement.findMany();
+  const validReimbursements = rawReimbursements.filter(item => !!item.reimbursementId);
+
+  // Pre-load ALL existing reimbursements once — eliminates 2x findUnique per row (was 3 round-trips/row, now 0)
+  const allExisting = await prisma.reimbursement.findMany({
+    select: { id: true, platformReimbursementId: true, returnItemId: true },
+  });
+  const byPlatformId = new Map(allExisting.map(r => [r.platformReimbursementId, r]));
+  const byReturnItemId = new Map(allExisting.map(r => [r.returnItemId, r]));
+
   let successCount = 0;
 
-  for (const item of rawReimbursements) {
-    if (!item.reimbursementId) continue;
-    try {
+  for (const chunk of chunkArray(validReimbursements, CHUNK)) {
+    const results = await Promise.allSettled(chunk.map(async (item) => {
       const reimbursementData = {
-        returnItemId: item.reimbursementId, // Directly mapping the unique reimbursementId to returnItemId
+        returnItemId: item.reimbursementId,
         platformReimbursementId: item.reimbursementId,
         amountReimbursed: item.amountTotal || item.amountPerUnit || 0,
         currency: item.currencyUnit || "INR",
@@ -170,52 +202,34 @@ async function syncReimbursements() {
         resolvedAt: item.approvalDate,
       };
 
-      const reimbursementByPlatformId = await prisma.reimbursement.findUnique({
-        where: { platformReimbursementId: item.reimbursementId },
-      });
-      const reimbursementByReturnItem = await prisma.reimbursement.findUnique({
-        where: { returnItemId: item.reimbursementId },
-      });
+      const reimbByPlatformId = byPlatformId.get(item.reimbursementId) ?? null;
+      const reimbByReturnItem = byReturnItemId.get(item.reimbursementId) ?? null;
 
-      if (
-        reimbursementByPlatformId &&
-        reimbursementByReturnItem &&
-        reimbursementByPlatformId.id !== reimbursementByReturnItem.id
-      ) {
-        console.log(
-          `[WARN] Skipping core reimbursement row with conflicting platformReimbursementId and returnItemId: reimbursementId=${item.reimbursementId}`
-        );
-        continue;
+      if (reimbByPlatformId && reimbByReturnItem && reimbByPlatformId.id !== reimbByReturnItem.id) {
+        console.log(`[WARN] Skipping core reimbursement row with conflicting keys: reimbursementId=${item.reimbursementId}`);
+        return;
       }
 
-      const existingReimbursement = reimbursementByPlatformId || reimbursementByReturnItem;
+      const existingReimbursement = reimbByPlatformId || reimbByReturnItem;
 
       if (existingReimbursement) {
-        // ----------------------------------------------------
-        // [DATABASE LOAD & SYNC PROCESS] Core Operational Sync
-        // Target: Reimbursement (Operational Table)
-        // Operation: Update existing operational Reimbursement
-        // ----------------------------------------------------
         await prisma.reimbursement.update({
           where: { id: existingReimbursement.id },
           data: reimbursementData,
         });
       } else {
-        // ----------------------------------------------------
-        // [DATABASE LOAD & SYNC PROCESS] Core Operational Sync
-        // Target: Reimbursement (Operational Table)
-        // Operation: Create new operational Reimbursement
-        // ----------------------------------------------------
-        await prisma.reimbursement.create({
-          data: reimbursementData,
-        });
+        const created = await prisma.reimbursement.create({ data: reimbursementData });
+        byPlatformId.set(item.reimbursementId, created);
+        byReturnItemId.set(item.reimbursementId, created);
       }
-      successCount++;
-    } catch (e) {
-      console.error(`[ERROR] Failed to sync Core Reimbursement reimbursementId=${item.reimbursementId}:`, e.message);
+    }));
+
+    for (const r of results) {
+      if (r.status === "fulfilled") successCount++;
+      else console.error(`[ERROR] Failed to sync Core Reimbursement:`, r.reason?.message);
     }
   }
-  console.log(`Successfully synced ${successCount}/${rawReimbursements.length} Reimbursements to Core Tables.`);
+  console.log(`Successfully synced ${successCount}/${validReimbursements.length} Reimbursements to Core Tables.`);
   return successCount;
 }
 

@@ -1,6 +1,6 @@
-import type { TrackingSnapshot } from "@/lib/trackcourier";
+import type { TrackingSnapshot } from "./trackcourier.ts";
 import { setTimeout } from "timers/promises";
-import { slugifyCourierName } from "@/lib/utils";
+import { slugifyCourierName } from "./utils.ts";
 
 const SHIPROCKET_BASE_URL = (
   process.env.SHIPROCKET_API_BASE_URL ||

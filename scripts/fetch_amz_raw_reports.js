@@ -595,6 +595,13 @@ async function syncCustomerReturns(rows) {
   return successCount;
 }
 
+
+/** 
+ * =============================================================================
+ *                           MAIN EXECUTION
+ * =============================================================================
+ */
+
 async function main() {
   console.log("STARTING AMAZON RAW DATA FETCH TASK...");
 

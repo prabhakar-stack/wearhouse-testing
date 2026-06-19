@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
     ],
   },
   transpilePackages: ['motion'],
+  // Prevent webpack from bundling Node-only packages used by the Amazon sync script
+  serverExternalPackages: ['amazon-sp-api', 'dotenv'],
   experimental: {
     // Adding a comment here to force the Next.js dev server to restart.
     // This ensures it detects the newly created /api/upload API routes.

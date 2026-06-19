@@ -1,7 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 import { fileURLToPath } from 'url';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
+});
+
+const CHUNK = 10;
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
 
 /**
  * Incremental repopulation — Shipment-Centric (Tracking-First)
@@ -51,18 +61,34 @@ async function main(batchSize = 100) {
     );
   }
 
-  // ── Process each tracking-grouped shipment ───────────────────────────────────
-  let processedCount = 0;
-  const processedIds = []; // collect all shipment row IDs to mark as processed
+  const allTrackingNumbers = Object.keys(groups);
+  const allOrderIds = [...new Set(
+    Object.values(groups).map(g => g[0]?.orderId).filter(Boolean)
+  )];
 
-  for (const [trackingNumber, shipments] of Object.entries(groups)) {
-    try {
+  // Pre-fetch manifests + raw orders in two batch queries instead of N individual lookups
+  const [existingManifests, rawOrders] = await Promise.all([
+    prisma.manifest.findMany({
+      where: { trackingId: { in: allTrackingNumbers } },
+      select: { id: true, trackingId: true },
+    }),
+    allOrderIds.length > 0
+      ? prisma.aMZRemovalOrder.findMany({ where: { orderId: { in: allOrderIds } } })
+      : Promise.resolve([]),
+  ]);
+  const manifestMap = new Map(existingManifests.map(m => [m.trackingId, m]));
+  const rawOrderMap = new Map(rawOrders.map(o => [o.orderId, o]));
+
+  // ── Process each tracking-grouped shipment in parallel chunks ───────────────
+  let processedCount = 0;
+  const processedIds = [];
+
+  const entries = Object.entries(groups);
+  for (const chunk of chunkArray(entries, CHUNK)) {
+    const results = await Promise.allSettled(chunk.map(async ([trackingNumber, shipments]) => {
       const orderId = shipments[0]?.orderId || null;
 
-      // Fetch order metadata (request date, fee) from the removal order staging table
-      const rawOrder = orderId
-        ? await prisma.aMZRemovalOrder.findFirst({ where: { orderId } })
-        : null;
+      const rawOrder = orderId ? (rawOrderMap.get(orderId) ?? null) : null;
 
       const requestDate =
         rawOrder?.requestDate ||
@@ -73,23 +99,16 @@ async function main(batchSize = 100) {
       const totalAmount = rawOrder?.removalFee || 0.0;
       const totalQuantity = shipments.reduce((sum, s) => sum + (s.shippedQuantity || 0), 0);
 
-      // ── Create or update the Manifest for this tracking ID ────────────────────
-      const existingManifest = await prisma.manifest.findUnique({
-        where: { trackingId: trackingNumber },
-      });
-
-      let manifest;
-      if (existingManifest) {
-        manifest = await prisma.manifest.update({
+      if (manifestMap.has(trackingNumber)) {
+        await prisma.manifest.update({
           where: { trackingId: trackingNumber },
           data: {
             marketplace: 'AMAZON',
-            // Keep removalOrderId as metadata reference only (non-null when known)
             ...(orderId ? { removalOrderId: orderId } : {}),
           },
         });
       } else {
-        manifest = await prisma.manifest.create({
+        const created = await prisma.manifest.create({
           data: {
             trackingId: trackingNumber,
             status: 'IN_TRANSIT',
@@ -98,12 +117,10 @@ async function main(batchSize = 100) {
             expectedDate: null,
           },
         });
+        manifestMap.set(trackingNumber, created);
         console.log(`[MANIFEST CREATED] trackingId=${trackingNumber} orderId=${orderId}`);
       }
 
-      // ── Upsert Order (independent — no manifestId FK) ─────────────────────────
-      // Order exists purely for order-level metadata: request date, quantity,
-      // reimbursement window alerting. It does NOT link back to any manifest.
       if (orderId) {
         await prisma.order.upsert({
           where: { platformOrderId: orderId },
@@ -125,16 +142,16 @@ async function main(batchSize = 100) {
         });
       }
 
+      return shipments.map(s => s.id);
+    }));
 
-
-      // Collect IDs to mark as processed in a single batch call at the end
-      processedIds.push(...shipments.map(s => s.id));
-      processedCount++;
-    } catch (err) {
-      console.error(
-        `[ERROR] Failed to process tracking group trackingNumber=${trackingNumber}:`,
-        err?.message || err
-      );
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        processedIds.push(...r.value);
+        processedCount++;
+      } else {
+        console.error(`[ERROR] Failed to process tracking group:`, r.reason?.message || r.reason);
+      }
     }
   }
 

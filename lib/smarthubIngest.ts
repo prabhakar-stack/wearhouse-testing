@@ -35,7 +35,7 @@ export async function runSmarthubIngestJob(): Promise<SmarthubIngestResult> {
 
   let created = 0;
   let skipped = 0;
-  let errors  = 0;
+  let errors = 0;
 
   for (const row of b2cRows) {
     const trackingId = row.returnTrackingId?.trim();
@@ -46,7 +46,8 @@ export async function runSmarthubIngestJob(): Promise<SmarthubIngestResult> {
       await prisma.manifest.create({
         data: {
           trackingId,
-          status:      PackageState.EXPECTED,
+          removalOrderId: trackingId,
+          status: PackageState.IN_TRANSIT,
           marketplace: 'AMAZON_FBA' as any,
         },
       });

@@ -1,7 +1,6 @@
 import { prisma } from "./prisma.ts";
 import { PackageState } from "@prisma/client";
 import { fetchTrackingSnapshot } from "./trackcourier.ts";
-import * as amazonRawReports from "../scripts/fetch_amz_raw_reports.js";
 import { runShopifyReturnsJob } from "./shopifyReturns.ts";
 import { runSmarthubIngestJob } from "./smarthubIngest.ts";
 import { ALERT_RULE_BY_TYPE } from "./alertRules.ts";
@@ -10,6 +9,23 @@ import { resolveTargetUserIds } from "./alertTargeting.ts";
 import { archiveAndScoreAlerts } from "./alertLogger.ts";
 import { dispatchAlert } from "./alertDispatcher.ts";
 import { randomUUID } from "crypto";
+import { spawn } from "child_process";
+import path from "path";
+
+function spawnScript(scriptName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("node", [path.join(process.cwd(), "scripts", scriptName)], {
+      env: process.env,
+      cwd: process.cwd(),
+      stdio: "inherit",
+    });
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${scriptName} exited with code ${code}`));
+    });
+    proc.on("error", reject);
+  });
+}
 
 
 /**
@@ -42,7 +58,6 @@ export const HOUR_MS = 60 * 60 * 1000;
 export const HALF_DAY_MS = 12 * HOUR_MS;
 export const FIVE_DAYS_MS = 5 * 24 * HOUR_MS;
 
-const runAmazonRawSync = amazonRawReports.main as () => Promise<void>;
 
 export type CronJobKey =
   | "amazon-returns"
@@ -158,7 +173,7 @@ export async function generateOrdersFromShipments() {
 
 export async function runAmazonReturnsJob() {
   console.log("[Amazon Returns Job] Step 1: Fetching and staging Amazon returns raw reports...");
-  await runAmazonRawSync();
+  await spawnScript("fetch_amz_raw_reports.js");
 
   console.log("[Amazon Returns Job] Step 2: Populating core Order and Manifest tables from shipments...");
   await generateOrdersFromShipments();
@@ -256,6 +271,7 @@ export async function runExpectedTrackingJob() {
       trackingId: true,
       removalOrderId: true,
       status: true,
+      marketplace: true,
       expectedDate: true,
       createdAt: true,
       qcCheckedAt: true, // null = receiver has not QC'd the package yet
@@ -322,26 +338,28 @@ export async function runExpectedTrackingJob() {
   const trackingTasks: Array<{
     manifestId: string;
     trackingNumber: string;
+    marketplace: string;
     expectedDate: Date | null;
     currentStatus: string;
     existingSnapshot: any | null;
   }> = [];
 
   for (const manifest of manifests) {
-    // Shipment-centric: fetch shipments scoped to this manifest's trackingId only.
-    // Tracking numbers from manifest.orders are no longer needed — one manifest = one tracking.
-    const shipmentTrackingNumbers = await prisma.aMZRemovalShipment.findMany({
-      where: { trackingNumber: manifest.trackingId },
-      select: { trackingNumber: true },
-    });
+    const isFBA = (manifest as any).marketplace === 'AMAZON_FBA';
+
+    // FBA manifests have no removal shipments — trackingId is the only tracking number.
+    // Non-FBA manifests may have additional tracking numbers from AMZRemovalShipment rows.
+    const extraTrackingNumbers: string[] = [];
+    if (!isFBA) {
+      const shipmentRows = await prisma.aMZRemovalShipment.findMany({
+        where: { trackingNumber: manifest.trackingId },
+        select: { trackingNumber: true },
+      });
+      extraTrackingNumbers.push(...shipmentRows.map((s) => s.trackingNumber).filter((v): v is string => !!v));
+    }
 
     const trackingNumbers = Array.from(
-      new Set(
-        [
-          manifest.trackingId,
-          ...shipmentTrackingNumbers.map((shipment) => shipment.trackingNumber),
-        ].filter((value): value is string => !!value),
-      ),
+      new Set([manifest.trackingId, ...extraTrackingNumbers].filter((v): v is string => !!v)),
     );
 
     for (const trackingNumber of trackingNumbers) {
@@ -351,6 +369,7 @@ export async function runExpectedTrackingJob() {
       trackingTasks.push({
         manifestId: manifest.id,
         trackingNumber,
+        marketplace: (manifest as any).marketplace,
         expectedDate: manifest.expectedDate,
         currentStatus: manifest.status,
         existingSnapshot,
@@ -431,7 +450,88 @@ export async function runExpectedTrackingJob() {
    * so it can be dispatched by the concurrency runner below.
    */
   async function processTrackingTask(task: typeof trackingTasks[0], taskIndex: number) {
-    // Obtain carrier from shipment table (fallback to Bluedart)
+    // ── AMAZON FBA (B2C): read status directly from AMAZON_B2C_SMARTHUB ─────────
+    // No Playwright — SmartHub is the source of truth for FBA return tracking.
+    if (task.marketplace === 'AMAZON_FBA') {
+      console.log(`[Tracking Sync FBA] [${taskIndex}/${trackingTasks.length}] Reading SmartHub data for ${task.trackingNumber}...`);
+      try {
+        const smarthubRows: { returnStatus: string; carrier: string; lastUpdatedOn: Date | null }[] =
+          await (prisma as any).aMAZON_B2C_SMARTHUB.findMany({
+            where: { returnTrackingId: task.trackingNumber },
+            select: { returnStatus: true, carrier: true, lastUpdatedOn: true },
+            orderBy: { lastUpdatedOn: 'desc' },
+          });
+
+        if (smarthubRows.length === 0) {
+          console.log(`[Tracking Sync FBA] No SmartHub rows found for ${task.trackingNumber} — skipping.`);
+          return;
+        }
+
+        const latestStatus = smarthubRows[0].returnStatus || null;
+        const lastUpdatedOn = smarthubRows[0].lastUpdatedOn ?? new Date();
+
+        await prisma.shipmentTracking.upsert({
+          where: { trackingNumber: task.trackingNumber },
+          update: { manifestId: task.manifestId, latestStatus, scheduledDelivery: null, checkpointCount: 0, checkpoints: [] },
+          create: { trackingNumber: task.trackingNumber, manifestId: task.manifestId, latestStatus, scheduledDelivery: null, checkpointCount: 0, checkpoints: [] },
+        });
+
+        // ETA: SmartHub has no carrier-provided delivery date, so skip that branch.
+        // Apply the same fallback as the non-FBA path: if manifest has no expectedDate, set now + 5 days.
+        let updatedExpectedDate = task.expectedDate;
+        if (!updatedExpectedDate) {
+          const fallback = new Date();
+          fallback.setDate(fallback.getDate() + 5);
+          fallback.setHours(12, 0, 0, 0);
+          await prisma.manifest.update({ where: { id: task.manifestId }, data: { expectedDate: fallback } });
+          updatedExpectedDate = fallback;
+        }
+
+        const nextStatus = resolveManifestStatus(latestStatus, null, updatedExpectedDate);
+        if (nextStatus && task.currentStatus !== nextStatus) {
+          await prisma.manifest.update({ where: { id: task.manifestId }, data: { status: nextStatus as any } });
+        }
+
+        // Ghost delivery check: SmartHub says delivered but receiver hasn't QC'd yet
+        const isDelivered = /delivered|completed|received/i.test(latestStatus || '');
+        const receiverHasNotQCd = qcCheckedAtByManifest[task.manifestId] === null;
+        if (isDelivered && receiverHasNotQCd) {
+          const hoursSinceDelivery = calculateWarehouseWorkingHours(lastUpdatedOn, now, startTimeStr, endTimeStr, "Asia/Kolkata");
+          let targetAlertType: string | null = null;
+          if (hoursSinceDelivery >= 24) targetAlertType = "GHOST_DELIVERY_T1_24H";
+          else if (hoursSinceDelivery >= 12) targetAlertType = "GHOST_DELIVERY_T1_12H";
+          else if (hoursSinceDelivery >= 6) targetAlertType = "GHOST_DELIVERY_T1_6H";
+
+          if (targetAlertType) {
+            const rule = ALERT_RULE_BY_TYPE[targetAlertType];
+            if (rule) {
+              const manifestAlerts = activeAlertsByManifest[task.manifestId] || [];
+              const exactAlertExists = manifestAlerts.some((a) => a.type === targetAlertType);
+              if (!exactAlertExists) {
+                const targetUserIds = await resolveTargetUserIds(rule.targetRoles);
+                alertsToCreate.push({
+                  level: rule.level as any,
+                  type: rule.type,
+                  title: rule.title,
+                  description: rule.description.replace("{trackingId}", task.trackingNumber),
+                  manifestId: task.manifestId,
+                  targetUserIds,
+                });
+              }
+            }
+          }
+        }
+
+        refreshed.push({ manifestId: task.manifestId, trackingNumber: task.trackingNumber, status: latestStatus });
+        console.log(`[Tracking Sync FBA] ✅ ${task.trackingNumber} → ${latestStatus}`);
+      } catch (error: any) {
+        errors.push({ manifestId: task.manifestId, trackingNumber: task.trackingNumber, error: error?.message || "SmartHub lookup failed" });
+        console.error(`[Tracking Sync FBA] ❌ ${task.trackingNumber}: ${error?.message || error}`);
+      }
+      return;
+    }
+
+    // ── Non-FBA: Playwright tracking via trackcourier.io ─────────────────────────
     const carrierFromShipment = await getCarrierByTracking(task.trackingNumber);
     console.log(`Fetched carrier for ${task.trackingNumber}: ${carrierFromShipment}`);
     const courier = carrierFromShipment ?? "Bluedart";
@@ -454,7 +554,7 @@ export async function runExpectedTrackingJob() {
       }
 
       // A. First update the shipmentTracking table's scheduledDelivery column (without fallback, can be null)
-      const trackingRecord = await prisma.shipmentTracking.upsert({
+      await prisma.shipmentTracking.upsert({
         where: { trackingNumber: task.trackingNumber },
         update: {
           manifestId: task.manifestId,

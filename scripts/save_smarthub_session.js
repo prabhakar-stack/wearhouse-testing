@@ -5,7 +5,7 @@ import path from 'path';
 import readline from 'readline';
 
 const COOKIE_PATH = path.join(process.cwd(), 'scripts', 'bot_state', 'smarthub_auth.json');
-const DEFAULT_URL = process.env.AMAZON_SMARTHUB_URL || 'https://smartcommerce.amazon.in/smarthub';
+const DEFAULT_URL = process.env.AMAZON_SMARTHUB_URL || 'https://smarthub.amazon.in/returns';
 
 async function askQuestion(query) {
   const rl = readline.createInterface({
