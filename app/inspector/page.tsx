@@ -1667,6 +1667,9 @@ function InspectTab({
   const imgCameraIdRef = useRef(imgCameraId);
   useEffect(() => { recCameraIdRef.current = recCameraId; }, [recCameraId]);
   useEffect(() => { imgCameraIdRef.current = imgCameraId; }, [imgCameraId]);
+
+  const availableCamerasRef = useRef<MediaDeviceInfo[]>(availableCameras);
+  useEffect(() => { availableCamerasRef.current = availableCameras; }, [availableCameras]);
   
   const [dualCameraMode, setDualCameraMode] = useState(true);
   useEffect(() => {
@@ -1952,7 +1955,7 @@ function InspectTab({
 
   useEffect(() => {
     if (!isCameraActive || cameraPermissionState !== "granted") return;
-    if (availableCameras.length === 0 && recCameraId === "") return;
+    if (availableCamerasRef.current.length === 0 && recCameraId === "") return;
     let cancelled = false;
 
     const init = async () => {
@@ -2362,8 +2365,6 @@ function InspectTab({
     init();
     return () => {
       cancelled = true;
-      if (reqAnimRecRef.current) cancelAnimationFrame(reqAnimRecRef.current);
-      if (reqAnimCapRef.current) cancelAnimationFrame(reqAnimCapRef.current);
       if (phaseRef.current === "START" || isOrderCompleteRef.current) {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
           mediaRecorderRef.current.stop();
@@ -2377,7 +2378,7 @@ function InspectTab({
       capStreamRef.current = null;
       imageCaptureRef.current = null;
     };
-  }, [isCameraActive, recCameraId, imgCameraId, dualCameraMode, cameraInitTrigger]);
+  }, [isCameraActive, recCameraId, imgCameraId, dualCameraMode, cameraInitTrigger, cameraPermissionState, checkCameraStreams]);
 
   useEffect(() => {
     if ((phase === "BOX_EVIDENCE" || phase === "ITEM_INSPECTION") && mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {

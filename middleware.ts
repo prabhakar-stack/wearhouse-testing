@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import * as jose from "jose";
+import { jwtVerify } from "jose";
 
 const JWT_SECRET =
   process.env.JWT_SECRET || "fallback_secret_for_dev_only_change_in_prod";
@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
   try {
     // Verify custom HTTP-only JWT
     const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload } = await jose.jwtVerify(session, secret);
+    const { payload } = await jwtVerify(session, secret);
 
     // Strict Role-Based Gateway logic can go here in the future
     // e.g., if (pathname.startsWith('/admin') && payload.role !== 'SUPER_ACCESS') { redirect }

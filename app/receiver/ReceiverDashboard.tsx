@@ -1086,6 +1086,14 @@ function ReceiveTab({
     }
 
     stopOtpPolling();
+
+    if (marketplace !== "AMAZON_FBA") {
+      setOtpState("NOT_REQUIRED");
+      setFetchedOtp("");
+      setOtpRecordId(null);
+      return;
+    }
+
     setOtpState("FETCHING");
     setFetchedOtp("");
     setOtpRecordId(null);
@@ -1128,7 +1136,7 @@ function ReceiveTab({
       );
       stopOtpPolling();
     }, 20000);
-  }, [scannedTrackingId, stopOtpPolling]);
+  }, [scannedTrackingId, marketplace, stopOtpPolling]);
 
   useEffect(() => {
     return () => {

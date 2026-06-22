@@ -54,10 +54,15 @@ export default withSentryConfig(nextConfig, {
   // Tunnels Sentry requests through /monitoring to avoid ad blockers.
   tunnelRoute: "/monitoring",
 
-  // Upload source maps to Sentry but exclude them from the browser bundle.
+  // Source map upload disabled — avoids build-time 403 if SENTRY_AUTH_TOKEN lacks
+  // project:releases:write scope. Re-enable and fix token scopes when needed.
   sourcemaps: {
-    disable: false,
+    disable: true,
   },
+
+  // Prevent Sentry from wrapping middleware.ts — its auto-instrumentation pulls in
+  // CompressionStream which is absent from the Vercel Edge Runtime.
+  autoInstrumentMiddleware: false,
 
   webpack: {
     // Automatically wrap all server functions (API routes, Server Actions) with Sentry.
