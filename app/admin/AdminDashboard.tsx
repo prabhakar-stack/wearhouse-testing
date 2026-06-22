@@ -548,9 +548,6 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
                   }}
                   className="w-full bg-white/10 text-white/90 text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 focus:outline-none focus:ring-1 focus:ring-[#FF6700] hover:bg-white/20 transition-all cursor-pointer appearance-none pr-8"
                 >
-                  <option value="SUPER_ACCESS" className="bg-[#1e1d4b] text-white">
-                    {lang === 'hi' ? 'सुपर एक्सेस' : 'Super Access'}
-                  </option>
                   <option value="ADMIN" className="bg-[#1e1d4b] text-white">
                     {lang === 'hi' ? 'एडमिन' : 'Admin'}
                   </option>
