@@ -8,6 +8,7 @@ coverage/
 .uploads/
 .vscode/
 .claude
+.gitignore
 
 
 /uploads/
@@ -22,15 +23,9 @@ scripts/amazon-profile/
 !app/icon.png
 !public/icon.png
 
-# Ignore documentation files
-readme.md
-problems_need_to_solve.md
-alert-documentations.md
-changes_summary.md
-note.md
-
 # Ignore data reports
 *.tsv
+*.md
 tracking-data.json
 
 # TypeScript incremental build cache — auto-generated, never commit
@@ -51,3 +46,5 @@ scripts/scripts/test_query.js
 scripts/scripts/test_query_order.js
 scripts/fetch_amz_custom_range.js
 scripts/stage_local_tsvs.js
+
+
