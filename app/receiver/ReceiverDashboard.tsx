@@ -282,7 +282,7 @@ export default function ReceiverDashboard({
     };
 
     fetchLiveStats();
-    const iv = setInterval(fetchLiveStats, 5000);
+    const iv = setInterval(fetchLiveStats, 15000);
     return () => clearInterval(iv);
   }, []);
 
@@ -311,7 +311,7 @@ export default function ReceiverDashboard({
 
   useEffect(() => {
     fetchAlerts();
-    const iv = setInterval(fetchAlerts, 10000);
+    const iv = setInterval(fetchAlerts, 30000);
     return () => clearInterval(iv);
   }, [fetchAlerts]);
 
@@ -827,7 +827,7 @@ function ExpectedTab({ preferredLanguage = "en" }: { preferredLanguage?: Preferr
         .catch(() => setLoading(false));
     };
     fetch_();
-    const iv = setInterval(fetch_, 10000);
+    const iv = setInterval(fetch_, 30000);
     return () => clearInterval(iv);
   }, []);
 
@@ -1129,7 +1129,7 @@ function ReceiveTab({
     };
 
     void pollOtp();
-    otpPollIntervalRef.current = window.setInterval(pollOtp, 1500);
+    otpPollIntervalRef.current = window.setInterval(pollOtp, 5000);
     otpPollTimeoutRef.current = window.setTimeout(() => {
       setOtpState((current) =>
         current === "FETCHED" ? current : "NOT_REQUIRED",

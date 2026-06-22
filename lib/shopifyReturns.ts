@@ -505,8 +505,9 @@ function mapShiprocketReturn(record: JsonRecord, product: JsonRecord) {
 }
 
 async function syncB2CReturns(records: JsonRecord[]) {
-  const saved = [];
+  const saved: any[] = [];
   const trackingSeeds: ShopifyReturnTrackingInput[] = [];
+  const upsertPromises = [];
 
   for (const record of records) {
     if (!record.id) {
@@ -527,13 +528,13 @@ async function syncB2CReturns(records: JsonRecord[]) {
       }
 
       const mapped = mapReturnPrimeReturn(record, item);
-      const returnRecord = await prisma.returnPrimeReturn.upsert({
-        where: { id: mapped.id },
-        update: mapped,
-        create: mapped,
-      });
-
-      saved.push(returnRecord);
+      upsertPromises.push(
+        prisma.returnPrimeReturn.upsert({
+          where: { id: mapped.id },
+          update: mapped,
+          create: mapped,
+        })
+      );
     }
 
     const trackingLookup = extractTrackingLookup(record);
@@ -554,12 +555,21 @@ async function syncB2CReturns(records: JsonRecord[]) {
     }
   }
 
+  // Execute in transactions chunked to avoid memory or connection limits
+  const chunkSize = 50;
+  for (let i = 0; i < upsertPromises.length; i += chunkSize) {
+    const chunk = upsertPromises.slice(i, i + chunkSize);
+    const results = await prisma.$transaction(chunk);
+    saved.push(...results);
+  }
+
   return { saved, trackingSeeds };
 }
 
 async function syncB2BReturns(records: JsonRecord[]) {
-  const saved = [];
+  const saved: any[] = [];
   const trackingSeeds: ShopifyReturnTrackingInput[] = [];
+  const upsertPromises = [];
 
   for (const record of records) {
     if (!record.id) {
@@ -580,13 +590,13 @@ async function syncB2BReturns(records: JsonRecord[]) {
       }
 
       const mapped = mapShiprocketReturn(record, product);
-      const returnRecord = await prisma.shiprocketReturn.upsert({
-        where: { id: mapped.id },
-        update: mapped,
-        create: mapped,
-      });
-
-      saved.push(returnRecord);
+      upsertPromises.push(
+        prisma.shiprocketReturn.upsert({
+          where: { id: mapped.id },
+          update: mapped,
+          create: mapped,
+        })
+      );
     }
 
     const trackingLookup = extractTrackingLookup(record);
@@ -605,6 +615,14 @@ async function syncB2BReturns(records: JsonRecord[]) {
         });
       }
     }
+  }
+
+  // Execute in transactions chunked to avoid memory or connection limits
+  const chunkSize = 50;
+  for (let i = 0; i < upsertPromises.length; i += chunkSize) {
+    const chunk = upsertPromises.slice(i, i + chunkSize);
+    const results = await prisma.$transaction(chunk);
+    saved.push(...results);
   }
 
   return { saved, trackingSeeds };

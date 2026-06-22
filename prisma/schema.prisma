@@ -34,6 +34,9 @@ model AlertLog {
   sopFollowed   Boolean  @default(false)
   resolvedById  String?
   createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status])
 }
 
 model Manifest {
@@ -57,6 +60,13 @@ model Manifest {
   inspectedAt         DateTime?
   itemStatuses        ItemStatus[]
   missingItems        MissingItem[]
+
+  @@index([status])
+  @@index([receivedBy])
+  @@index([inspectedBy])
+  @@index([receivedAt])
+  @@index([qcCheckedAt])
+  @@index([inspectedAt])
 }
 
 model Order {
@@ -133,6 +143,11 @@ model Alert {
   manifest        Manifest?  @relation(fields: [manifestId], references: [id])
   resolvedBy      User?      @relation("AlertResolver", fields: [resolvedById], references: [id])
   targetUsers     User[]     @relation("AlertTargetUsers")
+
+  @@index([resolved])
+  @@index([level])
+  @@index([createdAt])
+  @@index([manifestId])
 }
 
 model CronJobState {
@@ -214,6 +229,7 @@ model AMZRemovalShipment {
   // Composite unique key prevents duplicate rows on re-sync.
   // orderId + sku + trackingNumber + shipmentDate uniquely identifies one shipment line.
   @@unique([orderId, sku, trackingNumber, shipmentDate], name: "orderId_sku_tracking_date")
+  @@index([trackingNumber])
   @@map("AMZ_removal_shipments")
 }
 

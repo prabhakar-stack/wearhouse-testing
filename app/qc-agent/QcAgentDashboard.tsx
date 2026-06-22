@@ -145,7 +145,7 @@ export default function QcAgentDashboard({
     };
 
     fetchAlertCount();
-    const interval = setInterval(fetchAlertCount, 10000);
+    const interval = setInterval(fetchAlertCount, 30000);
     return () => clearInterval(interval);
   }, []);
 

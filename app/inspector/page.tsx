@@ -797,7 +797,7 @@ function InspectorDashboard({ role }: { role: string }) {
     };
 
     fetchLedgerCount();
-    const interval = setInterval(fetchLedgerCount, 5000);
+    const interval = setInterval(fetchLedgerCount, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -818,7 +818,7 @@ function InspectorDashboard({ role }: { role: string }) {
 
   useEffect(() => {
     fetchAlerts();
-    const iv = setInterval(fetchAlerts, 10000);
+    const iv = setInterval(fetchAlerts, 30000);
     return () => clearInterval(iv);
   }, [fetchAlerts]);
 
@@ -1293,7 +1293,7 @@ function LedgerTab({ preferredLanguage = "en" }: { preferredLanguage?: string })
     };
 
     fetchLedger();
-    const interval = setInterval(fetchLedger, 5000);
+    const interval = setInterval(fetchLedger, 15000);
     return () => clearInterval(interval);
   }, []);
 

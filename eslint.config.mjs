@@ -47,4 +47,16 @@ const patchedNext = next.map((cfg) => {
   return { ...cfg, rules: patched };
 });
 
-export default defineConfig(patchedNext);
+export default defineConfig([
+  {
+    ignores: [
+      "**/dist/**",
+      "**/.next/**",
+      "**/node_modules/**",
+      "**/scratch/**",
+      "**/uploads/**",
+      "**/failed_uploads/**",
+    ],
+  },
+  ...patchedNext
+]);

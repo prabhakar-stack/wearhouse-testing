@@ -287,7 +287,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
 
   useEffect(() => {
     fetchAlerts();
-    const iv = setInterval(fetchAlerts, 10000);
+    const iv = setInterval(fetchAlerts, 30000);
     return () => clearInterval(iv);
   }, [fetchAlerts]);
 
