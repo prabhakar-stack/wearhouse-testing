@@ -14,13 +14,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Count total IN_INSPECTION manifests in the table for troubleshooting
-    const totalInInspection = await prisma.manifest.count({
-      where: {
-        status: 'IN_INSPECTION',
-      },
-    });
-
     // Fetch manifests that are IN_INSPECTION (taken over by this inspector)
     const ledger = await prisma.manifest.findMany({
       where: {
@@ -37,8 +30,6 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { receivedAt: 'desc' }
     });
-
-    // console.log(`[Ledger Audit] Total IN_INSPECTION manifests: ${totalInInspection}, Returned manifests for user ${user.email}: ${ledger.length}`);
 
     // Batch fetch all removal shipments scoped by trackingId (tracking-first architecture)
     const allTrackingNumbers = ledger.map(item => item.trackingId).filter(Boolean);

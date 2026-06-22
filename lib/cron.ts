@@ -442,7 +442,7 @@ export async function runExpectedTrackingJob() {
   //    Each fetchTrackingSnapshot call launches its own Playwright browser and
   //    closes it when done — they are fully independent and safe to parallelise.
   //    TRACKING_CONCURRENCY caps simultaneous browser instances to avoid OOM on Render.
-  const TRACKING_CONCURRENCY = 4;
+  const TRACKING_CONCURRENCY = 2;
 
   /**
    * Process a single tracking task: fetch snapshot → DB upsert → alert logic.

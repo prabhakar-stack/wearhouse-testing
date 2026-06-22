@@ -206,13 +206,13 @@ export async function GET(req: NextRequest) {
        logWhere.targetUserIds = { has: sessionUserId };
     }
 
-    const resolvedTodayCount = await prisma.alertLog.count({
-      where: logWhere
+    const alertLogs = await prisma.alertLog.findMany({
+      where: logWhere,
+      select: { sopFollowed: true }
     });
 
-    const sopFollowedTodayCount = await prisma.alertLog.count({
-      where: { ...logWhere, sopFollowed: true }
-    });
+    const resolvedTodayCount = alertLogs.length;
+    const sopFollowedTodayCount = alertLogs.filter(log => log.sopFollowed).length;
 
     const stats = {
       resolvedToday: resolvedTodayCount,
@@ -220,7 +220,14 @@ export async function GET(req: NextRequest) {
       adherenceRate: resolvedTodayCount > 0 ? Math.round((sopFollowedTodayCount / resolvedTodayCount) * 100) : 100
     };
 
-    return NextResponse.json({ alerts, sopMap, counts, role, stats, userLevel });
+    return NextResponse.json(
+      { alerts, sopMap, counts, role, stats, userLevel },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=5, stale-while-revalidate=5'
+        }
+      }
+    );
   } catch (error: any) {
     console.error('Alerts GET error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
