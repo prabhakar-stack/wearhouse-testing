@@ -11,6 +11,8 @@ import {
   Upload,
   FileImage,
   FileVideo,
+  FolderOpen,
+  RotateCcw,
 } from "lucide-react";
 import {
   getPendingUploads,
@@ -21,6 +23,12 @@ import {
 
 interface PendingUploadsIndicatorProps {
   preferredLanguage?: "en" | "hi";
+}
+
+// Per-file runtime upload state (not persisted)
+interface FileUploadState {
+  status: "idle" | "uploading" | "success" | "failed";
+  error?: string;
 }
 
 interface GroupedUpload {
@@ -43,6 +51,8 @@ export default function PendingUploadsIndicator({
   const lang = preferredLanguage === "hi" ? "hi" : "en";
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [grouped, setGrouped] = useState<GroupedUpload[]>([]);
+  // Per-file status map: fileId → FileUploadState
+  const [fileStates, setFileStates] = useState<Record<string, FileUploadState>>({});
   const [isOpen, setIsOpen] = useState(false);
   const [overallStatus, setOverallStatus] = useState<"idle" | "uploading">("idle");
 
@@ -52,7 +62,7 @@ export default function PendingUploadsIndicator({
       const all = await getPendingUploads();
       setUploads(all);
 
-      // Group by orderId
+      // Group by orderId + type
       const groupsMap: Record<string, GroupedUpload> = {};
       all.forEach((item) => {
         const groupKey = `${item.type}_${item.orderId}`;
@@ -76,7 +86,24 @@ export default function PendingUploadsIndicator({
         }
       });
 
-      setGrouped(Object.values(groupsMap));
+      const newGroups = Object.values(groupsMap);
+      setGrouped(newGroups);
+
+      // Initialise file states for any new files (don't overwrite in-progress ones)
+      setFileStates((prev) => {
+        const next = { ...prev };
+        all.forEach((f) => {
+          if (!next[f.id]) {
+            next[f.id] = { status: f.status === "uploading" ? "uploading" : "idle", error: f.error };
+          }
+        });
+        // Prune stale entries
+        const allIds = new Set(all.map((f) => f.id));
+        Object.keys(next).forEach((id) => {
+          if (!allIds.has(id)) delete next[id];
+        });
+        return next;
+      });
     } catch (err) {
       console.error("[PendingUploads] Failed to fetch from IndexedDB:", err);
     }
@@ -87,7 +114,6 @@ export default function PendingUploadsIndicator({
       fetchUploads();
     });
 
-    // Listen for changes dispatched from dashboards
     const handleChanged = () => {
       fetchUploads();
     };
@@ -99,7 +125,8 @@ export default function PendingUploadsIndicator({
 
   if (uploads.length === 0) return null;
 
-  // Helpers for Image Compression
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
   const compressImage = async (blob: Blob, quality = 0.65): Promise<Blob> => {
     try {
       const bmp = await createImageBitmap(blob);
@@ -117,7 +144,6 @@ export default function PendingUploadsIndicator({
     }
   };
 
-  // Reusable small file upload logic
   const uploadSmallFile = async (
     f: { key: string; name: string; blob: Blob },
     url: string
@@ -158,7 +184,6 @@ export default function PendingUploadsIndicator({
     throw new Error(`Failed to upload ${f.name}: ${lastError?.message || "unknown"}`);
   };
 
-  // Reusable Resumable Video upload logic
   const uploadVideoResumable = async (
     f: { key: string; name: string; mimeType: string; blob: Blob },
     targetFolderId: string
@@ -229,9 +254,92 @@ export default function PendingUploadsIndicator({
     }
   };
 
-  // Run the upload workflow for a group
+  // ─── Per-file state helpers ─────────────────────────────────────────────────
+
+  const setFileStatus = (fileId: string, state: FileUploadState) => {
+    setFileStates((prev) => ({ ...prev, [fileId]: state }));
+  };
+
+  // ─── Single-file retry ──────────────────────────────────────────────────────
+
+  const handleRetrySingleFile = async (file: PendingUpload, group: GroupedUpload) => {
+    setFileStatus(file.id, { status: "uploading" });
+    await updatePendingUploadStatus(file.id, "uploading");
+
+    try {
+      // Init upload for just this one file
+      const initRes = await fetch("/api/upload/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: group.orderId,
+          type: group.type,
+          filesMetaData: [{ key: file.key, name: file.name, mimeType: file.mimeType, lpn: file.lpn }],
+        }),
+      });
+
+      if (!initRes.ok) throw new Error(`Upload init failed: HTTP ${initRes.status}`);
+
+      const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
+      const rawUrl = uploadUrls[file.key];
+      if (!rawUrl) throw new Error(`Missing upload URL for file key: ${file.key}`);
+
+      let fileToUpload = file;
+      if (file.blob.type === "image/jpeg" && file.blob.size > 5_000_000) {
+        const compressed = await compressImage(file.blob, 0.8);
+        fileToUpload = { ...file, blob: compressed };
+      }
+
+      if (fileToUpload.blob.size > 4_000_000) {
+        await uploadVideoResumable(fileToUpload, orderFolderId);
+      } else {
+        await uploadSmallFile(fileToUpload, rawUrl);
+      }
+
+      // Mark successful and remove from IndexedDB
+      await deletePendingUpload(file.id);
+      setFileStatus(file.id, { status: "success" });
+
+      // Refresh the list after short delay
+      setTimeout(() => fetchUploads(), 800);
+    } catch (err: any) {
+      const errMsg = err.message || "Upload failed.";
+      await updatePendingUploadStatus(file.id, "failed", errMsg);
+      setFileStatus(file.id, { status: "failed", error: errMsg });
+    }
+  };
+
+  // ─── Single-file delete ──────────────────────────────────────────────────────
+
+  const handleDeleteSingleFile = async (file: PendingUpload) => {
+    if (
+      !confirm(
+        lang === "hi"
+          ? `क्या आप "${file.name}" को हटाना चाहते हैं?`
+          : `Discard "${file.name}" from pending uploads?`
+      )
+    ) return;
+    await deletePendingUpload(file.id);
+    fetchUploads();
+  };
+
+  // ─── View file locally ──────────────────────────────────────────────────────
+
+  const handleViewFile = (file: PendingUpload) => {
+    const url = URL.createObjectURL(file.blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.click();
+    // Revoke after a brief delay so the tab has time to load
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  // ─── Group-level retry (ALL files in group reset properly) ──────────────────
+
   const handleRetryGroup = async (group: GroupedUpload) => {
-    // Update local UI states and IndexedDB statuses
+    // Reset ALL files in this group to "uploading" first
     setGrouped((prev) =>
       prev.map((g) =>
         g.orderId === group.orderId && g.type === group.type
@@ -240,9 +348,13 @@ export default function PendingUploadsIndicator({
       )
     );
 
+    // Reset per-file states for ALL files in this group
+    const resetStates: Record<string, FileUploadState> = {};
     for (const f of group.files) {
+      resetStates[f.id] = { status: "uploading" };
       await updatePendingUploadStatus(f.id, "uploading");
     }
+    setFileStates((prev) => ({ ...prev, ...resetStates }));
 
     try {
       const filesMetaData = group.files.map((f) => ({
@@ -252,7 +364,7 @@ export default function PendingUploadsIndicator({
         lpn: f.lpn,
       }));
 
-      // 1. Initialize upload folders / URLs
+      // 1. Init upload folders / URLs
       const initRes = await fetch("/api/upload/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,27 +381,36 @@ export default function PendingUploadsIndicator({
 
       const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
 
-      // 2. Upload each file — route large files (> 4 MB) to direct resumable upload, and small files to raw upload.
+      // 2. Upload each file individually, updating per-file status as we go
       for (const f of group.files) {
         const rawUrl = uploadUrls[f.key];
         if (!rawUrl) throw new Error(`Missing upload URL for file key: ${f.key}`);
-        
-        let fileToUpload = f;
-        if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
-          const compressed = await compressImage(f.blob, 0.8);
-          console.log(`[Upload Retry] Compressed large image ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
-          fileToUpload = { ...f, blob: compressed };
-        }
 
-        if (fileToUpload.blob.size > 4_000_000) {
-          console.log(`[Upload Retry] File ${f.name} is large (${(fileToUpload.blob.size / 1024 / 1024).toFixed(1)} MB) — using resumable upload.`);
-          await uploadVideoResumable(fileToUpload, orderFolderId);
-        } else {
-          await uploadSmallFile(fileToUpload, rawUrl);
+        try {
+          let fileToUpload = f;
+          if (f.blob.type === "image/jpeg" && f.blob.size > 5_000_000) {
+            const compressed = await compressImage(f.blob, 0.8);
+            console.log(`[Upload Retry] Compressed ${f.name}: ${(f.blob.size / 1024 / 1024).toFixed(1)} MB → ${(compressed.size / 1024 / 1024).toFixed(1)} MB`);
+            fileToUpload = { ...f, blob: compressed };
+          }
+
+          if (fileToUpload.blob.size > 4_000_000) {
+            console.log(`[Upload Retry] File ${f.name} is large — using resumable upload.`);
+            await uploadVideoResumable(fileToUpload, orderFolderId);
+          } else {
+            await uploadSmallFile(fileToUpload, rawUrl);
+          }
+
+          setFileStatus(f.id, { status: "success" });
+        } catch (fileErr: any) {
+          const msg = fileErr.message || "Unknown error";
+          setFileStatus(f.id, { status: "failed", error: msg });
+          await updatePendingUploadStatus(f.id, "failed", msg);
+          throw fileErr; // propagate so group-level also fails
         }
       }
 
-      // 3. Finalize upload metadata in DB
+      // 3. Finalize
       const cleanUserId =
         group.uploadedById &&
         group.uploadedById !== "undefined" &&
@@ -318,9 +439,8 @@ export default function PendingUploadsIndicator({
         throw new Error(`Database finalization failed with HTTP ${finalizeRes.status}`);
       }
 
-      // 4. Update the dashboard evaluation database state
+      // 4. Post-finalize side effects
       if (group.type === "RECEIVER_REJECTION") {
-        // Run dock receive to resolve any local placeholders
         await fetch("/api/dock/receive", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -333,7 +453,6 @@ export default function PendingUploadsIndicator({
           }),
         }).catch((e) => console.warn("Retry dock receive warning:", e));
       } else if (group.type === "INSPECTION_VIDEO") {
-        // Run inspector evaluate to resolve
         const itemsScanned = Object.keys(group.lpnConditions || {}).length;
         await fetch("/api/inspector/evaluate", {
           method: "POST",
@@ -346,7 +465,7 @@ export default function PendingUploadsIndicator({
             manifestId: group.manifestId,
             orderPlatformId: group.orderPlatformId,
             itemsScanned,
-            itemsExpected: itemsScanned, // fallback assumption
+            itemsExpected: itemsScanned,
             isMissingItemFlagged: false,
             lpnConditions: group.lpnConditions,
             lpnRecoveryTypes: group.lpnRecoveryTypes,
@@ -356,7 +475,7 @@ export default function PendingUploadsIndicator({
         }).catch((e) => console.warn("Retry inspector evaluate warning:", e));
       }
 
-      // 5. Successful retry: remove from local IndexedDB
+      // 5. Remove all files from IndexedDB
       for (const f of group.files) {
         await deletePendingUpload(f.id);
       }
@@ -369,7 +488,6 @@ export default function PendingUploadsIndicator({
         )
       );
 
-      // Trigger standard refresh of pending list
       setTimeout(() => {
         fetchUploads();
       }, 1000);
@@ -377,9 +495,22 @@ export default function PendingUploadsIndicator({
       console.error("[Retry Failed]", err);
       const errMsg = err.message || "Failed during re-upload.";
 
-      // Update in IndexedDB for persistence
+      // Mark ALL files that are not yet successful as failed
+      setFileStates((prev) => {
+        const next = { ...prev };
+        group.files.forEach((f) => {
+          if (next[f.id]?.status !== "success") {
+            next[f.id] = { status: "failed", error: errMsg };
+          }
+        });
+        return next;
+      });
+
       for (const f of group.files) {
-        await updatePendingUploadStatus(f.id, "failed", errMsg);
+        const fState = fileStates[f.id];
+        if (fState?.status !== "success") {
+          await updatePendingUploadStatus(f.id, "failed", errMsg);
+        }
       }
 
       setGrouped((prev) =>
@@ -403,18 +534,19 @@ export default function PendingUploadsIndicator({
 
   const handleDeleteGroup = async (group: GroupedUpload) => {
     if (
-      confirm(
+      !confirm(
         lang === "hi"
           ? `क्या आप निश्चित रूप से ऑर्डर ${group.orderId} के लिए सभी लंबित अपलोड हटाना चाहते हैं?`
-          : `Are you sure you want to discard pending uploads for order ${group.orderId}?`
+          : `Are you sure you want to discard all pending uploads for order ${group.orderId}?`
       )
-    ) {
-      for (const f of group.files) {
-        await deletePendingUpload(f.id);
-      }
-      fetchUploads();
+    ) return;
+    for (const f of group.files) {
+      await deletePendingUpload(f.id);
     }
+    fetchUploads();
   };
+
+  // ─── i18n ───────────────────────────────────────────────────────────────────
 
   const t = {
     badgeText: lang === "hi" ? "लंबित अपलोड" : "Pending Uploads",
@@ -427,13 +559,18 @@ export default function PendingUploadsIndicator({
     order: lang === "hi" ? "ऑर्डर" : "Order",
     filesCount: lang === "hi" ? "फ़ाइलें" : "Files",
     typeRejection: lang === "hi" ? "इंटेक विजुअल अस्वीकृति" : "Intake Rejection Proof",
-    typeInspection: lang === "hi" ? "आर्डर निरीक्षण सबूत" : "Inspection Media proof",
+    typeInspection: lang === "hi" ? "आर्डर निरीक्षण सबूत" : "Inspection Media Proof",
     discard: lang === "hi" ? "रद्द करें" : "Discard",
+    discardFile: lang === "hi" ? "फ़ाइल हटाएं" : "Delete file",
     retry: lang === "hi" ? "पुन: प्रयास" : "Retry",
+    retryFile: lang === "hi" ? "फ़ाइल पुन: प्रयास" : "Retry file",
+    viewFile: lang === "hi" ? "फ़ाइल देखें" : "View file",
     uploading: lang === "hi" ? "अपलोड हो रहा है..." : "Uploading...",
     success: lang === "hi" ? "सफलतापूर्वक पूर्ण!" : "Completed!",
     failed: lang === "hi" ? "विफल" : "Failed",
   };
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -451,7 +588,7 @@ export default function PendingUploadsIndicator({
         </span>
       </button>
 
-      {/* Slide Drawer / Modal Overlay */}
+      {/* Modal Overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
@@ -478,8 +615,8 @@ export default function PendingUploadsIndicator({
               <p className="text-xs text-slate-400 mt-1 max-w-md">{t.modalSubtitle}</p>
             </div>
 
-            {/* List Content */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4 bg-slate-50">
+            {/* Group List */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5 bg-slate-50">
               {grouped.map((group) => {
                 const totalSizeMb = (
                   group.files.reduce((sum, f) => sum + f.blob.size, 0) /
@@ -487,11 +624,14 @@ export default function PendingUploadsIndicator({
                   1024
                 ).toFixed(1);
 
+                const isGroupUploading = group.status === "uploading";
+
                 return (
                   <div
                     key={`${group.type}_${group.orderId}`}
                     className="border border-slate-200 bg-white rounded-2xl p-4 shadow-sm flex flex-col space-y-3"
                   >
+                    {/* Group header */}
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[10px] font-black uppercase tracking-wider text-[#FF6700] bg-orange-50 px-2.5 py-1 rounded-md border border-[#FF6700]/10">
@@ -505,10 +645,10 @@ export default function PendingUploadsIndicator({
                         </p>
                       </div>
 
-                      {/* Discard & Retry Buttons */}
+                      {/* Group-level Discard & Retry */}
                       <div className="flex space-x-2">
                         <button
-                          disabled={group.status === "uploading"}
+                          disabled={isGroupUploading}
                           onClick={() => handleDeleteGroup(group)}
                           className="p-2 border border-slate-200 hover:border-red-200 hover:text-red-500 hover:bg-red-50 text-slate-400 rounded-xl transition-all disabled:opacity-40"
                           title={t.discard}
@@ -516,17 +656,17 @@ export default function PendingUploadsIndicator({
                           <Trash2 size={16} />
                         </button>
                         <button
-                          disabled={group.status === "uploading"}
+                          disabled={isGroupUploading}
                           onClick={() => handleRetryGroup(group)}
                           className="px-4 py-2 bg-[#FF6700] hover:bg-orange-600 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
                         >
-                          {group.status === "uploading" ? (
+                          {isGroupUploading ? (
                             <Loader2 size={14} className="animate-spin" />
                           ) : (
                             <Upload size={14} />
                           )}
                           <span>
-                            {group.status === "uploading"
+                            {isGroupUploading
                               ? t.uploading
                               : group.status === "success"
                               ? t.success
@@ -536,36 +676,96 @@ export default function PendingUploadsIndicator({
                       </div>
                     </div>
 
-                    {/* Files details */}
-                    <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 space-y-1.5">
-                      {group.files.map((file) => (
-                        <div
-                          key={file.id}
-                          className="flex items-center justify-between text-xs text-slate-600"
-                        >
-                          <div className="flex items-center space-x-2 truncate">
-                            {file.mimeType.startsWith("video/") ? (
-                              <FileVideo size={13} className="text-[#313079] shrink-0" />
-                            ) : (
-                              <FileImage size={13} className="text-[#FF6700] shrink-0" />
+                    {/* Per-file list */}
+                    <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 space-y-2">
+                      {group.files.map((file) => {
+                        const fState: FileUploadState = fileStates[file.id] ?? { status: "idle" };
+                        const isVideo = file.mimeType.startsWith("video/");
+
+                        return (
+                          <div
+                            key={file.id}
+                            className="flex flex-col gap-1"
+                          >
+                            {/* File row */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center space-x-2 truncate min-w-0">
+                                {isVideo ? (
+                                  <FileVideo size={13} className="text-[#313079] shrink-0" />
+                                ) : (
+                                  <FileImage size={13} className="text-[#FF6700] shrink-0" />
+                                )}
+                                <span className="font-mono text-xs text-slate-700 truncate">{file.name}</span>
+                                <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap shrink-0">
+                                  {(file.blob.size / 1024 / 1024).toFixed(2)} MB
+                                </span>
+                              </div>
+
+                              {/* Per-file status indicator + action buttons */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {/* Status badge */}
+                                {fState.status === "uploading" && (
+                                  <Loader2 size={13} className="animate-spin text-[#FF6700]" />
+                                )}
+                                {fState.status === "success" && (
+                                  <CheckCircle size={13} className="text-green-500" />
+                                )}
+                                {fState.status === "failed" && (
+                                  <AlertCircle size={13} className="text-red-500" />
+                                )}
+
+                                {/* View locally */}
+                                <button
+                                  title={t.viewFile}
+                                  onClick={() => handleViewFile(file)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#313079] hover:bg-slate-200 transition-all"
+                                >
+                                  <FolderOpen size={13} />
+                                </button>
+
+                                {/* Per-file retry */}
+                                {fState.status !== "success" && (
+                                  <button
+                                    title={t.retryFile}
+                                    disabled={fState.status === "uploading" || isGroupUploading}
+                                    onClick={() => handleRetrySingleFile(file, group)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-[#FF6700] hover:bg-orange-50 transition-all disabled:opacity-40"
+                                  >
+                                    <RotateCcw size={13} />
+                                  </button>
+                                )}
+
+                                {/* Per-file delete */}
+                                <button
+                                  title={t.discardFile}
+                                  disabled={fState.status === "uploading" || isGroupUploading}
+                                  onClick={() => handleDeleteSingleFile(file)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Per-file error message */}
+                            {fState.status === "failed" && fState.error && (
+                              <p className="text-[10px] text-red-500 font-medium pl-5 leading-snug">
+                                {fState.error}
+                              </p>
                             )}
-                            <span className="font-mono truncate">{file.name}</span>
                           </div>
-                          <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">
-                            {(file.blob.size / 1024 / 1024).toFixed(2)} MB
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    {/* Status & Error display */}
+                    {/* Group-level status */}
                     {group.status === "success" && (
                       <div className="flex items-center space-x-2 text-green-600 text-xs font-bold uppercase bg-green-50 border border-green-200 rounded-xl px-3 py-2 animate-in fade-in duration-300">
                         <CheckCircle size={16} />
                         <span>{t.success}</span>
                       </div>
                     )}
-                    {group.error && (
+                    {group.error && group.status === "failed" && (
                       <div className="flex items-start space-x-2 text-red-600 text-xs font-bold bg-red-50 border border-red-200 rounded-xl px-3 py-2">
                         <AlertCircle size={16} className="shrink-0 mt-0.5" />
                         <span className="leading-snug">{group.error}</span>
