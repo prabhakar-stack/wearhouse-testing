@@ -357,7 +357,15 @@ export default function PendingUploadsIndicator({
     setFileStates((prev) => ({ ...prev, ...resetStates }));
 
     try {
-      const filesMetaData = group.files.map((f) => ({
+      // Sort: images first, videos last — videos are large and long, so images
+      // should succeed before the slow resumable upload begins.
+      const sortedFiles = [...group.files].sort((a, b) => {
+        const aIsVideo = a.mimeType.startsWith("video/") ? 1 : 0;
+        const bIsVideo = b.mimeType.startsWith("video/") ? 1 : 0;
+        return aIsVideo - bIsVideo;
+      });
+
+      const filesMetaData = sortedFiles.map((f) => ({
         key: f.key,
         name: f.name,
         mimeType: f.mimeType,
@@ -381,8 +389,8 @@ export default function PendingUploadsIndicator({
 
       const { uploadUrls, folderLink, orderFolderId } = await initRes.json();
 
-      // 2. Upload each file individually, updating per-file status as we go
-      for (const f of group.files) {
+      // 2. Upload each file in sorted order (images first, videos last)
+      for (const f of sortedFiles) {
         const rawUrl = uploadUrls[f.key];
         if (!rawUrl) throw new Error(`Missing upload URL for file key: ${f.key}`);
 
