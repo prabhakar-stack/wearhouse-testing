@@ -1,41 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. DEPENDENCIES & PACKAGE MANAGERS
+# ─────────────────────────────────────────────────────────────────────────────
 node_modules/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. BUILD OUTPUTS & CACHES
+# ─────────────────────────────────────────────────────────────────────────────
 .next/
 coverage/
-.DS_Store
-*.log
+tsconfig.tsbuildinfo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ENVIRONMENT VARIABLES & SECRETS
+# ─────────────────────────────────────────────────────────────────────────────
+# Local environment configs (never commit API keys or database URLs)
 .env*
 !.env.example
-.uploads/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. OS & IDE CONFIGURATIONS
+# ─────────────────────────────────────────────────────────────────────────────
+.DS_Store
 .vscode/
-.claude
-.gitignore
+.claude/
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. LOCAL MEDIA & UPLOADS
+# ─────────────────────────────────────────────────────────────────────────────
 /uploads/
+/.uploads/
 /failed_uploads/
 
-# Ignore browser automation profiles and states
-claims-process/amazon-profile/
-claims-process/bot_state/
-scripts/bot_state/
-scripts/amazon-profile/
+# Ignore custom generated media assets except system icons
 *.png
 !app/icon.png
 !public/icon.png
 
-# Ignore data reports
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. BROWSER AUTOMATION (PLAYWRIGHT) PROFILES & BOT STATE
+# ─────────────────────────────────────────────────────────────────────────────
+claims-process/amazon-profile/
+claims-process/bot_state/
+scripts/bot_state/
+scripts/amazon-profile/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. DATA REPORTS & LOCAL JSON DATABASES (NEVER COMMIT)
+# ─────────────────────────────────────────────────────────────────────────────
 *.tsv
-*.md
 tracking-data.json
+returnprime_returns.json
+shiprocket_returns.json
+shiprocket_tracking.json
 
-# TypeScript incremental build cache — auto-generated, never commit
-tsconfig.tsbuildinfo
-
-# Ignore build outputs if necessary
-node_modules/
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. MARKDOWN NOTES & DOCUMENTATION
+# ─────────────────────────────────────────────────────────────────────────────
+# Ignore all markdown files to prevent them from being committed/uploaded
+*.md
 note.md
 
-# Ignore scratch and test scripts
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. SCRATCHPADS & TEST SCRIPTS
+# ─────────────────────────────────────────────────────────────────────────────
 scratch/
 prisma/checkUser.js
 prisma/checkUser.ts
@@ -45,6 +72,4 @@ scripts/run_tracking_job.ts
 scripts/scripts/test_query.js
 scripts/scripts/test_query_order.js
 scripts/fetch_amz_custom_range.js
-scripts/stage_local_tsvs.js
-
-
+scripts/stage_local_tsvs.js

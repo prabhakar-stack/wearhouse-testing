@@ -141,6 +141,9 @@ console.log(hr('═'));
 
 const pipelineStart = Date.now();
 const failedSteps = new Set();
+/** @type {{ key: string; label: string; exitCode: number | string; optional: boolean }[]} */
+const stepErrors = [];
+const skippedSteps = [];
 
 for (const step of stepsToRun) {
   if (step.requires && failedSteps.has(step.requires)) {
@@ -148,24 +151,55 @@ for (const step of stepsToRun) {
     console.log(`⏭  Skipped: ${step.label}`);
     console.log(`   Reason: dependency step "${step.requires}" did not complete`);
     console.log(hr());
+    skippedSteps.push({ key: step.key, label: step.label, reason: step.requires });
     continue;
   }
 
   try {
     run(step);
-  } catch {
+  } catch (err) {
+    failedSteps.add(step.key);
+    stepErrors.push({
+      key: step.key,
+      label: step.label,
+      exitCode: err.status ?? '?',
+      optional: !!step.optional,
+    });
     if (step.optional) {
       console.warn(`\n⚠  Optional step "${step.key}" failed — continuing pipeline.`);
-      failedSteps.add(step.key);
     } else {
-      console.error(`\nPipeline aborted at step: ${step.key}`);
-      process.exit(1);
+      console.error(`\n⚠  Step "${step.key}" failed — continuing remaining steps.`);
     }
   }
 }
 
 const totalSecs = ((Date.now() - pipelineStart) / 1000).toFixed(1);
+const hasErrors = stepErrors.length > 0;
+
 console.log(`\n${hr('═')}`);
-console.log(`PIPELINE COMPLETE — ${stepsToRun.length} step(s) finished in ${totalSecs}s`);
+if (hasErrors) {
+  console.log(`PIPELINE FINISHED WITH ISSUES — ${totalSecs}s total`);
+} else {
+  console.log(`PIPELINE COMPLETE — ${stepsToRun.length} step(s) finished in ${totalSecs}s`);
+}
 console.log(hr('═'));
-console.log('');
+
+if (skippedSteps.length > 0) {
+  console.log(`\n⏭  Skipped steps (${skippedSteps.length}):`);
+  for (const s of skippedSteps) {
+    console.log(`   • ${s.key.padEnd(22)} — dependency "${s.reason}" failed`);
+  }
+}
+
+if (hasErrors) {
+  console.log(`\n❌  Failed steps (${stepErrors.length}):`);
+  for (const e of stepErrors) {
+    const tag = e.optional ? ' [optional]' : ' [required]';
+    console.log(`   • ${e.key.padEnd(22)}${tag} — exit code ${e.exitCode}`);
+    console.log(`     ${e.label}`);
+  }
+  console.log('');
+  process.exit(1);
+} else {
+  console.log('');
+}

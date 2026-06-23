@@ -623,7 +623,6 @@ export async function runExpectedTrackingJob() {
         updatedExpectedDate,
       );
 
-      console.log(`[Status Debug] Manifest: ${task.manifestId} | Current: ${task.currentStatus} | Resolved: ${nextStatus} (ETA: ${updatedExpectedDate?.toISOString().slice(0, 10)})`);
 
       if (nextStatus && task.currentStatus !== nextStatus) {
         await prisma.manifest.update({

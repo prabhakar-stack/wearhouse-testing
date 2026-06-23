@@ -1,8 +1,107 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Save, Clock, ShieldAlert, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Save, Clock, ShieldAlert, CheckCircle, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 
+// ── SmartHub Session Status ───────────────────────────────────────────────────
+function SmartHubSessionCard() {
+  const [status, setStatus] = useState<{
+    valid: boolean | null;
+    lastSaved: string | null;
+    checking: boolean;
+  }>({ valid: null, lastSaved: null, checking: true });
+
+  const checkStatus = useCallback(async () => {
+    setStatus(s => ({ ...s, checking: true }));
+    try {
+      const res = await fetch('/api/admin/smarthub-session');
+      const data = await res.json();
+      setStatus({ valid: data.valid ?? false, lastSaved: data.lastSaved ?? null, checking: false });
+    } catch {
+      setStatus({ valid: false, lastSaved: null, checking: false });
+    }
+  }, []);
+
+  useEffect(() => { checkStatus(); }, [checkStatus]);
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-6 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">SmartHub B2C — Session Status</h3>
+          <p className="text-[10px] text-slate-500 mt-0.5 font-medium uppercase tracking-wide">
+            Amazon SmartHub requires a saved browser session to download CSV exports.
+          </p>
+        </div>
+        {status.checking ? (
+          <div className="w-4 h-4 border-2 border-[#FF6700] border-t-transparent rounded-full animate-spin" />
+        ) : status.valid ? (
+          <Wifi size={18} className="text-green-500" />
+        ) : (
+          <WifiOff size={18} className="text-red-500" />
+        )}
+      </div>
+
+      <div className="p-6 space-y-4">
+        {/* Status badge */}
+        <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+          status.valid === null || status.checking
+            ? 'bg-slate-50 border-slate-200'
+            : status.valid
+            ? 'bg-green-50 border-green-200'
+            : 'bg-red-50 border-red-200'
+        }`}>
+          {status.checking ? (
+            <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+          ) : status.valid ? (
+            <CheckCircle size={15} className="text-green-600 shrink-0" />
+          ) : (
+            <AlertTriangle size={15} className="text-red-600 shrink-0" />
+          )}
+          <div>
+            <p className={`text-xs font-black uppercase tracking-widest ${
+              status.checking ? 'text-slate-500' : status.valid ? 'text-green-700' : 'text-red-700'
+            }`}>
+              {status.checking
+                ? 'Checking session...'
+                : status.valid
+                ? 'Session active — SmartHub ready'
+                : 'Session expired or not saved'}
+            </p>
+            {status.lastSaved && (
+              <p className="text-[10px] text-slate-500 mt-0.5 font-medium uppercase tracking-wide">
+                Last saved: {new Date(status.lastSaved).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 mb-2">How to refresh the session</p>
+          <ol className="text-[10px] text-amber-700 font-bold uppercase tracking-wide space-y-1.5 list-decimal list-inside leading-relaxed">
+            <li>SSH into the server (Render shell) or open a local terminal.</li>
+            <li>Run: <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-900">npm run smarthub:setup</code></li>
+            <li>A browser will open — log into Amazon SmartHub manually.</li>
+            <li>Once on the dashboard, press <kbd className="bg-amber-100 px-1 rounded">Enter</kbd> in the terminal.</li>
+            <li>Come back here and click "Re-check Status" to confirm.</li>
+          </ol>
+        </div>
+
+        <button
+          onClick={checkStatus}
+          disabled={status.checking}
+          className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 text-[10px] font-black uppercase tracking-widest rounded hover:bg-slate-50 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+        >
+          <RefreshCw size={12} className={status.checking ? 'animate-spin' : ''} />
+          Re-check Status
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Settings Tab ─────────────────────────────────────────────────────────
 export default function SettingsTab() {
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -67,14 +166,14 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="max-w-xl mx-auto p-8 space-y-6">
+    <div className="max-w-xl mx-auto p-8 space-y-8">
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-xl font-light text-slate-900 uppercase tracking-widest flex items-center gap-2">
           <Clock size={20} className="text-[#FF6700]" />
           <span>Warehouse Operations Control</span>
         </h2>
         <p className="text-slate-500 text-xs tracking-wider mt-1 font-medium">
-          Manage operating windows. Alert counters accumulate duration ONLY during these hours.
+          Manage operating windows and integration sessions.
         </p>
       </div>
 
@@ -93,6 +192,7 @@ export default function SettingsTab() {
         </div>
       )}
 
+      {/* Operational hours */}
       <form onSubmit={handleSave} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="p-6 bg-slate-50 border-b border-slate-200">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Operational Shift Timing</h3>
@@ -149,6 +249,9 @@ export default function SettingsTab() {
           </button>
         </div>
       </form>
+
+      {/* SmartHub session management */}
+      <SmartHubSessionCard />
     </div>
   );
 }
