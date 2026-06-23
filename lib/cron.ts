@@ -17,8 +17,23 @@ function spawnScript(scriptName: string): Promise<void> {
     const proc = spawn("node", [path.join(process.cwd(), "scripts", scriptName)], {
       env: process.env,
       cwd: process.cwd(),
-      stdio: "inherit",
+      stdio: "pipe",
     });
+
+    if (proc.stdout) {
+      proc.stdout.on("data", (data) => {
+        process.stdout.write(data);
+      });
+    }
+
+    if (proc.stderr) {
+      proc.stderr.on("data", (data) => {
+        process.stderr.write(data);
+      });
+    }
+
+    proc.unref();
+
     proc.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${scriptName} exited with code ${code}`));
@@ -60,11 +75,8 @@ export const FIVE_DAYS_MS = 5 * 24 * HOUR_MS;
 
 
 export type CronJobKey =
-  | "amazon-returns"
-  | "shopify-returns"
-  | "expected-tracking"
-  | "escalations"
-  | "smarthub-ingest";
+  | "pipeline"
+  | "escalations";
 
 export async function generateOrdersFromShipments() {
   console.log("[generateOrdersFromShipments] Fetching removal shipments...");
@@ -1682,35 +1694,25 @@ export async function runEscalationsJob() {
   return { results };
 }
 
+export async function runPipelineJob() {
+  console.log("[Pipeline Job] Starting full warehouse pipeline (pipeline.mjs)...");
+  await spawnScript("pipeline.mjs");
+  return {
+    message: "Warehouse pipeline executed successfully.",
+  };
+}
+
 export const cronJobs = [
   {
-    key: "amazon-returns" as const,
-    label: "Amazon Returns",
-    intervalMs: FIVE_DAYS_MS,
-    run: runAmazonReturnsJob,
-  },
-  {
-    key: "shopify-returns" as const,
-    label: "Shopify Returns",
-    intervalMs: HALF_DAY_MS,
-    run: runShopifyReturnsSyncJob,
-  },
-  {
-    key: "expected-tracking" as const,
-    label: "Expected Tracking",
+    key: "pipeline" as const,
+    label: "Warehouse Pipeline",
     intervalMs: HOUR_MS,
-    run: runExpectedTrackingJob,
+    run: runPipelineJob,
   },
   {
     key: "escalations" as const,
     label: "Escalations",
     intervalMs: HOUR_MS,
     run: runEscalationsJob,
-  },
-  {
-    key: "smarthub-ingest" as const,
-    label: "SmartHub B2C Ingest",
-    intervalMs: HOUR_MS,
-    run: runSmarthubIngestJob,
   },
 ] as const;
