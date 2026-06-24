@@ -452,6 +452,9 @@ function SmartHubSection() {
           {/* Guided capture flow */}
           {captureSession && !sessionCaptured && (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              {/* Hidden bridge element for Chrome Extension */}
+              <div id="smarthub-extension-bridge" data-token={captureSession.token} data-url={captureSession.importUrl} style={{ display: 'none' }} />
+
               <div className="p-4 bg-slate-50 border-b border-slate-200">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-700">3-Step Session Capture</p>
                 <p className="text-[10px] text-slate-500 mt-0.5 font-medium uppercase tracking-wide">
@@ -483,9 +486,17 @@ function SmartHubSection() {
                   <div className="flex-1">
                     <p className="text-xs font-black uppercase tracking-widest text-slate-700 mb-1">Run Capture Script</p>
 
+                    {/* Chrome Extension */}
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg mb-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 mb-1">Option A — Chrome Extension (Recommended)</p>
+                      <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-wide leading-relaxed">
+                        The extension has automatically detected this capture session. Just open the <b>SmartHub Sync</b> extension on your toolbar and click <b>Sync Session Now</b>!
+                      </p>
+                    </div>
+
                     {/* Bookmarklet */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg mb-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Option A — Bookmarklet</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Option B — Bookmarklet</p>
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mb-2">
                         Drag to bookmarks bar → click it on the SmartHub page after login.
                       </p>
@@ -500,7 +511,7 @@ function SmartHubSection() {
                     {/* DevTools */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
                       <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Option B — DevTools Console</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Option C — DevTools Console</p>
                         <button onClick={() => setShowDevTools(!showDevTools)}
                           className="text-[9px] font-black uppercase tracking-widest text-[#FF6700] hover:underline cursor-pointer">
                           {showDevTools ? 'Hide' : 'Show Snippet'}
