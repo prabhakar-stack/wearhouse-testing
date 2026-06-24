@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     };
 
     // ── 3. Build Playwright storageState JSON ────────────────────────────────
-    let parsedCookies = [];
+    let parsedCookies: any[] = [];
 
     if (typeof rawCookies === 'string') {
       // Parse "key=value; key2=value2" cookie string into Playwright cookie objects
