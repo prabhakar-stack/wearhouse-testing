@@ -85,23 +85,21 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 3. Load session from DB if file doesn't exist / is stale ─────────────
-  const fileExists = fs.existsSync(COOKIE_PATH);
-  const fileStale = fileExists
-    ? (Date.now() - fs.statSync(COOKIE_PATH).mtime.getTime()) / (1000 * 60 * 60) > 16
-    : true;
+  // ── 3. Load session from DB ──────────────────────────────────────────────
+  try {
+    const sessionRecord = await (prisma as any).systemConfig.findUnique({
+      where: { key: 'smarthub_session' },
+    });
 
-  if (!fileExists || fileStale) {
-    try {
-      const sessionRecord = await (prisma as any).systemConfig.findUnique({
-        where: { key: 'smarthub_session' },
-      });
-
-      if (!sessionRecord) {
+    if (!sessionRecord) {
+      // If we don't find it in the DB, see if we have a fallback file locally on disk
+      if (fs.existsSync(COOKIE_PATH)) {
+        await updateJob({ logEntry: '⚠️ No session in DB. Using fallback file from disk.' });
+      } else {
         await updateJob({
           status: 'error',
-          message: 'No session found. Please capture a SmartHub session first.',
-          logEntry: '❌ No session in database. Capture a session from the Settings tab.',
+          message: 'No session found in DB or disk. Please capture a SmartHub session first.',
+          logEntry: '❌ No session found. Capture a session from the Settings tab.',
           finishedAt: new Date().toISOString(),
         });
         return NextResponse.json(
@@ -109,15 +107,20 @@ export async function POST(req: Request) {
           { status: 422 }
         );
       }
-
-      // Decode base64 → JSON → write to disk
+    } else {
+      // Decode base64 → JSON → write to disk (always overwrite to keep updated)
       const decoded = Buffer.from(sessionRecord.value, 'base64').toString('utf8');
       const dir = path.dirname(COOKIE_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(COOKIE_PATH, decoded, 'utf8');
 
-      await updateJob({ logEntry: '✅ Loaded session from database' });
-    } catch (dbErr: any) {
+      await updateJob({ logEntry: '✅ Loaded latest session from database' });
+    }
+  } catch (dbErr: any) {
+    // If DB fails, try using fallback disk file
+    if (fs.existsSync(COOKIE_PATH)) {
+      await updateJob({ logEntry: `⚠️ DB load failed (${dbErr.message}). Using fallback file from disk.` });
+    } else {
       await updateJob({
         status: 'error',
         message: `Failed to load session: ${dbErr.message}`,
@@ -126,8 +129,6 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
-  } else {
-    await updateJob({ logEntry: '✅ Using existing session file (fresh)' });
   }
 
   // ── 4. Mark job as running ────────────────────────────────────────────────
