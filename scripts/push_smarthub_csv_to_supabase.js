@@ -262,7 +262,10 @@ async function main() {
 }
 
 main()
-  .catch(e => console.error('❌ Sync script failed:', e))
+  .catch(e => {
+    console.error('❌ Sync script failed:', e);
+    process.exit(1);
+  })
   .finally(async () => {
     await prisma.$disconnect();
   });

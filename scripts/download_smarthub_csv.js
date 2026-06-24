@@ -197,4 +197,5 @@ async function main() {
 
 main().catch((err) => {
   console.error('❌ Fatal error in script:', err);
+  process.exit(1);
 });

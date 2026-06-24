@@ -141,7 +141,7 @@ export async function POST(req: Request) {
   try {
     const dlStart = Date.now();
     execSync('node scripts/download_smarthub_csv.js', {
-      stdio: 'inherit',
+      stdio: 'pipe',
       cwd: ROOT,
       timeout: 5 * 60 * 1000, // 5 min timeout
     });
@@ -152,23 +152,28 @@ export async function POST(req: Request) {
       logEntry: `✅ CSV downloaded in ${dlSecs}s`,
     });
   } catch (dlErr: any) {
+    const stdout = dlErr.stdout ? dlErr.stdout.toString('utf8') : '';
+    const stderr = dlErr.stderr ? dlErr.stderr.toString('utf8') : '';
+    const errMsg = `❌ Download failed: ${dlErr.message}\nStdout: ${stdout}\nStderr: ${stderr}`;
+    console.error('[SmartHub Sync]', errMsg);
+    
     await updateJob({
       status: 'error',
       message: 'CSV download failed. Session may have expired.',
-      logEntry: `❌ Download failed: ${dlErr.message}`,
-      lastError: dlErr.message,
+      logEntry: `❌ Download failed: ${dlErr.message}. See error logs.`,
+      lastError: errMsg,
       finishedAt: new Date().toISOString(),
     });
 
     // Update CronJobState
     await (prisma as any).cronJobState.upsert({
       where: { jobKey: 'smarthub_sync' },
-      update: { lastRunAt: new Date(), lastError: dlErr.message },
-      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: dlErr.message },
+      update: { lastRunAt: new Date(), lastError: errMsg },
+      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: errMsg },
     });
 
     return NextResponse.json(
-      { error: `Download failed: ${dlErr.message}` },
+      { error: `Download failed: ${dlErr.message}`, stdout, stderr },
       { status: 500 }
     );
   }
@@ -177,7 +182,7 @@ export async function POST(req: Request) {
   try {
     const pushStart = Date.now();
     execSync('node scripts/push_smarthub_csv_to_supabase.js', {
-      stdio: 'inherit',
+      stdio: 'pipe',
       cwd: ROOT,
       timeout: 5 * 60 * 1000, // 5 min timeout
     });
@@ -199,21 +204,26 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: 'SmartHub B2C sync completed.' });
   } catch (pushErr: any) {
+    const stdout = pushErr.stdout ? pushErr.stdout.toString('utf8') : '';
+    const stderr = pushErr.stderr ? pushErr.stderr.toString('utf8') : '';
+    const errMsg = `❌ Push failed: ${pushErr.message}\nStdout: ${stdout}\nStderr: ${stderr}`;
+    console.error('[SmartHub Sync]', errMsg);
+
     await updateJob({
       status: 'error',
       message: 'Push to Supabase failed.',
-      logEntry: `❌ Push failed: ${pushErr.message}`,
-      lastError: pushErr.message,
+      logEntry: `❌ Push failed: ${pushErr.message}. See error logs.`,
+      lastError: errMsg,
       finishedAt: new Date().toISOString(),
     });
 
     await (prisma as any).cronJobState.upsert({
       where: { jobKey: 'smarthub_sync' },
-      update: { lastRunAt: new Date(), lastError: pushErr.message },
-      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: pushErr.message },
+      update: { lastRunAt: new Date(), lastError: errMsg },
+      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: errMsg },
     });
 
-    return NextResponse.json({ error: pushErr.message }, { status: 500 });
+    return NextResponse.json({ error: pushErr.message, stdout, stderr }, { status: 500 });
   }
 }
 
