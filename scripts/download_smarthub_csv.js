@@ -25,14 +25,39 @@ async function main() {
   }
 
   console.log(`Launching browser (headed: ${headed})...`);
-  const browser = await chromium.launch({
-    headless: !headed,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-web-security'
-    ]
-  });
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: !headed,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security'
+      ]
+    });
+  } catch (launchErr) {
+    if (launchErr.message.includes("Executable doesn't exist") || launchErr.message.includes("install")) {
+      console.log('⚠️ Playwright Chromium browser executable is missing. Attempting dynamic installation...');
+      try {
+        const { execSync } = await import('child_process');
+        execSync('npx playwright install chromium', { stdio: 'inherit' });
+        console.log('✅ Playwright Chromium installed dynamically. Re-attempting browser launch...');
+        browser = await chromium.launch({
+          headless: !headed,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-web-security'
+          ]
+        });
+      } catch (installErr) {
+        console.error('❌ Dynamic Playwright Chromium installation failed:', installErr.message);
+        throw launchErr; // rethrow the original launch error
+      }
+    } else {
+      throw launchErr;
+    }
+  }
 
   // Load the saved session state (cookies & localStorage)
   const context = await browser.newContext({
