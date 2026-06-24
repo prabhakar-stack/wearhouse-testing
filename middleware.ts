@@ -46,7 +46,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/product/status") ||
     pathname.startsWith("/api/health") || // Health check — no session needed for uptime monitors
     pathname.startsWith("/api/cron") || // Cron routes validate their own secret
-    pathname.startsWith("/api/otp/bridge") // External OTP bridge validates its own secret
+    pathname.startsWith("/api/otp/bridge") || // External OTP bridge validates its own secret
+    pathname.startsWith("/api/admin/smarthub-session/import") // Bookmarklet endpoint — validates its own one-time token
   ) {
     return NextResponse.next();
   }

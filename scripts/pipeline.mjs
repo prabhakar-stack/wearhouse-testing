@@ -30,12 +30,21 @@ const STEPS = [
     cmd: 'node scripts/sync_amz_raw_to_core.js',
   },
   {
+    key: 'smarthub-load-session',
+    group: 'smarthub',
+    label: 'SmartHub B2C — Load session from Supabase DB → filesystem',
+    cmd: 'node scripts/load_session_from_db.js',
+    note: 'Loads stored Playwright session from the SystemConfig table. Requires a session to have been captured via the dashboard.',
+    optional: true,
+  },
+  {
     key: 'smarthub-download',
     group: 'smarthub',
     label: 'SmartHub B2C — Download returns CSV via Playwright',
     cmd: 'node scripts/download_smarthub_csv.js',
-    note: 'Requires a saved Playwright session — run save_smarthub_session.js once first.',
+    note: 'Uses session loaded from DB. Session must be captured first from the Settings tab.',
     optional: true,
+    requires: 'smarthub-load-session',
   },
   {
     key: 'smarthub-push',
