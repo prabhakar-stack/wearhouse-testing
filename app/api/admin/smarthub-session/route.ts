@@ -28,11 +28,8 @@ interface SmartHubJob {
  * - Current sync job status (from SystemConfig)
  * - Capture token availability
  */
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const userRole = req.headers.get('x-user-role');
-    const isAdmin = userRole === 'SUPER_ACCESS' || userRole === 'ADMIN';
-
     // ── 1. File-based session check ──────────────────────────────────────────
     let fileValid = false;
     let lastSaved: string | null = null;
@@ -89,10 +86,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // ── 5. Permanent Secret configuration ───────────────────────────────────
-    const permanentSecretConfigured = !!process.env.SMARTHUB_PERMANENT_SECRET;
-    const permanentSecret = isAdmin ? (process.env.SMARTHUB_PERMANENT_SECRET || null) : null;
-
     return NextResponse.json({
       // File session
       valid: fileValid,
@@ -106,9 +99,6 @@ export async function GET(req: Request) {
       // Token
       captureTokenActive,
       captureTokenExpiresAt,
-      // Extension config
-      permanentSecretConfigured,
-      permanentSecret,
     });
   } catch (err: any) {
     return NextResponse.json(

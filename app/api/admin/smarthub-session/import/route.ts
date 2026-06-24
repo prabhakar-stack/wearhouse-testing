@@ -32,7 +32,7 @@ export async function OPTIONS() {
  */
 export async function POST(req: Request) {
   try {
-    // ── 1. Validate token (can be one-time capture token or permanent secret) ──
+    // ── 1. Validate one-time capture token ──────────────────────────────────
     const url = new URL(req.url);
     const token =
       req.headers.get('X-Capture-Token') ||
@@ -45,53 +45,54 @@ export async function POST(req: Request) {
       );
     }
 
-    const permanentSecret = process.env.SMARTHUB_PERMANENT_SECRET;
-    const isPermanent = permanentSecret && token === permanentSecret;
+    // Load one-time token from DB
+    const tokenRecord = await (prisma as any).systemConfig.findUnique({
+      where: { key: 'smarthub_capture_token' },
+    });
+
+    if (!tokenRecord) {
+      return NextResponse.json(
+        { error: 'No active capture session. Please start a new session from the dashboard.' },
+        { status: 401, headers: CORS_HEADERS }
+      );
+    }
 
     let tokenData: { token: string; expiresAt: string; used: boolean } | null = null;
+    try {
+      tokenData = JSON.parse(tokenRecord.value);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid token record in database.' },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
 
-    if (!isPermanent) {
-      // Load one-time token from DB
-      const tokenRecord = await (prisma as any).systemConfig.findUnique({
-        where: { key: 'smarthub_capture_token' },
-      });
+    if (!tokenData) {
+      return NextResponse.json(
+        { error: 'Invalid token data in database.' },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
 
-      if (!tokenRecord) {
-        return NextResponse.json(
-          { error: 'No active capture session. Please start a new session from the dashboard.' },
-          { status: 401, headers: CORS_HEADERS }
-        );
-      }
+    if (tokenData.used) {
+      return NextResponse.json(
+        { error: 'Token already used. Please start a new session.' },
+        { status: 401, headers: CORS_HEADERS }
+      );
+    }
 
-      try {
-        tokenData = JSON.parse(tokenRecord.value);
-      } catch {
-        return NextResponse.json(
-          { error: 'Invalid token record in database.' },
-          { status: 500, headers: CORS_HEADERS }
-        );
-      }
+    if (new Date(tokenData.expiresAt) < new Date()) {
+      return NextResponse.json(
+        { error: 'Token expired. Please start a new session.' },
+        { status: 401, headers: CORS_HEADERS }
+      );
+    }
 
-      if (tokenData.used) {
-        return NextResponse.json(
-          { error: 'Token already used. Please start a new session.' },
-          { status: 401, headers: CORS_HEADERS }
-        );
-      }
-
-      if (new Date(tokenData.expiresAt) < new Date()) {
-        return NextResponse.json(
-          { error: 'Token expired. Please start a new session.' },
-          { status: 401, headers: CORS_HEADERS }
-        );
-      }
-
-      if (tokenData.token !== token) {
-        return NextResponse.json(
-          { error: 'Invalid token.' },
-          { status: 401, headers: CORS_HEADERS }
-        );
-      }
+    if (tokenData.token !== token) {
+      return NextResponse.json(
+        { error: 'Invalid token.' },
+        { status: 401, headers: CORS_HEADERS }
+      );
     }
 
     // ── 2. Parse body ────────────────────────────────────────────────────────
@@ -195,8 +196,8 @@ export async function POST(req: Request) {
       create: { key: 'smarthub_session', value: encoded },
     });
 
-    // ── 6. Mark token as used (only for one-time tokens) ─────────────────────
-    if (!isPermanent && tokenData) {
+    // ── 6. Mark token as used ────────────────────────────────────────────────
+    if (tokenData) {
       await (prisma as any).systemConfig.update({
         where: { key: 'smarthub_capture_token' },
         data: { value: JSON.stringify({ ...tokenData, used: true }) },
@@ -204,30 +205,23 @@ export async function POST(req: Request) {
     }
 
     // ── 7. Update job status ─────────────────────────────────────────────────
-    const logMsg = isPermanent
-      ? '✅ Session captured automatically via Chrome Extension'
-      : '✅ Session captured from browser';
-    const statusMsg = isPermanent
-      ? 'Session captured from extension. Ready to sync.'
-      : 'Session captured from browser. Ready to sync.';
-
     await (prisma as any).systemConfig.upsert({
       where: { key: 'smarthub_job' },
       update: {
         value: JSON.stringify({
           status: 'session_captured',
-          message: statusMsg,
+          message: 'Session captured. Ready to sync.',
           sessionCapturedAt: new Date().toISOString(),
-          log: [logMsg],
+          log: ['✅ Session captured from browser/extension'],
         }),
       },
       create: {
         key: 'smarthub_job',
         value: JSON.stringify({
           status: 'session_captured',
-          message: statusMsg,
+          message: 'Session captured. Ready to sync.',
           sessionCapturedAt: new Date().toISOString(),
-          log: [logMsg],
+          log: ['✅ Session captured from browser/extension'],
         }),
       },
     });

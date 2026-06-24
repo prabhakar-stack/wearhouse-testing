@@ -8,44 +8,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// 2. Automatically sync in the background when visiting smarthub.amazon.in
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('smarthub.amazon.in')) {
-    // Check throttle to avoid spamming the server
-    chrome.storage.local.get(['serverUrl', 'secretKey', 'lastSyncTime'], (res) => {
-      if (!res.serverUrl || !res.secretKey) return; // Not configured yet
-
-      const lastSync = res.lastSyncTime ? new Date(res.lastSyncTime).getTime() : 0;
-      const hoursSinceSync = (Date.now() - lastSync) / (1000 * 60 * 60);
-
-      // Only auto-sync if last sync was more than 4 hours ago
-      if (hoursSinceSync > 4) {
-        console.log('[SmartHub Ext] Throttling passed. Triggering automatic background sync...');
-        performSync()
-          .then(result => {
-            console.log('[SmartHub Ext] Automatic background sync success:', result);
-            chrome.storage.local.set({
-              lastSyncTime: new Date().toISOString(),
-              lastSyncStatus: 'success'
-            });
-          })
-          .catch(err => {
-            console.error('[SmartHub Ext] Automatic background sync failed:', err);
-          });
-      }
-    });
-  }
-});
-
-// 3. Core function to retrieve session cookies + local storage and send to Render
+// 2. Core function to retrieve session cookies + local storage and send to Render
 async function performSync() {
-  // Load configuration
+  // Load captured bridge configuration
   const config = await new Promise((resolve) => {
-    chrome.storage.local.get(['serverUrl', 'secretKey'], resolve);
+    chrome.storage.local.get(['token', 'importUrl'], resolve);
   });
 
-  if (!config.serverUrl || !config.secretKey) {
-    throw new Error('Extension is not configured. Please open popup settings and set your Server URL and Secret Key.');
+  if (!config.token || !config.importUrl) {
+    throw new Error('No active capture session token. Open your Warehouse Admin Settings, click "Capture Session", then try again.');
   }
 
   // Find a logged in Amazon SmartHub tab
@@ -102,14 +73,12 @@ async function performSync() {
     pageUrl: storageData.pageUrl
   };
 
-  const importUrl = `${config.serverUrl}/api/admin/smarthub-session/import`;
-
   // Make POST request to backend
-  const response = await fetch(importUrl, {
+  const response = await fetch(config.importUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Capture-Token': config.secretKey
+      'X-Capture-Token': config.token
     },
     body: JSON.stringify(payload)
   });

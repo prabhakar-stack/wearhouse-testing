@@ -10,7 +10,20 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://smarthub.amazon.in/*"
+    "https://smarthub.amazon.in/*",
+    "https://*.amazon.in/*",
+    "https://wearhouse-testing.onrender.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://wearhouse-testing.onrender.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
   ],
   "action": {
     "default_popup": "popup.html"

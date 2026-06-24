@@ -560,72 +560,23 @@ function SmartHubSection() {
             </div>
           )}
 
-          {/* Chrome Extension Auto Sync Info Card */}
-          {sessionStatus?.permanentSecretConfigured ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <div className="flex items-center gap-2">
-                  <Package size={14} className="text-[#FF6700]" />
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-700">🚀 Chrome Extension Capture (Automatic)</p>
-                </div>
-                <span className="bg-green-50 border border-green-200 text-green-700 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded">Active</span>
-              </div>
-              
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide leading-relaxed">
-                A custom Chrome Extension has been created inside your project directory at <code className="bg-slate-100 text-[#FF6700] px-1 rounded font-mono lowercase">scripts/smarthub-extension/</code>.
-                Install it in Chrome to automatically capture the session in the background when you visit SmartHub!
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">1. Server URL</label>
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2.5 py-1.5 justify-between">
-                    <code className="text-[10px] font-mono text-slate-700 truncate select-all">{typeof window !== 'undefined' ? window.location.origin : ''}</code>
-                    <CopyButton text={typeof window !== 'undefined' ? window.location.origin : ''} label="Copy" />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">2. Secret Key</label>
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2.5 py-1.5 justify-between">
-                    <code className="text-[10px] font-mono text-slate-700 truncate select-all">{sessionStatus?.permanentSecret || '••••••••••••••••'}</code>
-                    <CopyButton text={sessionStatus?.permanentSecret || ''} label="Copy" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-600">Installation Steps:</p>
-                <ol className="list-decimal pl-4 text-[9px] text-slate-500 font-bold uppercase tracking-wide space-y-1.5">
-                  <li>Open Chrome and navigate to <code className="bg-slate-50 px-1 rounded font-mono text-slate-700 lowercase">chrome://extensions/</code></li>
-                  <li>Enable <b>Developer mode</b> using the toggle in the top-right corner.</li>
-                  <li>Click <b>Load unpacked</b> in the top-left and select the <code className="bg-slate-50 px-1 rounded font-mono text-slate-700 lowercase">scripts/smarthub-extension</code> folder in your project directory.</li>
-                  <li>Click the Extension icon on your Chrome toolbar, paste the <b>Server URL</b> and <b>Secret Key</b> above, and click <b>Save Config</b>.</li>
-                </ol>
-              </div>
+          {/* Chrome Extension Companion Card */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5">
+              <Package size={14} className="text-[#FF6700]" />
+              <p className="text-xs font-black uppercase tracking-widest text-slate-700">🚀 Chrome Extension Companion</p>
             </div>
-          ) : (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Package size={14} className="text-slate-400" />
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">🚀 Chrome Extension Capture (Automatic)</p>
-                </div>
-                <span className="bg-slate-100 border border-slate-200 text-slate-400 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded">Not Configured</span>
-              </div>
-              
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide leading-relaxed">
-                You can automatically capture session cookies (including secure <code className="bg-slate-100 px-1 rounded font-mono text-slate-600 lowercase">HttpOnly</code> cookies) silently in the background using a custom Chrome extension.
-              </p>
-              
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-1">Setup Required:</p>
-                <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wide leading-relaxed">
-                  Set the <code className="bg-white px-1 rounded font-mono text-slate-700 lowercase">SMARTHUB_PERMANENT_SECRET</code> environment variable in your Render backend settings. Once set, refresh this page to access your Chrome extension files and key.
-                </p>
-              </div>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide leading-relaxed">
+              You can use the unpacked Chrome Extension in <code className="bg-slate-100 text-[#FF6700] px-1 rounded font-mono lowercase">scripts/smarthub-extension/</code> to capture and sync sessions instantly without dragging bookmarklets or copying console scripts.
+            </p>
+            <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1.5">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-600">How to Install:</p>
+              <ol className="list-decimal pl-4 text-[9px] text-slate-500 font-bold uppercase tracking-wide space-y-1">
+                <li>Go to <code className="bg-slate-50 px-1 rounded font-mono text-slate-700 lowercase">chrome://extensions/</code> and enable <b>Developer mode</b>.</li>
+                <li>Click <b>Load unpacked</b> and select the <code className="bg-slate-50 px-1 rounded font-mono text-slate-700 lowercase">scripts/smarthub-extension</code> folder.</li>
+              </ol>
             </div>
-          )}
+          </div>
 
           {/* Bottom actions */}
           <div className="flex items-center gap-4 pt-1">
