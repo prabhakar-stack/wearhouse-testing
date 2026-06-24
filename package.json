@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/postinstall.js",
     "dev": "next dev",
     "build": "cross-env NODE_ENV=production next build",
     "start": "next start",
