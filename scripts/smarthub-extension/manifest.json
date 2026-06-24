@@ -12,14 +12,22 @@
   "host_permissions": [
     "https://smarthub.amazon.in/*",
     "https://*.amazon.in/*",
-    "https://wearhouse-testing.onrender.com/*"
+    "https://wearhouse-testing.onrender.com/*",
+    "https://*.onrender.com/*",
+    "https://wearhouse-testing-uc5i.vercel.app/*",
+    "https://*.vercel.app/*",
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*"
   ],
   "content_scripts": [
     {
       "matches": [
         "https://wearhouse-testing.onrender.com/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "https://*.onrender.com/*",
+        "https://wearhouse-testing-uc5i.vercel.app/*",
+        "https://*.vercel.app/*",
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*"
       ],
       "js": ["content.js"],
       "run_at": "document_end"
