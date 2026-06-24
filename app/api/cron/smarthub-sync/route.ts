@@ -85,21 +85,23 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 3. Load session from DB ──────────────────────────────────────────────
-  try {
-    const sessionRecord = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_session' },
-    });
+  // ── 3. Load session from DB if file doesn't exist / is stale ─────────────
+  const fileExists = fs.existsSync(COOKIE_PATH);
+  const fileStale = fileExists
+    ? (Date.now() - fs.statSync(COOKIE_PATH).mtime.getTime()) / (1000 * 60 * 60 * 24) > 6
+    : true;
 
-    if (!sessionRecord) {
-      // If we don't find it in the DB, see if we have a fallback file locally on disk
-      if (fs.existsSync(COOKIE_PATH)) {
-        await updateJob({ logEntry: '⚠️ No session in DB. Using fallback file from disk.' });
-      } else {
+  if (!fileExists || fileStale) {
+    try {
+      const sessionRecord = await (prisma as any).systemConfig.findUnique({
+        where: { key: 'smarthub_session' },
+      });
+
+      if (!sessionRecord) {
         await updateJob({
           status: 'error',
-          message: 'No session found in DB or disk. Please capture a SmartHub session first.',
-          logEntry: '❌ No session found. Capture a session from the Settings tab.',
+          message: 'No session found. Please capture a SmartHub session first.',
+          logEntry: '❌ No session in database. Capture a session from the Settings tab.',
           finishedAt: new Date().toISOString(),
         });
         return NextResponse.json(
@@ -107,20 +109,15 @@ export async function POST(req: Request) {
           { status: 422 }
         );
       }
-    } else {
-      // Decode base64 → JSON → write to disk (always overwrite to keep updated)
+
+      // Decode base64 → JSON → write to disk
       const decoded = Buffer.from(sessionRecord.value, 'base64').toString('utf8');
       const dir = path.dirname(COOKIE_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(COOKIE_PATH, decoded, 'utf8');
 
-      await updateJob({ logEntry: '✅ Loaded latest session from database' });
-    }
-  } catch (dbErr: any) {
-    // If DB fails, try using fallback disk file
-    if (fs.existsSync(COOKIE_PATH)) {
-      await updateJob({ logEntry: `⚠️ DB load failed (${dbErr.message}). Using fallback file from disk.` });
-    } else {
+      await updateJob({ logEntry: '✅ Loaded session from database' });
+    } catch (dbErr: any) {
       await updateJob({
         status: 'error',
         message: `Failed to load session: ${dbErr.message}`,
@@ -129,6 +126,8 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
+  } else {
+    await updateJob({ logEntry: '✅ Using existing session file (fresh)' });
   }
 
   // ── 4. Mark job as running ────────────────────────────────────────────────
@@ -142,7 +141,7 @@ export async function POST(req: Request) {
   try {
     const dlStart = Date.now();
     execSync('node scripts/download_smarthub_csv.js', {
-      stdio: 'pipe',
+      stdio: 'inherit',
       cwd: ROOT,
       timeout: 5 * 60 * 1000, // 5 min timeout
     });
@@ -153,28 +152,23 @@ export async function POST(req: Request) {
       logEntry: `✅ CSV downloaded in ${dlSecs}s`,
     });
   } catch (dlErr: any) {
-    const stdout = dlErr.stdout ? dlErr.stdout.toString('utf8') : '';
-    const stderr = dlErr.stderr ? dlErr.stderr.toString('utf8') : '';
-    const errMsg = `❌ Download failed: ${dlErr.message}\nStdout: ${stdout}\nStderr: ${stderr}`;
-    console.error('[SmartHub Sync]', errMsg);
-
     await updateJob({
       status: 'error',
       message: 'CSV download failed. Session may have expired.',
-      logEntry: `❌ Download failed: ${dlErr.message}. See error logs.`,
-      lastError: errMsg,
+      logEntry: `❌ Download failed: ${dlErr.message}`,
+      lastError: dlErr.message,
       finishedAt: new Date().toISOString(),
     });
 
     // Update CronJobState
     await (prisma as any).cronJobState.upsert({
       where: { jobKey: 'smarthub_sync' },
-      update: { lastRunAt: new Date(), lastError: errMsg },
-      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: errMsg },
+      update: { lastRunAt: new Date(), lastError: dlErr.message },
+      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: dlErr.message },
     });
 
     return NextResponse.json(
-      { error: `Download failed: ${dlErr.message}`, stdout, stderr },
+      { error: `Download failed: ${dlErr.message}` },
       { status: 500 }
     );
   }
@@ -183,7 +177,7 @@ export async function POST(req: Request) {
   try {
     const pushStart = Date.now();
     execSync('node scripts/push_smarthub_csv_to_supabase.js', {
-      stdio: 'pipe',
+      stdio: 'inherit',
       cwd: ROOT,
       timeout: 5 * 60 * 1000, // 5 min timeout
     });
@@ -205,26 +199,21 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: 'SmartHub B2C sync completed.' });
   } catch (pushErr: any) {
-    const stdout = pushErr.stdout ? pushErr.stdout.toString('utf8') : '';
-    const stderr = pushErr.stderr ? pushErr.stderr.toString('utf8') : '';
-    const errMsg = `❌ Push failed: ${pushErr.message}\nStdout: ${stdout}\nStderr: ${stderr}`;
-    console.error('[SmartHub Sync]', errMsg);
-
     await updateJob({
       status: 'error',
       message: 'Push to Supabase failed.',
-      logEntry: `❌ Push failed: ${pushErr.message}. See error logs.`,
-      lastError: errMsg,
+      logEntry: `❌ Push failed: ${pushErr.message}`,
+      lastError: pushErr.message,
       finishedAt: new Date().toISOString(),
     });
 
     await (prisma as any).cronJobState.upsert({
       where: { jobKey: 'smarthub_sync' },
-      update: { lastRunAt: new Date(), lastError: errMsg },
-      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: errMsg },
+      update: { lastRunAt: new Date(), lastError: pushErr.message },
+      create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastError: pushErr.message },
     });
 
-    return NextResponse.json({ error: pushErr.message, stdout, stderr }, { status: 500 });
+    return NextResponse.json({ error: pushErr.message }, { status: 500 });
   }
 }
 

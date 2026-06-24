@@ -2,32 +2,10 @@ import 'dotenv/config';
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
-});
 
 const COOKIE_PATH = path.join(process.cwd(), 'scripts', 'bot_state', 'smarthub_auth.json');
 const TARGET_URL = process.env.AMAZON_SMARTHUB_URL || 'https://smarthub.amazon.in/returns';
 const DOWNLOAD_DIR = process.env.AMAZON_SMARTHUB_DOWNLOAD_DIR || './uploads';
-
-async function saveErrorScreenshot(page, errorMsg) {
-  try {
-    console.log('Uploading error screenshot to database...');
-    const buffer = await page.screenshot({ type: 'png' });
-    const base64 = buffer.toString('base64');
-    
-    await prisma.systemConfig.upsert({
-      where: { key: 'smarthub_error_screenshot' },
-      update: { value: JSON.stringify({ image: base64, timestamp: new Date().toISOString(), error: errorMsg }) },
-      create: { key: 'smarthub_error_screenshot', value: JSON.stringify({ image: base64, timestamp: new Date().toISOString(), error: errorMsg }) },
-    });
-    console.log('✅ Error screenshot uploaded to database successfully.');
-  } catch (dbErr) {
-    console.error('❌ Failed to upload screenshot to database:', dbErr.message);
-  }
-}
 
 async function main() {
   const headed = process.argv.includes('--headed');
@@ -47,39 +25,14 @@ async function main() {
   }
 
   console.log(`Launching browser (headed: ${headed})...`);
-  let browser;
-  try {
-    browser = await chromium.launch({
-      headless: !headed,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security'
-      ]
-    });
-  } catch (launchErr) {
-    if (launchErr.message.includes("Executable doesn't exist") || launchErr.message.includes("install")) {
-      console.log('⚠️ Playwright Chromium browser executable is missing. Attempting dynamic installation...');
-      try {
-        const { execSync } = await import('child_process');
-        execSync('npx playwright install chromium', { stdio: 'inherit' });
-        console.log('✅ Playwright Chromium installed dynamically. Re-attempting browser launch...');
-        browser = await chromium.launch({
-          headless: !headed,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-web-security'
-          ]
-        });
-      } catch (installErr) {
-        console.error('❌ Dynamic Playwright Chromium installation failed:', installErr.message);
-        throw launchErr; // rethrow the original launch error
-      }
-    } else {
-      throw launchErr;
-    }
-  }
+  const browser = await chromium.launch({
+    headless: !headed,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-web-security'
+    ]
+  });
 
   // Load the saved session state (cookies & localStorage)
   const context = await browser.newContext({
@@ -169,6 +122,8 @@ async function main() {
     console.error('⚠️ Failed to extract OTP:', otpErr.message);
   }
 
+  let downloadPromise = page.waitForEvent('download');
+  let clicked = false;
   const iframeLocator = page.locator('iframe[name*="DASHBOARD-asspl-returns-dashboard"], iframe[name$="-DASHBOARD-asspl-returns-dashboard"]').first();
 
   try {
@@ -210,38 +165,36 @@ async function main() {
     await exportMenuItem.waitFor({ state: 'visible', timeout: 15000 });
 
     console.log('Clicking the "Export to CSV" menu item...');
-    // Standard Playwright pattern: start waiting for download, then click, then await both
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 60000 }),
-      exportMenuItem.click()
-    ]);
+    await exportMenuItem.click();
+    await page.waitForTimeout(5000); // Wait 5s
+    clicked = true;
+  } catch (err) {
+    console.error(`❌ Dashboard iframe automation failed: ${err.message}`);
+    console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
+    await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
+    await browser.close();
+    process.exit(1);
+  }
 
+  console.log('Waiting for download to complete...');
+  try {
+    const download = await downloadPromise;
     const filename = download.suggestedFilename();
     const savePath = path.join(DOWNLOAD_DIR, filename);
+    
     await download.saveAs(savePath);
     console.log(`\n✅ Success! CSV downloaded and saved to: ${savePath}`);
-  } catch (err) {
-    console.error(`❌ Dashboard iframe automation or download failed: ${err.message}`);
+  } catch (downloadErr) {
+    console.error('❌ Error during file download:', downloadErr.message);
     console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
-    try {
-      await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
-      await saveErrorScreenshot(page, `Automation or download failed: ${err.message}`);
-    } catch (ssErr) {
-      console.error('Failed to take screenshot:', ssErr.message);
-    }
-    await browser.close();
-    await prisma.$disconnect();
-    process.exit(1);
+    await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
   }
 
   console.log('Closing browser...');
   await browser.close();
-  await prisma.$disconnect();
   console.log('Finished.');
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error('❌ Fatal error in script:', err);
-  await prisma.$disconnect().catch(() => {});
-  process.exit(1);
 });
