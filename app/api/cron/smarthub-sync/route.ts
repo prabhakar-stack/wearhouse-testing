@@ -88,7 +88,7 @@ export async function POST(req: Request) {
   // ── 3. Load session from DB if file doesn't exist / is stale ─────────────
   const fileExists = fs.existsSync(COOKIE_PATH);
   const fileStale = fileExists
-    ? (Date.now() - fs.statSync(COOKIE_PATH).mtime.getTime()) / (1000 * 60 * 60 * 24) > 6
+    ? (Date.now() - fs.statSync(COOKIE_PATH).mtime.getTime()) / (1000 * 60 * 60) > 16
     : true;
 
   if (!fileExists || fileStale) {
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
     const stderr = dlErr.stderr ? dlErr.stderr.toString('utf8') : '';
     const errMsg = `❌ Download failed: ${dlErr.message}\nStdout: ${stdout}\nStderr: ${stderr}`;
     console.error('[SmartHub Sync]', errMsg);
-    
+
     await updateJob({
       status: 'error',
       message: 'CSV download failed. Session may have expired.',
