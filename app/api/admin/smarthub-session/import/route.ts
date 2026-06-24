@@ -181,11 +181,15 @@ export async function POST(req: Request) {
     const storageStateJson = JSON.stringify(storageState, null, 2);
 
     // ── 4. Write to filesystem (for Render — immediate use) ──────────────────
-    const dir = path.dirname(COOKIE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    try {
+      const dir = path.dirname(COOKIE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(COOKIE_PATH, storageStateJson, 'utf8');
+    } catch (fsErr: any) {
+      console.warn('[SmartHub Import] Failed to write session to local filesystem (expected on Vercel/serverless):', fsErr.message);
     }
-    fs.writeFileSync(COOKIE_PATH, storageStateJson, 'utf8');
 
     // ── 5. Persist to Supabase SystemConfig ──────────────────────────────────
     // Stored as base64 to avoid escaping issues with long JSON strings
