@@ -32,7 +32,7 @@ export async function OPTIONS() {
  */
 export async function POST(req: Request) {
   try {
-    // ── 1. Validate one-time capture token ──────────────────────────────────
+    // ── 1. Validate token (can be one-time capture token or permanent secret) ──
     const url = new URL(req.url);
     const token =
       req.headers.get('X-Capture-Token') ||
@@ -45,85 +45,121 @@ export async function POST(req: Request) {
       );
     }
 
-    // Load token from DB
-    const tokenRecord = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_capture_token' },
-    });
+    const permanentSecret = process.env.SMARTHUB_PERMANENT_SECRET;
+    const isPermanent = permanentSecret && token === permanentSecret;
 
-    if (!tokenRecord) {
-      return NextResponse.json(
-        { error: 'No active capture session. Please start a new session from the dashboard.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
+    let tokenData: { token: string; expiresAt: string; used: boolean } | null = null;
 
-    let tokenData: { token: string; expiresAt: string; used: boolean };
-    try {
-      tokenData = JSON.parse(tokenRecord.value);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid token record in database.' },
-        { status: 500, headers: CORS_HEADERS }
-      );
-    }
+    if (!isPermanent) {
+      // Load one-time token from DB
+      const tokenRecord = await (prisma as any).systemConfig.findUnique({
+        where: { key: 'smarthub_capture_token' },
+      });
 
-    if (tokenData.used) {
-      return NextResponse.json(
-        { error: 'Token already used. Please start a new session.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
+      if (!tokenRecord) {
+        return NextResponse.json(
+          { error: 'No active capture session. Please start a new session from the dashboard.' },
+          { status: 401, headers: CORS_HEADERS }
+        );
+      }
 
-    if (new Date(tokenData.expiresAt) < new Date()) {
-      return NextResponse.json(
-        { error: 'Token expired. Please start a new session.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
+      try {
+        tokenData = JSON.parse(tokenRecord.value);
+      } catch {
+        return NextResponse.json(
+          { error: 'Invalid token record in database.' },
+          { status: 500, headers: CORS_HEADERS }
+        );
+      }
 
-    if (tokenData.token !== token) {
-      return NextResponse.json(
-        { error: 'Invalid token.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
+      if (tokenData.used) {
+        return NextResponse.json(
+          { error: 'Token already used. Please start a new session.' },
+          { status: 401, headers: CORS_HEADERS }
+        );
+      }
+
+      if (new Date(tokenData.expiresAt) < new Date()) {
+        return NextResponse.json(
+          { error: 'Token expired. Please start a new session.' },
+          { status: 401, headers: CORS_HEADERS }
+        );
+      }
+
+      if (tokenData.token !== token) {
+        return NextResponse.json(
+          { error: 'Invalid token.' },
+          { status: 401, headers: CORS_HEADERS }
+        );
+      }
     }
 
     // ── 2. Parse body ────────────────────────────────────────────────────────
     const body = await req.json();
     const {
-      cookies: cookieString = '',
+      cookies: rawCookies = '',
       localStorage: ls = {},
       sessionStorage: ss = {},
       pageUrl = SMARTHUB_ORIGIN,
     } = body as {
-      cookies?: string;
+      cookies?: string | any[];
       localStorage?: Record<string, string>;
       sessionStorage?: Record<string, string>;
       pageUrl?: string;
     };
 
     // ── 3. Build Playwright storageState JSON ────────────────────────────────
-    // Parse "key=value; key2=value2" cookie string into Playwright cookie objects
-    const parsedCookies = cookieString
-      .split(';')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map(pair => {
-        const eqIdx = pair.indexOf('=');
-        const name = eqIdx === -1 ? pair : pair.slice(0, eqIdx).trim();
-        const value = eqIdx === -1 ? '' : pair.slice(eqIdx + 1).trim();
+    let parsedCookies = [];
+
+    if (typeof rawCookies === 'string') {
+      // Parse "key=value; key2=value2" cookie string into Playwright cookie objects
+      parsedCookies = rawCookies
+        .split(';')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(pair => {
+          const eqIdx = pair.indexOf('=');
+          const name = eqIdx === -1 ? pair : pair.slice(0, eqIdx).trim();
+          const value = eqIdx === -1 ? '' : pair.slice(eqIdx + 1).trim();
+          return {
+            name,
+            value,
+            domain: 'smarthub.amazon.in',
+            path: '/',
+            expires: -1,
+            httpOnly: false,
+            secure: true,
+            sameSite: 'None' as const,
+          };
+        })
+        .filter(c => c.name.length > 0);
+    } else if (Array.isArray(rawCookies)) {
+      // Process structured cookies from Chrome extension
+      parsedCookies = rawCookies.map(c => {
+        // Map domain correctly
+        let domain = c.domain || 'smarthub.amazon.in';
+        if (domain.startsWith('.')) {
+          // Playwright handles dot domains but we normalize to remove leading dot if needed, or keep it
+        }
+
+        // Map sameSite attribute to Playwright's acceptable strings: 'Lax' | 'Strict' | 'None'
+        let sameSite: 'Lax' | 'Strict' | 'None' = 'None';
+        if (c.sameSite === 'lax') sameSite = 'Lax';
+        else if (c.sameSite === 'strict') sameSite = 'Strict';
+        else if (c.sameSite === 'no_restriction') sameSite = 'None';
+
         return {
-          name,
-          value,
-          domain: 'smarthub.amazon.in',
-          path: '/',
-          expires: -1,
-          httpOnly: false,
-          secure: true,
-          sameSite: 'None' as const,
+          name: c.name,
+          value: c.value,
+          domain,
+          path: c.path || '/',
+          expires: typeof c.expirationDate === 'number' ? Math.round(c.expirationDate) : -1,
+          httpOnly: !!c.httpOnly,
+          secure: !!c.secure,
+          sameSite,
         };
-      })
-      .filter(c => c.name.length > 0);
+      });
+    }
 
     // Merge localStorage + sessionStorage for the origin
     const allLocalEntries = [
@@ -159,30 +195,39 @@ export async function POST(req: Request) {
       create: { key: 'smarthub_session', value: encoded },
     });
 
-    // ── 6. Mark token as used ────────────────────────────────────────────────
-    await (prisma as any).systemConfig.update({
-      where: { key: 'smarthub_capture_token' },
-      data: { value: JSON.stringify({ ...tokenData, used: true }) },
-    });
+    // ── 6. Mark token as used (only for one-time tokens) ─────────────────────
+    if (!isPermanent && tokenData) {
+      await (prisma as any).systemConfig.update({
+        where: { key: 'smarthub_capture_token' },
+        data: { value: JSON.stringify({ ...tokenData, used: true }) },
+      });
+    }
 
     // ── 7. Update job status ─────────────────────────────────────────────────
+    const logMsg = isPermanent
+      ? '✅ Session captured automatically via Chrome Extension'
+      : '✅ Session captured from browser';
+    const statusMsg = isPermanent
+      ? 'Session captured from extension. Ready to sync.'
+      : 'Session captured from browser. Ready to sync.';
+
     await (prisma as any).systemConfig.upsert({
       where: { key: 'smarthub_job' },
       update: {
         value: JSON.stringify({
           status: 'session_captured',
-          message: 'Session captured from browser. Ready to sync.',
+          message: statusMsg,
           sessionCapturedAt: new Date().toISOString(),
-          log: ['✅ Session captured from browser'],
+          log: [logMsg],
         }),
       },
       create: {
         key: 'smarthub_job',
         value: JSON.stringify({
           status: 'session_captured',
-          message: 'Session captured from browser. Ready to sync.',
+          message: statusMsg,
           sessionCapturedAt: new Date().toISOString(),
-          log: ['✅ Session captured from browser'],
+          log: [logMsg],
         }),
       },
     });

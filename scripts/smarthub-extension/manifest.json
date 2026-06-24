@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon SmartHub Session Sync",
+  "version": "1.0",
+  "description": "Automatically captures and syncs logged-in Amazon SmartHub sessions to the warehouse backend.",
+  "permissions": [
+    "cookies",
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://smarthub.amazon.in/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
