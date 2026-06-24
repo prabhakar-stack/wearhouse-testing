@@ -169,8 +169,6 @@ async function main() {
     console.error('⚠️ Failed to extract OTP:', otpErr.message);
   }
 
-  let downloadPromise = page.waitForEvent('download');
-  let clicked = false;
   const iframeLocator = page.locator('iframe[name*="DASHBOARD-asspl-returns-dashboard"], iframe[name$="-DASHBOARD-asspl-returns-dashboard"]').first();
 
   try {
@@ -212,32 +210,28 @@ async function main() {
     await exportMenuItem.waitFor({ state: 'visible', timeout: 15000 });
 
     console.log('Clicking the "Export to CSV" menu item...');
-    await exportMenuItem.click();
-    await page.waitForTimeout(5000); // Wait 5s
-    clicked = true;
+    // Standard Playwright pattern: start waiting for download, then click, then await both
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60000 }),
+      exportMenuItem.click()
+    ]);
+
+    const filename = download.suggestedFilename();
+    const savePath = path.join(DOWNLOAD_DIR, filename);
+    await download.saveAs(savePath);
+    console.log(`\n✅ Success! CSV downloaded and saved to: ${savePath}`);
   } catch (err) {
-    console.error(`❌ Dashboard iframe automation failed: ${err.message}`);
+    console.error(`❌ Dashboard iframe automation or download failed: ${err.message}`);
     console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
-    await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
-    await saveErrorScreenshot(page, `Dashboard iframe automation failed: ${err.message}`);
+    try {
+      await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
+      await saveErrorScreenshot(page, `Automation or download failed: ${err.message}`);
+    } catch (ssErr) {
+      console.error('Failed to take screenshot:', ssErr.message);
+    }
     await browser.close();
     await prisma.$disconnect();
     process.exit(1);
-  }
-
-  console.log('Waiting for download to complete...');
-  try {
-    const download = await downloadPromise;
-    const filename = download.suggestedFilename();
-    const savePath = path.join(DOWNLOAD_DIR, filename);
-    
-    await download.saveAs(savePath);
-    console.log(`\n✅ Success! CSV downloaded and saved to: ${savePath}`);
-  } catch (downloadErr) {
-    console.error('❌ Error during file download:', downloadErr.message);
-    console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
-    await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
-    await saveErrorScreenshot(page, `Error during file download: ${downloadErr.message}`);
   }
 
   console.log('Closing browser...');
