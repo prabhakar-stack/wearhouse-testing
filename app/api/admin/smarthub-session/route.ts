@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 
 const COOKIE_PATH = path.join(process.cwd(), 'scripts', 'bot_state', 'smarthub_auth.json');
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface SmartHubJob {
   status: 'idle' | 'session_captured' | 'running' | 'downloading' | 'pushing' | 'done' | 'error';
   message: string;
@@ -16,21 +14,16 @@ interface SmartHubJob {
   startedAt?: string;
   finishedAt?: string;
   log: string[];
-  recordsUpserted?: number;
   lastError?: string;
 }
 
 /**
  * GET /api/admin/smarthub-session
- *
- * Returns:
- * - Session file status (exists + age)
- * - Current sync job status (from SystemConfig)
- * - Capture token availability
+ * Returns session health, job status, today's OTP, and the permanent bookmarklet.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    // ── 1. File-based session check ──────────────────────────────────────────
+    // ── 1. File session check ─────────────────────────────────────────────────
     let fileValid = false;
     let lastSaved: string | null = null;
     let ageDays: number | null = null;
@@ -42,176 +35,116 @@ export async function GET() {
       fileValid = ageDays < 6;
     }
 
-    // ── 2. DB session check ──────────────────────────────────────────────────
-    const dbSession = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_session' },
-    });
+    // ── 2. DB session check ───────────────────────────────────────────────────
+    const dbSession = await (prisma as any).systemConfig.findUnique({ where: { key: 'smarthub_session' } });
     const dbSessionExists = !!dbSession;
     const dbSessionUpdatedAt = dbSession?.updatedAt?.toISOString() ?? null;
 
-    // ── 3. Job status ────────────────────────────────────────────────────────
-    const jobRecord = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_job' },
-    });
-
-    let job: SmartHubJob = {
-      status: 'idle',
-      message: 'No sync job running.',
-      log: [],
-    };
-
+    // ── 3. Job status ─────────────────────────────────────────────────────────
+    const jobRecord = await (prisma as any).systemConfig.findUnique({ where: { key: 'smarthub_job' } });
+    let job: SmartHubJob = { status: 'idle', message: 'No sync job running.', log: [] };
     if (jobRecord) {
+      try { job = JSON.parse(jobRecord.value); } catch { /* ignore */ }
+    }
+
+    // ── 4. Today's OTP ────────────────────────────────────────────────────────
+    const otpRecord = await (prisma as any).systemConfig.findUnique({ where: { key: 'smarthub_daily_otp' } });
+    let todayOtp: { otp: string; date: string; capturedAt: string } | null = null;
+    if (otpRecord) {
       try {
-        job = JSON.parse(jobRecord.value);
-      } catch {
-        // ignore parse error
-      }
+        const parsed = JSON.parse(otpRecord.value);
+        const today = new Date().toISOString().slice(0, 10);
+        // Only show if captured today
+        if (parsed.date === today) todayOtp = parsed;
+      } catch { /* ignore */ }
     }
 
-    // ── 4. Capture token status ──────────────────────────────────────────────
-    const tokenRecord = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_capture_token' },
-    });
+    // ── 5. Build permanent bookmarklet (uses SMARTHUB_CAPTURE_KEY) ────────────
+    const captureKey = process.env.SMARTHUB_CAPTURE_KEY;
 
-    let captureTokenActive = false;
-    let captureTokenExpiresAt: string | null = null;
+    // Always use the deployed HTTPS URL for the bookmarklet so it works from
+    // smarthub.amazon.in (HTTPS) without mixed-content / CORS issues.
+    // NEXT_PUBLIC_APP_URL must be set in Vercel/Render env vars.
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
+      (req.headers.get('x-forwarded-host')
+        ? `https://${req.headers.get('x-forwarded-host')}`
+        : new URL(req.url).origin);
 
-    if (tokenRecord) {
-      try {
-        const t = JSON.parse(tokenRecord.value);
-        captureTokenActive = !t.used && new Date(t.expiresAt) > new Date();
-        captureTokenExpiresAt = t.expiresAt;
-      } catch {
-        // ignore
-      }
-    }
+    const importUrl = `${appUrl}/api/admin/smarthub-session/import`;
 
-    return NextResponse.json({
-      // File session
-      valid: fileValid,
-      lastSaved,
-      ageDays,
-      // DB session
-      dbSessionExists,
-      dbSessionUpdatedAt,
-      // Job
-      job,
-      // Token
-      captureTokenActive,
-      captureTokenExpiresAt,
-    });
-  } catch (err: any) {
-    return NextResponse.json(
-      { valid: false, lastSaved: null, error: err.message },
-      { status: 500 }
-    );
-  }
-}
+    let bookmarkletHref: string | null = null;
+    let devToolsSnippet: string | null = null;
 
-/**
- * POST /api/admin/smarthub-session
- *
- * Generates a one-time capture token (10 min TTL) and returns:
- * - The token
- * - A bookmarklet href (javascript: URI)
- * - A DevTools console snippet
- *
- * Both the bookmarklet and the snippet POST to /api/admin/smarthub-session/import
- * with the token embedded for auth.
- */
-export async function POST(req: Request) {
-  try {
-    // Verify SUPER_ACCESS role from middleware-injected header
-    const userRole = req.headers.get('x-user-role');
-    if (userRole !== 'SUPER_ACCESS') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    if (captureKey) {
+      // Bookmarklet: captures cookies, localStorage, sessionStorage, AND scrapes OTP from page
+      const bookmarkletCode = `(function(){
+        var KEY='${captureKey}';
+        var URL='${importUrl}';
+        var ls={};var ss={};
+        try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);ls[k]=localStorage.getItem(k);}}catch(e){}
+        try{for(var j=0;j<sessionStorage.length;j++){var k2=sessionStorage.key(j);ss[k2]=sessionStorage.getItem(k2);}}catch(e){}
+        var otp=null;
+        try{
+          var bt=document.body.innerText||'';
+          var m=bt.match(/OTP[:\\s]+([0-9]{4,8})/i);
+          if(m)otp=m[1];
+          if(!otp){var ps=document.querySelectorAll('p,span,div');for(var n=0;n<ps.length;n++){var t=(ps[n].innerText||'').trim();if(/^[0-9]{4,8}$/.test(t)&&ps[n].previousSibling){var prev=(ps[n].previousSibling.textContent||'').toLowerCase();if(prev.includes('otp')){otp=t;break;}}}}
+        }catch(e){}
+        var payload={cookies:document.cookie,localStorage:ls,sessionStorage:ss,otp:otp};
+        fetch(URL,{method:'POST',headers:{'Content-Type':'application/json','X-Capture-Key':KEY},body:JSON.stringify(payload),mode:'cors'})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            if(d.success){alert(d.message);}
+            else{alert('Error: '+(d.error||'Unknown'));}
+          })
+          .catch(function(e){alert('Network error: '+e.message);});
+      })()`;
 
-    // Generate a cryptographically random token
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+      bookmarkletHref = `javascript:${encodeURIComponent(bookmarkletCode)}`;
 
-    // Save to DB
-    await (prisma as any).systemConfig.upsert({
-      where: { key: 'smarthub_capture_token' },
-      update: { value: JSON.stringify({ token, expiresAt, used: false }) },
-      create: { key: 'smarthub_capture_token', value: JSON.stringify({ token, expiresAt, used: false }) },
-    });
-
-    // Reset job status
-    await (prisma as any).systemConfig.upsert({
-      where: { key: 'smarthub_job' },
-      update: { value: JSON.stringify({ status: 'idle', message: 'Session capture started. Waiting for browser data.', log: [] }) },
-      create: { key: 'smarthub_job', value: JSON.stringify({ status: 'idle', message: 'Session capture started. Waiting for browser data.', log: [] }) },
-    });
-
-    // Build the import API URL (use the same origin as the request)
-    const origin = req.headers.get('x-forwarded-host')
-      ? `https://${req.headers.get('x-forwarded-host')}`
-      : new URL(req.url).origin;
-
-    const importUrl = `${origin}/api/admin/smarthub-session/import`;
-
-    // ── Build bookmarklet (minified JS that runs on smarthub.amazon.in) ──────
-    const bookmarkletCode = `(function(){
-      var t='${token}';
-      var u='${importUrl}';
-      var ls={};var ss={};
-      try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);ls[k]=localStorage.getItem(k);}}catch(e){}
-      try{for(var j=0;j<sessionStorage.length;j++){var k2=sessionStorage.key(j);ss[k2]=sessionStorage.getItem(k2);}}catch(e){}
-      var payload={cookies:document.cookie,localStorage:ls,sessionStorage:ss,pageUrl:location.href};
-      fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-Capture-Token':t},body:JSON.stringify(payload),mode:'cors'})
-        .then(function(r){return r.json();})
-        .then(function(d){
-          if(d.success){alert('✅ SmartHub session captured! Return to the dashboard and click "Sync Now".');}
-          else{alert('❌ Error: '+(d.error||'Unknown error'));}
-        })
-        .catch(function(e){alert('❌ Network error: '+e.message);});
-    })()`;
-
-    const bookmarkletHref = `javascript:${encodeURIComponent(bookmarkletCode)}`;
-
-    // ── DevTools console snippet (prettier, for pasting in F12 console) ──────
-    const devToolsSnippet = `// SmartHub Session Capture — paste this in DevTools console on smarthub.amazon.in
+      devToolsSnippet = `// SmartHub Daily Capture — paste in DevTools Console on smarthub.amazon.in
 (async () => {
-  const TOKEN = '${token}';
-  const IMPORT_URL = '${importUrl}';
-  
-  const ls = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    ls[k] = localStorage.getItem(k);
-  }
-  const ss = {};
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const k = sessionStorage.key(i);
-    ss[k] = sessionStorage.getItem(k);
-  }
+  const KEY = '${captureKey}';
+  const URL = '${importUrl}';
 
-  const res = await fetch(IMPORT_URL, {
+  const ls = {}, ss = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
+  for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); ss[k] = sessionStorage.getItem(k); }
+
+  // Scrape OTP from page
+  let otp = null;
+  const m = (document.body.innerText || '').match(/OTP[:\\s]+([0-9]{4,8})/i);
+  if (m) otp = m[1];
+
+  const res = await fetch(URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Capture-Token': TOKEN },
-    body: JSON.stringify({ cookies: document.cookie, localStorage: ls, sessionStorage: ss, pageUrl: location.href }),
+    headers: { 'Content-Type': 'application/json', 'X-Capture-Key': KEY },
+    body: JSON.stringify({ cookies: document.cookie, localStorage: ls, sessionStorage: ss, otp }),
     mode: 'cors',
   });
   const data = await res.json();
-  console.log(data.success ? '✅ Session captured!' : '❌ Error: ' + data.error);
-  if (data.success) alert('✅ Session captured! Return to the dashboard.');
+  console.log(data);
+  if (data.success) alert(data.message);
+  else alert('Error: ' + data.error);
 })();`;
+    }
 
     return NextResponse.json({
-      success: true,
-      token,
-      expiresAt,
-      importUrl,
+      valid: fileValid,
+      lastSaved,
+      ageDays,
+      dbSessionExists,
+      dbSessionUpdatedAt,
+      job,
+      todayOtp,
+      bookmarkletReady: !!captureKey,
       bookmarkletHref,
       devToolsSnippet,
       smarthubUrl: 'https://smarthub.amazon.in/returns',
+      importUrl,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message || 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ valid: false, lastSaved: null, error: err.message }, { status: 500 });
   }
 }

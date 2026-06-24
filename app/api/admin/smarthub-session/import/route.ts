@@ -8,11 +8,10 @@ export const runtime = 'nodejs';
 const COOKIE_PATH = path.join(process.cwd(), 'scripts', 'bot_state', 'smarthub_auth.json');
 const SMARTHUB_ORIGIN = 'https://smarthub.amazon.in';
 
-// Allowed CORS origins for the bookmarklet running on smarthub.amazon.in
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Capture-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Capture-Key',
 };
 
 export async function OPTIONS() {
@@ -23,98 +22,66 @@ export async function OPTIONS() {
  * POST /api/admin/smarthub-session/import
  *
  * Called by the bookmarklet running on smarthub.amazon.in.
- * Receives browser session data (cookies, localStorage, sessionStorage),
- * converts it to a Playwright storageState, and persists it:
- *   1. To the filesystem (scripts/bot_state/smarthub_auth.json) for immediate use
- *   2. To the Supabase SystemConfig table (key: smarthub_session) for persistence
  *
- * Auth: X-Capture-Token header or ?token= query param (one-time token from DB)
+ * Auth: X-Capture-Key header or ?key= query param
+ *   — Validated against SMARTHUB_CAPTURE_KEY env var (persistent, never changes)
+ *   — The bookmarklet is set up ONCE from the Settings page and works every day.
+ *
+ * On success:
+ *   1. Saves Playwright storageState to filesystem + SystemConfig DB
+ *   2. Saves the day's OTP (if found on page) to SystemConfig
+ *   3. Auto-triggers /api/cron/smarthub-sync so sync happens immediately
  */
 export async function POST(req: Request) {
   try {
-    // ── 1. Validate one-time capture token ──────────────────────────────────
+    // ── 1. Persistent key auth ────────────────────────────────────────────────
     const url = new URL(req.url);
-    const token =
-      req.headers.get('X-Capture-Token') ||
-      url.searchParams.get('token');
+    const providedKey =
+      req.headers.get('X-Capture-Key') ||
+      url.searchParams.get('key');
 
-    if (!token) {
+    const expectedKey = process.env.SMARTHUB_CAPTURE_KEY;
+
+    if (!expectedKey) {
+      console.error('[SmartHub Import] SMARTHUB_CAPTURE_KEY env var not set.');
       return NextResponse.json(
-        { error: 'Missing capture token' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
-
-    // Load token from DB
-    const tokenRecord = await (prisma as any).systemConfig.findUnique({
-      where: { key: 'smarthub_capture_token' },
-    });
-
-    if (!tokenRecord) {
-      return NextResponse.json(
-        { error: 'No active capture session. Please start a new session from the dashboard.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
-
-    let tokenData: { token: string; expiresAt: string; used: boolean };
-    try {
-      tokenData = JSON.parse(tokenRecord.value);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid token record in database.' },
+        { error: 'Server misconfigured: SMARTHUB_CAPTURE_KEY not set.' },
         { status: 500, headers: CORS_HEADERS }
       );
     }
 
-    if (tokenData.used) {
+    if (!providedKey || providedKey !== expectedKey) {
       return NextResponse.json(
-        { error: 'Token already used. Please start a new session.' },
+        { error: 'Invalid capture key.' },
         { status: 401, headers: CORS_HEADERS }
       );
     }
 
-    if (new Date(tokenData.expiresAt) < new Date()) {
-      return NextResponse.json(
-        { error: 'Token expired. Please start a new session.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
-
-    if (tokenData.token !== token) {
-      return NextResponse.json(
-        { error: 'Invalid token.' },
-        { status: 401, headers: CORS_HEADERS }
-      );
-    }
-
-    // ── 2. Parse body ────────────────────────────────────────────────────────
+    // ── 2. Parse body ─────────────────────────────────────────────────────────
     const body = await req.json();
     const {
       cookies: cookieString = '',
       localStorage: ls = {},
       sessionStorage: ss = {},
-      pageUrl = SMARTHUB_ORIGIN,
+      otp: otpFromBookmarklet = null,
     } = body as {
       cookies?: string;
       localStorage?: Record<string, string>;
       sessionStorage?: Record<string, string>;
-      pageUrl?: string;
+      otp?: string | null;
     };
 
-    // ── 3. Build Playwright storageState JSON ────────────────────────────────
-    // Parse "key=value; key2=value2" cookie string into Playwright cookie objects
+    // ── 3. Build Playwright storageState ──────────────────────────────────────
     const parsedCookies = cookieString
       .split(';')
-      .map(s => s.trim())
+      .map((s: string) => s.trim())
       .filter(Boolean)
-      .map(pair => {
+      .map((pair: string) => {
         const eqIdx = pair.indexOf('=');
         const name = eqIdx === -1 ? pair : pair.slice(0, eqIdx).trim();
         const value = eqIdx === -1 ? '' : pair.slice(eqIdx + 1).trim();
         return {
-          name,
-          value,
+          name, value,
           domain: 'smarthub.amazon.in',
           path: '/',
           expires: -1,
@@ -123,9 +90,8 @@ export async function POST(req: Request) {
           sameSite: 'None' as const,
         };
       })
-      .filter(c => c.name.length > 0);
+      .filter((c: any) => c.name.length > 0);
 
-    // Merge localStorage + sessionStorage for the origin
     const allLocalEntries = [
       ...Object.entries(ls).map(([name, value]) => ({ name, value: String(value) })),
       ...Object.entries(ss).map(([name, value]) => ({ name, value: String(value) })),
@@ -133,67 +99,102 @@ export async function POST(req: Request) {
 
     const storageState = {
       cookies: parsedCookies,
-      origins: [
-        {
-          origin: SMARTHUB_ORIGIN,
-          localStorage: allLocalEntries,
-        },
-      ],
+      origins: [{ origin: SMARTHUB_ORIGIN, localStorage: allLocalEntries }],
     };
 
     const storageStateJson = JSON.stringify(storageState, null, 2);
+    const encoded = Buffer.from(storageStateJson).toString('base64');
 
-    // ── 4. Write to filesystem (for Render — immediate use) ──────────────────
+    // ── 4. Write to filesystem ────────────────────────────────────────────────
     const dir = path.dirname(COOKIE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(COOKIE_PATH, storageStateJson, 'utf8');
 
-    // ── 5. Persist to Supabase SystemConfig ──────────────────────────────────
-    // Stored as base64 to avoid escaping issues with long JSON strings
-    const encoded = Buffer.from(storageStateJson).toString('base64');
+    // ── 5. Persist session to SystemConfig ────────────────────────────────────
     await (prisma as any).systemConfig.upsert({
       where: { key: 'smarthub_session' },
       update: { value: encoded },
       create: { key: 'smarthub_session', value: encoded },
     });
 
-    // ── 6. Mark token as used ────────────────────────────────────────────────
-    await (prisma as any).systemConfig.update({
-      where: { key: 'smarthub_capture_token' },
-      data: { value: JSON.stringify({ ...tokenData, used: true }) },
-    });
+    // ── 6. Save today's OTP if captured ──────────────────────────────────────
+    let otpSaved = false;
+    if (otpFromBookmarklet && /^\d{4,8}$/.test(otpFromBookmarklet.trim())) {
+      const otp = otpFromBookmarklet.trim();
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-    // ── 7. Update job status ─────────────────────────────────────────────────
+      // Also write to uploads/latest_otp.json for the push script
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(uploadsDir, 'latest_otp.json'),
+        JSON.stringify({ otp, timestamp: new Date().toISOString(), date: today }, null, 2),
+        'utf8'
+      );
+
+      // Also store in SystemConfig for visibility in the UI
+      await (prisma as any).systemConfig.upsert({
+        where: { key: 'smarthub_daily_otp' },
+        update: { value: JSON.stringify({ otp, date: today, capturedAt: new Date().toISOString() }) },
+        create: { key: 'smarthub_daily_otp', value: JSON.stringify({ otp, date: today, capturedAt: new Date().toISOString() }) },
+      });
+
+      otpSaved = true;
+      console.log(`[SmartHub Import] OTP captured: ${otp} for ${today}`);
+    }
+
+    // ── 7. Update job status ──────────────────────────────────────────────────
+    const capturedAt = new Date().toISOString();
     await (prisma as any).systemConfig.upsert({
       where: { key: 'smarthub_job' },
       update: {
         value: JSON.stringify({
           status: 'session_captured',
-          message: 'Session captured from browser. Ready to sync.',
-          sessionCapturedAt: new Date().toISOString(),
-          log: ['✅ Session captured from browser'],
+          message: 'Session captured from browser. Auto-syncing...',
+          sessionCapturedAt: capturedAt,
+          log: [
+            `✅ Session captured at ${new Date(capturedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`,
+            otpSaved ? `🔑 OTP captured from page` : '⚠️ OTP not found on page',
+            '⏳ Triggering sync...',
+          ],
         }),
       },
       create: {
         key: 'smarthub_job',
         value: JSON.stringify({
           status: 'session_captured',
-          message: 'Session captured from browser. Ready to sync.',
-          sessionCapturedAt: new Date().toISOString(),
-          log: ['✅ Session captured from browser'],
+          message: 'Session captured from browser. Auto-syncing...',
+          sessionCapturedAt: capturedAt,
+          log: [`✅ Session captured`, otpSaved ? '🔑 OTP captured' : '⚠️ OTP not found'],
         }),
       },
     });
 
-    console.log('[SmartHub Import] Session captured and saved successfully.');
+    // ── 8. Auto-trigger sync in background ───────────────────────────────────
+    // Fire-and-forget: don't await — return success to the bookmarklet immediately
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
+      (req.headers.get('x-forwarded-host')
+        ? `https://${req.headers.get('x-forwarded-host')}`
+        : new URL(req.url).origin);
+    const cronSecret = process.env.CRON_SECRET || 'secret-cron-token';
+
+    fetch(`${appUrl}/api/cron/smarthub-sync`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cronSecret}` },
+    }).catch(err => console.error('[SmartHub Import] Auto-sync trigger failed:', err.message));
+
+    console.log('[SmartHub Import] Session saved. Auto-sync triggered.');
+
     return NextResponse.json(
       {
         success: true,
-        message: 'Session captured! Return to the dashboard and click "Sync Now".',
+        message: otpSaved
+          ? `✅ Session + OTP captured! Sync triggered automatically.`
+          : `✅ Session captured! Sync triggered. (OTP not found on this page — try visiting the returns page first)`,
         cookiesCount: parsedCookies.length,
         localStorageKeys: Object.keys(ls).length,
+        otpCaptured: otpSaved,
       },
       { headers: CORS_HEADERS }
     );
