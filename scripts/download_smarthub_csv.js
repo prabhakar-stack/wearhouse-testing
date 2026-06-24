@@ -2,10 +2,32 @@ import 'dotenv/config';
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
+});
 
 const COOKIE_PATH = path.join(process.cwd(), 'scripts', 'bot_state', 'smarthub_auth.json');
 const TARGET_URL = process.env.AMAZON_SMARTHUB_URL || 'https://smarthub.amazon.in/returns';
 const DOWNLOAD_DIR = process.env.AMAZON_SMARTHUB_DOWNLOAD_DIR || './uploads';
+
+async function saveErrorScreenshot(page, errorMsg) {
+  try {
+    console.log('Uploading error screenshot to database...');
+    const buffer = await page.screenshot({ type: 'png' });
+    const base64 = buffer.toString('base64');
+    
+    await prisma.systemConfig.upsert({
+      where: { key: 'smarthub_error_screenshot' },
+      update: { value: JSON.stringify({ image: base64, timestamp: new Date().toISOString(), error: errorMsg }) },
+      create: { key: 'smarthub_error_screenshot', value: JSON.stringify({ image: base64, timestamp: new Date().toISOString(), error: errorMsg }) },
+    });
+    console.log('✅ Error screenshot uploaded to database successfully.');
+  } catch (dbErr) {
+    console.error('❌ Failed to upload screenshot to database:', dbErr.message);
+  }
+}
 
 async function main() {
   const headed = process.argv.includes('--headed');
@@ -197,7 +219,9 @@ async function main() {
     console.error(`❌ Dashboard iframe automation failed: ${err.message}`);
     console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
     await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
+    await saveErrorScreenshot(page, `Dashboard iframe automation failed: ${err.message}`);
     await browser.close();
+    await prisma.$disconnect();
     process.exit(1);
   }
 
@@ -213,14 +237,17 @@ async function main() {
     console.error('❌ Error during file download:', downloadErr.message);
     console.log('Taking a screenshot for troubleshooting: scripts/bot_state/error_screenshot.png');
     await page.screenshot({ path: path.join(process.cwd(), 'scripts', 'bot_state', 'error_screenshot.png') });
+    await saveErrorScreenshot(page, `Error during file download: ${downloadErr.message}`);
   }
 
   console.log('Closing browser...');
   await browser.close();
+  await prisma.$disconnect();
   console.log('Finished.');
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error('❌ Fatal error in script:', err);
+  await prisma.$disconnect().catch(() => {});
   process.exit(1);
 });
