@@ -105,10 +105,17 @@ export async function POST(req: Request) {
     const storageStateJson = JSON.stringify(storageState, null, 2);
     const encoded = Buffer.from(storageStateJson).toString('base64');
 
-    // ── 4. Write to filesystem ────────────────────────────────────────────────
-    const dir = path.dirname(COOKIE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(COOKIE_PATH, storageStateJson, 'utf8');
+    // ── 4. Write to filesystem (only if not on Vercel) ─────────────────────────
+    const isVercel = process.env.VERCEL === '1';
+    if (!isVercel) {
+      try {
+        const dir = path.dirname(COOKIE_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(COOKIE_PATH, storageStateJson, 'utf8');
+      } catch (err: any) {
+        console.warn(`[SmartHub Import] Failed to write cookie path to filesystem (non-fatal): ${err.message}`);
+      }
+    }
 
     // ── 5. Persist session to SystemConfig ────────────────────────────────────
     await (prisma as any).systemConfig.upsert({
@@ -123,14 +130,20 @@ export async function POST(req: Request) {
       const otp = otpFromBookmarklet.trim();
       const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-      // Also write to uploads/latest_otp.json for the push script
-      const uploadsDir = path.join(process.cwd(), 'uploads');
-      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(uploadsDir, 'latest_otp.json'),
-        JSON.stringify({ otp, timestamp: new Date().toISOString(), date: today }, null, 2),
-        'utf8'
-      );
+      // Also write to uploads/latest_otp.json for the push script (only if not on Vercel)
+      if (!isVercel) {
+        try {
+          const uploadsDir = path.join(process.cwd(), 'uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          fs.writeFileSync(
+            path.join(uploadsDir, 'latest_otp.json'),
+            JSON.stringify({ otp, timestamp: new Date().toISOString(), date: today }, null, 2),
+            'utf8'
+          );
+        } catch (err: any) {
+          console.warn(`[SmartHub Import] Failed to write OTP to filesystem (non-fatal): ${err.message}`);
+        }
+      }
 
       // Also store in SystemConfig for visibility in the UI
       await (prisma as any).systemConfig.upsert({
