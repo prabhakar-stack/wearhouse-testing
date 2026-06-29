@@ -1303,9 +1303,17 @@ async function startServer() {
         
         try {
           const result = await pool.query(`
-            SELECT c.*, s.status AS db_status, s."claimId" AS db_claim_id, s.bot_log_reason 
-            FROM "claims_all" c 
+            SELECT
+              c.*,
+              s.status AS db_status,
+              s."claimId" AS db_claim_id,
+              s.bot_log_reason,
+              COALESCE(ri.sku, c.sku) AS sku,
+              COALESCE(ri.fnsku, c.fnsku) AS fnsku,
+              COALESCE(ri."product-name", c."productName") AS "productName"
+            FROM "claims_all" c
             LEFT JOIN "claims_status" s ON (c."trackingId" IS NOT NULL AND c."trackingId" != '' AND c."trackingId" = s."trackingId") OR ((c."trackingId" IS NULL OR c."trackingId" = '') AND c."orderId" = s."orderId")
+            LEFT JOIN "ReturnItem" ri ON c.lpn = ri.lpn
           `);
           rawRows = result.rows;
         } catch (error: any) {
@@ -1374,6 +1382,7 @@ async function startServer() {
           processedMap[key] = {
             ...data,
             qty: rowQty,
+            lpns: data.lpn ? [data.lpn] : [],
             uniqueSkus: [{
               sku: data.sku || '',
               fnsku: data.fnsku || '',
@@ -1384,6 +1393,9 @@ async function startServer() {
         } else {
           processedMap[key].qty += rowQty;
           processedMap[key].items.push(data);
+          if (data.lpn && !processedMap[key].lpns.includes(data.lpn)) {
+            processedMap[key].lpns.push(data.lpn);
+          }
           if (data.sku && !processedMap[key].uniqueSkus.some((s: any) => s.sku === data.sku)) {
             processedMap[key].uniqueSkus.push({
               sku: data.sku || '',
@@ -1887,9 +1899,13 @@ async function startServer() {
             s.status AS claims_status_status,
             s."claimId" AS "claimId",
             s.bot_log_reason,
+            COALESCE(ri.sku, c.sku) AS sku,
+            COALESCE(ri.fnsku, c.fnsku) AS fnsku,
+            COALESCE(ri."product-name", c."productName") AS "productName",
             COALESCE(c."driveLink", 'https://drive.google.com/embeddedfolderview?id=1xyz') as "driveLink"
           FROM "claims_all" c
           LEFT JOIN "claims_status" s ON (c."trackingId" IS NOT NULL AND c."trackingId" != '' AND c."trackingId" = s."trackingId") OR ((c."trackingId" IS NULL OR c."trackingId" = '') AND c."orderId" = s."orderId")
+          LEFT JOIN "ReturnItem" ri ON c.lpn = ri.lpn
           WHERE LOWER(s.status) = 'rejected' OR LOWER(c.status) = 'rejected'
         `;
         const result = await db.query(query);
