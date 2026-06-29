@@ -332,6 +332,7 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const [rotationState, setRotationState] = useState<RotationState | null>(null);
 
   const canvasContainerRef = React.useRef<HTMLDivElement>(null);
+  const browserExitGuard = React.useRef(false);
 
   const activeLpnRef = React.useRef(activeLpn);
   const annotationsRef = React.useRef<any[]>([]);
@@ -406,6 +407,36 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const setLeftLocalImage = (img: string | null) => patchLpnState({ leftLocalImage: img });
   const setRightDriveImage = (img: string | null) => patchLpnState({ rightDriveImage: img });
   const setMergedImage = (img: string | null) => patchLpnState({ image: img });
+
+  // Browser back / tab-close guard — fires partial-save + session release without waiting for the button
+  React.useEffect(() => {
+    browserExitGuard.current = false;
+    window.history.pushState({ imageGenWorkspace: true }, '');
+
+    const beacon = (url: string) =>
+      navigator.sendBeacon(url, new Blob([JSON.stringify({ trackingId })], { type: 'application/json' }));
+
+    const handlePopState = () => {
+      if (browserExitGuard.current) return;
+      browserExitGuard.current = true;
+      beacon('/api/claims/partial-save');
+      beacon('/api/claims/release-session');
+      onClose('partial');
+    };
+
+    const handleBeforeUnload = () => {
+      if (browserExitGuard.current) return;
+      beacon('/api/claims/partial-save');
+      beacon('/api/claims/release-session');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [trackingId, onClose]);
 
   // Keyboard support
   React.useEffect(() => {
@@ -756,6 +787,7 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const handleNextOrFinish = async () => {
     await handleSaveCurrentLpn();
     if (isFinalLpnLoop) {
+      browserExitGuard.current = true;
       onClose('complete');
     } else {
       const next = unsavedOtherLpns[0];
@@ -787,7 +819,7 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => onClose('partial')}
+            onClick={() => { browserExitGuard.current = true; onClose('partial'); }}
             className="flex items-center gap-2 text-[11px] font-extrabold uppercase px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-slate-700 shadow-sm transition-all hover:scale-105 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 text-[#FF6700]" />
