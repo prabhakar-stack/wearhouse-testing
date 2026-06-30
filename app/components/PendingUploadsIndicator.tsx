@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useCallback, useState } from "react";
 import {
   AlertCircle,
   CheckCircle,
@@ -55,6 +55,11 @@ export default function PendingUploadsIndicator({
   const [fileStates, setFileStates] = useState<Record<string, FileUploadState>>({});
   const [isOpen, setIsOpen] = useState(false);
   const [overallStatus, setOverallStatus] = useState<"idle" | "uploading">("idle");
+  // Remote-retry toast shown when a super-access command fires the retry
+  const [remoteToast, setRemoteToast] = useState<string | null>(null);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isRetryingRef = useRef(false); // guard against concurrent remote retries
+  const snapshotTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch pending uploads from IndexedDB
   const fetchUploads = async () => {
@@ -109,6 +114,39 @@ export default function PendingUploadsIndicator({
     }
   };
 
+  // ── Snapshot sync — report pending upload metadata to server (no blobs) ──────
+  // Super-admin's RemoteRetryPanel reads this snapshot to display what's stuck.
+  const syncSnapshotToServer = async (currentGroups: GroupedUpload[], currentUploads: PendingUpload[]) => {
+    const userId = typeof localStorage !== "undefined" ? localStorage.getItem("userId") : null;
+    if (!userId) return;
+    try {
+      const payload = currentUploads.length === 0
+        ? []
+        : currentGroups.map((g) => ({
+            orderId: g.orderId,
+            type: g.type,
+            status: g.status,
+            error: g.error,
+            files: g.files.map((f) => ({
+              id: f.id,
+              name: f.name,
+              mimeType: f.mimeType,
+              sizeMb: parseFloat((f.blob.size / 1024 / 1024).toFixed(2)),
+              status: f.status,
+              error: f.error,
+              lpn: f.lpn,
+            })),
+          }));
+      await fetch("/api/inspector/pending-uploads-snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        body: JSON.stringify({ uploads: payload }),
+      });
+    } catch {
+      // Silent — snapshot sync failure should never block the user
+    }
+  };
+
   useEffect(() => {
     requestAnimationFrame(() => {
       fetchUploads();
@@ -123,7 +161,115 @@ export default function PendingUploadsIndicator({
     };
   }, []);
 
-  if (uploads.length === 0) return null;
+  // ── Snapshot sync interval — every 30s while uploads exist, clears when empty ─
+  useEffect(() => {
+    // Always sync immediately when upload count changes
+    syncSnapshotToServer(grouped, uploads);
+
+    if (uploads.length === 0) {
+      // Clear interval when nothing pending
+      if (snapshotTimerRef.current) {
+        clearInterval(snapshotTimerRef.current);
+        snapshotTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (!snapshotTimerRef.current) {
+      snapshotTimerRef.current = setInterval(() => {
+        syncSnapshotToServer(grouped, uploads);
+      }, 30_000);
+    }
+
+    return () => {
+      if (snapshotTimerRef.current) {
+        clearInterval(snapshotTimerRef.current);
+        snapshotTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploads.length, grouped]);
+
+  // ── Remote retry polling ───────────────────────────────────────────────────
+  // Polls every 5 s only while there are pending uploads in IndexedDB.
+  // When a SUPER_ACCESS command arrives, fires handleRetryAll() automatically.
+
+  // Ref so the poll closure can call handleRetryGroup without capturing a stale
+  // value — handleRetryGroup itself is declared later in the file (hoisting of
+  // const is not possible), so we gate the call through this ref.
+  const handleRetryGroupRef = useRef<((group: GroupedUpload) => Promise<void>) | null>(null);
+
+  const handleRetryAllRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => {
+    // Keep the ref current so the poll closure always calls the latest version
+    handleRetryAllRef.current = async () => {
+      if (isRetryingRef.current) return;
+      isRetryingRef.current = true;
+      setOverallStatus("uploading");
+      const activeGroups = grouped.filter((g) => g.status !== "success");
+      for (const group of activeGroups) {
+        await handleRetryGroupRef.current?.(group);
+      }
+      setOverallStatus("idle");
+      isRetryingRef.current = false;
+    };
+  });
+
+  useEffect(() => {
+    if (uploads.length === 0) {
+      // No pending uploads — no point polling
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+      return;
+    }
+
+    const inspectorId =
+      typeof localStorage !== "undefined" ? localStorage.getItem("userId") : null;
+    if (!inspectorId) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/inspector/pending-retry-command", {
+          headers: { "x-user-id": inspectorId },
+        });
+        if (!res.ok) return;
+        const { command } = await res.json();
+        if (!command) return;
+
+        // A command arrived — show toast, fire retry
+        const toastMsg =
+          command.note
+            ? `🔁 Admin retry: ${command.note}`
+            : "🔁 Admin triggered upload retry";
+        setRemoteToast(toastMsg);
+        setTimeout(() => setRemoteToast(null), 6000);
+
+        // Fire the retry
+        await handleRetryAllRef.current?.();
+
+        // Mark DONE on the server
+        await fetch("/api/admin/upload-retry-command", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commandId: command.id, status: "DONE" }),
+        }).catch(() => {});
+      } catch {
+        // Poll errors are silent — retry on next interval
+      }
+    };
+
+    if (!pollTimerRef.current) {
+      poll(); // immediate first check
+      pollTimerRef.current = setInterval(poll, 5000);
+    }
+
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [uploads.length]); // re-evaluate whenever pending count changes
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -531,6 +677,10 @@ export default function PendingUploadsIndicator({
     }
   };
 
+  // Keep handleRetryGroupRef pointing at the latest handleRetryGroup so the
+  // handleRetryAllRef effect can call it via the ref.
+  useEffect(() => { handleRetryGroupRef.current = handleRetryGroup; });
+
   const handleRetryAll = async () => {
     setOverallStatus("uploading");
     const activeGroups = grouped.filter((g) => g.status !== "success");
@@ -580,6 +730,9 @@ export default function PendingUploadsIndicator({
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
+  // Guard: nothing to render when there are no pending uploads
+  if (uploads.length === 0) return null;
+
   return (
     <>
       {/* Floating Status Indicator Pill */}
@@ -595,6 +748,14 @@ export default function PendingUploadsIndicator({
           {t.badgeText} ({uploads.length})
         </span>
       </button>
+
+      {/* Remote-retry toast — shown when a super-access admin triggers retry remotely */}
+      {remoteToast && (
+        <div className="fixed bottom-20 right-6 z-50 bg-indigo-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 border border-indigo-600 animate-in slide-in-from-bottom-4 duration-300 max-w-xs">
+          <span className="text-base">🔁</span>
+          <span className="leading-snug">{remoteToast}</span>
+        </div>
+      )}
 
       {/* Modal Overlay */}
       {isOpen && (

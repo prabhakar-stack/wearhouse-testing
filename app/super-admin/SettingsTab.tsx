@@ -260,6 +260,7 @@ function SmartHubSection() {
 
   useEffect(() => { fetchStatusRef.current = fetchStatus; });
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchStatus();
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps

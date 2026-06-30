@@ -529,3 +529,32 @@ model DeliveryOtp {
   @@map("DeliveryOtp")
 }
 
+// ── Remote Upload Retry Command ───────────────────────────────────────────────
+// Created by SUPER_ACCESS when they want to trigger a pending-upload retry
+// on an inspector's browser. The inspector browser polls for PENDING commands
+// and fires the retry automatically. No relations to existing tables.
+model UploadRetryCommand {
+  id          String   @id @default(cuid())
+  inspectorId String   // target inspector's user ID
+  issuedById  String   // super-access user ID who issued the command
+  manifestId  String?  // optional — for context / display only
+  status      String   @default("PENDING") // PENDING | ACKNOWLEDGED | DONE | EXPIRED
+  note        String?  // optional admin note shown to inspector
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime // auto-expire after 2 minutes
+
+  @@map("UploadRetryCommand")
+}
+
+// ── Pending Upload Snapshot ────────────────────────────────────────────────────
+// Inspector's browser periodically syncs metadata (no blobs) of its local
+// IndexedDB pending uploads so that SUPER_ACCESS can see what is stuck and
+// from which tracking IDs, without needing to access the inspector's device.
+model PendingUploadSnapshot {
+  id          String   @id @default(cuid())
+  inspectorId String   @unique  // one live record per inspector — upserted
+  uploads     Json     // GroupedUpload[] metadata: orderId, type, files[{name,mimeType,status,error}]
+  updatedAt   DateTime @updatedAt
+
+  @@map("PendingUploadSnapshot")
+}

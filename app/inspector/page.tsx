@@ -2649,6 +2649,9 @@ function InspectTab({
 
   // ── UNIFIED BACK NAVIGATION ──────────────────────────────────────────────────
   const handleBack = () => {
+    // Phase 2, Step 2+: LPN already confirmed — back navigation is locked to prevent data inconsistency.
+    if (phase === "ITEM_INSPECTION" && itemStep >= 2) return;
+
     if (phase === "ITEM_INSPECTION") {
       if (itemStep > 1) {
         setItemStep((prev) => prev - 1);
@@ -3525,6 +3528,12 @@ function InspectTab({
                     >
                       <AlertTriangle size={14} /> <span>{lang === 'hi' ? 'कोई आइटम शेष नहीं' : 'No Item Left'}</span>
                     </button>
+                  ) : (phase === "ITEM_INSPECTION" && itemStep >= 2) ? (
+                    // Phase 2, Step 2+: LPN confirmed — back navigation is locked
+                    <div className="w-full h-full bg-slate-100 border-2 border-slate-200 text-slate-400 rounded-xl font-extrabold uppercase tracking-widest text-[10px] flex items-center justify-center space-x-1.5 cursor-not-allowed select-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      <span>{lang === 'hi' ? 'लॉक' : 'Locked'}</span>
+                    </div>
                   ) : (
                     <button
                       onClick={handleBack}

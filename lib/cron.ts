@@ -1233,9 +1233,9 @@ export async function runEscalationsJob() {
     const etaDate = snap?.scheduledDelivery ? new Date(snap.scheduledDelivery) : null;
     const alert = await createAlertIfNew({
       level: "L4",
-      type: "GHOST_DELIVERY",
-      title: `Ghost Delivery — Courier Says Delivered`,
-      description: `Package ${ghost.trackingId} expected ${etaDate ? etaDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Unknown"} has not been scanned at the warehouse after 48+ hours. Possible missing delivery.`,
+      type: "GHOST_DELIVERY_T1_48H",
+      title: `Ghost Delivery — 48h+ Unaccounted Package`,
+      description: `Package ${ghost.trackingId} was expected for delivery ${etaDate ? `on ${etaDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}` : "over 48 hours ago"} but has never been scanned at the warehouse. Courier shows it delivered. Immediate escalation and potential legal action required.`,
       manifestId: ghost.id,
       targetUserIds: await resolveTargetUserIds(["L4"]),
     });

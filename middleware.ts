@@ -8,9 +8,6 @@ const JWT_SECRET =
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const JWT_SECRET_CONFIGURED = !!process.env.JWT_SECRET;
 
-// ─── Role-Based Access Control Map ───────────────────────────────────────────
-// Maps a URL path prefix → set of roles allowed to access it.
-// SUPER_ACCESS can access everything (checked separately).
 const ROUTE_ROLE_MAP: Record<string, string[]> = {
   "/super-admin": ["SUPER_ACCESS"],
   "/admin":       ["SUPER_ACCESS", "ADMIN"],
@@ -22,9 +19,6 @@ const ROUTE_ROLE_MAP: Record<string, string[]> = {
 };
 
 export async function middleware(request: NextRequest) {
-  // Fail-fast in production if JWT_SECRET is not configured.
-  // This prevents a misconfigured deployment from silently accepting any token
-  // signed with the hardcoded fallback secret.
   if (IS_PRODUCTION && !JWT_SECRET_CONFIGURED) {
     console.error(
       "[SECURITY CRITICAL] JWT_SECRET environment variable is not set. " +
@@ -39,22 +33,18 @@ export async function middleware(request: NextRequest) {
   const session = request.cookies.get("session")?.value;
   const { pathname } = request.nextUrl;
 
-  // Unprotected routes
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/product/status") ||
-    pathname.startsWith("/api/health") || // Health check — no session needed for uptime monitors
-    pathname.startsWith("/api/cron") || // Cron routes validate their own secret
-    pathname.startsWith("/api/otp/bridge") || // External OTP bridge validates its own secret
-    pathname.startsWith("/api/admin/smarthub-session/import") // Bookmarklet endpoint — validates its own one-time token
+    pathname.startsWith("/api/health") || 
+    pathname.startsWith("/api/cron") || 
+    pathname.startsWith("/api/otp/bridge") || 
+    pathname.startsWith("/api/admin/smarthub-session/import")
   ) {
     return NextResponse.next();
   }
 
-  // Seed route: allowed in development only.
-  // In production this returns 403 before it reaches the route handler,
-  // preventing fake alert injection into the live system.
   if (pathname.startsWith("/api/alerts/seed")) {
     if (IS_PRODUCTION) {
       return NextResponse.json(
@@ -65,8 +55,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-
-  // Enforce session presence
   if (!session) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -75,24 +63,19 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Verify custom HTTP-only JWT
     const secret = new TextEncoder().encode(JWT_SECRET);
     const { payload } = await jwtVerify(session, secret);
     const userRole = payload.role as string;
-
-    // ── Role-Based Gateway ──────────────────────────────────────────────────
-    // SUPER_ACCESS bypasses all role checks (full access).
+    
     if (userRole !== "SUPER_ACCESS") {
       for (const [routePrefix, allowedRoles] of Object.entries(ROUTE_ROLE_MAP)) {
         if (pathname.startsWith(routePrefix)) {
           if (!allowedRoles.includes(userRole)) {
-            // Page route: redirect to login with an "unauthorized" hint
             if (!pathname.startsWith("/api/")) {
               const loginUrl = new URL("/login", request.url);
               loginUrl.searchParams.set("error", "unauthorized");
               return NextResponse.redirect(loginUrl);
             }
-            // API route: return 403
             return NextResponse.json(
               { error: "Forbidden: insufficient role" },
               { status: 403 }

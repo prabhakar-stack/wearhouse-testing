@@ -160,6 +160,24 @@ export const ALERT_RULES: AlertRule[] = [
       { en: 'Follow up with the courier for reimbursement against the delivery.', hi: 'डिलीवरी के बदले रिम्बर्समेंट के लिए कूरियर से फॉलो अप करें।' },
     ],
   },
+  {
+    type: 'GHOST_DELIVERY_T1_48H',
+    case: 'Marked delivered incorrectly (Type 1)',
+    subCase: 'No logs of scan by Receiver + ETA was 48+ hours ago + Package still EXPECTED or IN_TRANSIT — possible missing delivery',
+    level: 'L4',
+    title: 'Ghost Delivery — 48h+ Unaccounted Package',
+    description: 'Package {trackingId} was expected for delivery over 48 hours ago but has never been scanned at the warehouse. Courier shows it delivered. Immediate escalation and potential legal action required.',
+    targetRoles: ['L3', 'L4'],
+    channels: ['dashboard', 'email_existing_thread', 'hangout'],
+    thresholdHours: 48,
+    sopSteps: [
+      { en: 'Verify with the courier that the package was dispatched and confirm the delivery address.', hi: 'कूरियर से पुष्टि करें कि पैकेज भेजा गया था और डिलीवरी पता सत्यापित करें।' },
+      { en: 'Review all CCTV/door camera footage at the warehouse entrance for the delivery window.', hi: 'डिलीवरी विंडो के लिए वेयरहाउस प्रवेश पर सभी CCTV/डोर कैमरा फुटेज देखें।' },
+      { en: 'Check if the package was accidentally delivered to a neighbouring unit or dock.', hi: 'जांचें कि क्या पैकेज गलती से किसी पड़ोसी यूनिट या डॉक में डिलीवर हुआ।' },
+      { en: 'If unresolved after 48h, file a formal police/courier theft complaint and notify legal team.', hi: '48 घंटे बाद भी अनसुलझा रहे तो औपचारिक पुलिस/कूरियर चोरी शिकायत दर्ज करें और कानूनी टीम को सूचित करें।' },
+      { en: 'Update manifest status to LOST_IN_TRANSIT and close all dependent alerts.', hi: 'मैनिफेस्ट स्टेटस LOST_IN_TRANSIT अपडेट करें और सभी संबंधित अलर्ट बंद करें।' },
+    ],
+  },
 
   // ── 3. MARKED DELIVERED INCORRECTLY — TYPE 2 (QC failed by Receiver) ───────
 

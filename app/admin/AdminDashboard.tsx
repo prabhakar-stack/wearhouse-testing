@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, ChevronLeft, LogOut, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, Box, TrendingUp, Calendar, Trash2 } from 'lucide-react';
+import { Users, PackageSearch, FileWarning, Pencil, Search, Clock, Save, X, ExternalLink, Activity, Bell, ChevronDown, ChevronRight, ChevronLeft, LogOut, AlertTriangle, ShieldAlert, Info, CheckCircle2, Menu, User, Shield, Package, Box, TrendingUp, Calendar, Trash2, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import LanguagePreference from '@/app/components/LanguagePreference';
 import { getStoredLanguage, translateInstruction, PreferredLanguage } from '@/lib/i18n';
 import LogoutConfirmModal from '@/app/components/LogoutConfirmModal';
+import LogsTab from './LogsTab';
 
 const HINDI_ALERT_DESCRIPTIONS: Record<string, string> = {
   DELIVERY_ETA_BREACH_48H: "पैकेज {trackingId} अपनी अपेक्षित डिलीवरी तिथि (ऑर्डर तिथि + 5 दिन) से 48 घंटे अधिक विलंबित है। कूरियर के साथ तुरंत फॉलो-अप की आवश्यकता है।",
@@ -160,7 +161,7 @@ function ProfileModal({ user, onClose, preferredLanguage }: { user: { name: stri
 
 export default function AdminDashboard({ role, name, email, userId }: { role: string; name: string; email: string; userId: string }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc'>('alerts');
+  const [activeTab, setActiveTab] = useState<'users' | 'claims' | 'alerts' | 'triage' | 'smart-filing' | 'recovery' | 'qc' | 'logs'>('alerts');
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>("en");
   const lang = preferredLanguage === 'hi' ? 'hi' : 'en';
   const t = (text: string) => translateInstruction(text, preferredLanguage);
@@ -514,6 +515,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
           {canAccessQC && (
             <TabButton id="qc" icon={<CheckCircle2 size={14} />} label="QC Audit" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
           )}
+          <TabButton id="logs" icon={<ClipboardList size={14} />} label="Logs" activeTab={activeTab} setActive={(tab: any) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} isMinimized={isSidebarMinimized} />
         </nav>
 
         {/* Sidebar Footer */}
@@ -611,6 +613,7 @@ export default function AdminDashboard({ role, name, email, userId }: { role: st
             {activeTab === 'users'    && <UsersTab role={role} currentUserId={userId} />}
             {activeTab === 'alerts'   && <AlertsTab userRole={role} preferredLanguage={preferredLanguage} />}
             {activeTab === 'claims'   && <ClaimsTab />}
+            {activeTab === 'logs'     && <LogsTab role={role} />}
             {(() => {
               const claimsUrl = process.env.NEXT_PUBLIC_CLAIMS_PROCESS_URL || "http://localhost:5000";
               return (
