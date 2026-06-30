@@ -552,19 +552,24 @@ async function getClaimsForTrackingId(trackingId: string, orderId: string): Prom
 
           const filters = [];
           const params = [];
-          
-           if (tid && columns.includes('trackingid')) {
+
+          if (tid && columns.includes('trackingid')) {
             params.push(tid);
-            filters.push(`"trackingId" ILIKE $${params.length}`);
+            filters.push(`c."trackingId" ILIKE $${params.length}`);
           }
           if (oid && columns.includes('orderid')) {
             params.push(oid);
-            filters.push(`"orderId" ILIKE $${params.length}`);
+            filters.push(`c."orderId" ILIKE $${params.length}`);
           }
 
           if (filters.length === 0) continue;
 
-          const query = `SELECT * FROM ${table} WHERE ${filters.join(' OR ')}`;
+          const query = `
+            SELECT c.*, e."claimReason", e."claimSubReason"
+            FROM ${table} c
+            LEFT JOIN "Evidence" e ON c.lpn = e.lpn
+            WHERE ${filters.join(' OR ')}
+          `;
           const result = await tempPool.query(query, params);
           rows = result.rows.map(toCamelCase);
           if (rows.length > 0) {
