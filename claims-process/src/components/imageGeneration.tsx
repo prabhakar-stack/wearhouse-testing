@@ -25,6 +25,66 @@ export interface ImageGenerationWorkspaceProps {
   onClose: (exitType: 'complete' | 'partial') => void;
 }
 
+// ── Disposition Mapping Constants ──────────────────────────────────────────────
+const DISPOSITION_CATEGORIES = [
+  { value: 'wrong_fake_damaged_used', label: 'Wrong / Fake / Damaged / Used' },
+  { value: 'defective', label: 'Defective' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+const DISPOSITION_SUB_TYPES = [
+  'Wrong Item Received',
+  'Fake Item Received',
+  'Damaged Item Received',
+  'Broken Item Received',
+  'Used / Scratched Item Received',
+  'Parts Missing',
+] as const;
+
+// Client-side image compression for files exceeding maxSizeBytes
+const compressImageIfNeeded = (file: File, maxSizeBytes = 10_000_000): Promise<string> => {
+  return new Promise((resolve) => {
+    if (file.size <= maxSizeBytes) {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_DIM = 2000;
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, w, h);
+      let quality = 0.7;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length * 0.75 > maxSizeBytes && quality > 0.3) {
+        quality -= 0.1;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(result);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    };
+    img.src = url;
+  });
+};
+
 const hexToRgba = (hex: string, alpha: number) => {
   if (!hex || hex === 'transparent') return 'rgba(0,0,0,0)';
   let c = hex.substring(1);
@@ -269,6 +329,16 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const [lpnSaved, setLpnSaved] = useState<Record<string, boolean>>({});
 
   const [adderText, setAdderText] = useState('DAMAGE LOCATION');
+  const [adderTextSetByUser, setAdderTextSetByUser] = useState(false);
+
+  // Disposition selector state
+  const [dispositionCategory, setDispositionCategory] = useState('');
+  const [dispositionSubType, setDispositionSubType] = useState('');
+  const [dispositionOtherText, setDispositionOtherText] = useState('');
+  const [dispositionImageLoading, setDispositionImageLoading] = useState(false);
+  const [dispositionImageSource, setDispositionImageSource] = useState<'auto' | 'manual' | null>(null);
+  const [dispositionUploadStatus, setDispositionUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -437,6 +507,123 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [trackingId, onClose]);
+
+  // ── Disposition auto-load effect ──────────────────────────────────────────────
+  React.useEffect(() => {
+    if (!dispositionCategory || dispositionCategory === 'other') return;
+
+    const sku = (matchingClaims.find(c => c.lpn === activeLpn) || sampleClaim)?.sku;
+    if (!sku) return;
+
+    const currentLpn = activeLpnRef.current;
+    setDispositionImageLoading(true);
+    setDispositionImageSource(null);
+    setDispositionUploadStatus('idle');
+
+    const params = new URLSearchParams({ sku, category: dispositionCategory });
+    fetch(`/api/disposition-image?${params}`)
+      .then(r => r.json())
+      .then(async (data) => {
+        if (activeLpnRef.current !== currentLpn) return;
+        if (data.found && data.driveFileId) {
+          let fileUrl = `/api/drive/file/${data.driveFileId}?`;
+          const authParams: string[] = [];
+          if (accessToken) authParams.push(`accessToken=${encodeURIComponent(accessToken)}`);
+          if (googleClientId) authParams.push(`clientId=${encodeURIComponent(googleClientId)}`);
+          if (googleClientSecret) authParams.push(`clientSecret=${encodeURIComponent(googleClientSecret)}`);
+          if (googleRefreshToken) authParams.push(`refreshToken=${encodeURIComponent(googleRefreshToken)}`);
+          fileUrl += authParams.join('&');
+
+          try {
+            const imgRes = await fetch(fileUrl);
+            if (!imgRes.ok) throw new Error('Drive fetch failed');
+            const blob = await imgRes.blob();
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (activeLpnRef.current !== currentLpn) return;
+              const dataUrl = reader.result as string;
+              patchLpnState({ leftLocalImage: dataUrl, image: null, isMerged: false, annotations: [] });
+              setDispositionImageSource('auto');
+              setDispositionImageLoading(false);
+            };
+            reader.readAsDataURL(blob);
+          } catch {
+            if (activeLpnRef.current !== currentLpn) return;
+            setDispositionImageLoading(false);
+          }
+        } else {
+          setDispositionImageLoading(false);
+        }
+      })
+      .catch(() => {
+        if (activeLpnRef.current !== currentLpn) return;
+        setDispositionImageLoading(false);
+      });
+  }, [dispositionCategory, activeLpn]);
+
+  // Update adderText when disposition sub-type changes
+  React.useEffect(() => {
+    if (adderTextSetByUser) return;
+    if (dispositionCategory === 'defective') {
+      setAdderText('Defective Item');
+    } else if (dispositionCategory === 'wrong_fake_damaged_used' && dispositionSubType) {
+      setAdderText(dispositionSubType);
+    }
+  }, [dispositionCategory, dispositionSubType, adderTextSetByUser]);
+
+  // Background upload of disposition reference image to Drive
+  const uploadDispositionImageInBackground = (imageDataUrl: string, sku: string, category: string) => {
+    setDispositionUploadStatus('uploading');
+    fetch('/api/disposition-image/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, category, imageData: imageDataUrl, uploadedBy: '' })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setDispositionUploadStatus('done');
+        } else {
+          setDispositionUploadStatus('error');
+        }
+      })
+      .catch(() => setDispositionUploadStatus('error'));
+  };
+
+  // Upload handler for disposition left slot (with compression + background Drive upload)
+  const handleDispositionLeftUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const dataUrl = await compressImageIfNeeded(file);
+    patchLpnState({ leftLocalImage: dataUrl, image: null, isMerged: false, annotations: [] });
+    setDispositionImageSource('manual');
+
+    if (dispositionCategory && dispositionCategory !== 'other') {
+      const sku = (matchingClaims.find(c => c.lpn === activeLpn) || sampleClaim)?.sku;
+      if (sku) {
+        uploadDispositionImageInBackground(dataUrl, sku, dispositionCategory);
+      }
+    }
+
+    if (dispositionCategory === 'other' && dispositionOtherText.trim()) {
+      const sku = (matchingClaims.find(c => c.lpn === activeLpn) || sampleClaim)?.sku;
+      if (sku) {
+        fetch('/api/disposition-image/log-other', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sku,
+            dispositionText: dispositionOtherText.trim(),
+            trackingId,
+            lpn: activeLpn,
+            recordedBy: ''
+          })
+        }).catch(() => {});
+      }
+    }
+  };
 
   // Keyboard support
   React.useEffect(() => {
@@ -711,6 +898,25 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
   const handleMerge = async () => {
     if (!leftLocalImage || !rightDriveImage) return;
     setIsMerging(true);
+
+    // Log "other" disposition if remarks were entered
+    if (dispositionCategory === 'other' && dispositionOtherText.trim()) {
+      const sku = (matchingClaims.find(c => c.lpn === activeLpn) || sampleClaim)?.sku;
+      if (sku) {
+        fetch('/api/disposition-image/log-other', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sku,
+            dispositionText: dispositionOtherText.trim(),
+            trackingId,
+            lpn: activeLpn,
+            recordedBy: ''
+          })
+        }).catch(() => {});
+      }
+    }
+
     try {
       const merged = await mergeImagesForComposition(leftLocalImage, rightDriveImage);
       setLpnStateMap(prev => {
@@ -1053,13 +1259,115 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
           {!isMerged ? (
             /* PRE-MERGE: dual upload containers + Merge button */
             <div className="flex flex-col gap-4">
+
+              {/* ─── DISPOSITION SELECTOR PANEL ─── */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <div className="text-[9px] font-black uppercase text-slate-500 font-mono mb-3 flex items-center gap-1.5">
+                  <Layers className="w-3 h-3" />
+                  SELECT DISPOSITION TYPE
+                </div>
+                <div className="flex flex-wrap items-end gap-4">
+                  {/* Dropdown 1: Category */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold text-slate-500 uppercase">Category</label>
+                    <select
+                      value={dispositionCategory}
+                      onChange={(e) => {
+                        setDispositionCategory(e.target.value);
+                        setDispositionSubType('');
+                        setDispositionOtherText('');
+                        setDispositionImageSource(null);
+                        setDispositionUploadStatus('idle');
+                      }}
+                      className="text-[11px] font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 min-w-[220px] focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    >
+                      <option value="">— Select —</option>
+                      {DISPOSITION_CATEGORIES.map(cat => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Dropdown 2: Sub-type (only for wrong_fake_damaged_used) */}
+                  {dispositionCategory === 'wrong_fake_damaged_used' && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Sub-type</label>
+                      <select
+                        value={dispositionSubType}
+                        onChange={(e) => setDispositionSubType(e.target.value)}
+                        className="text-[11px] font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 min-w-[220px] focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      >
+                        <option value="">— Select Sub-type —</option>
+                        {DISPOSITION_SUB_TYPES.map(st => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Free-text remarks for "Other" */}
+                  {dispositionCategory === 'other' && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase">Remarks</label>
+                      <input
+                        type="text"
+                        value={dispositionOtherText}
+                        onChange={(e) => setDispositionOtherText(e.target.value)}
+                        placeholder="Describe the disposition type..."
+                        className="text-[11px] font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 min-w-[260px] focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Status indicators */}
+                {dispositionImageLoading && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-indigo-600 font-bold">
+                    <Clock className="w-3 h-3 animate-spin" />
+                    Loading reference image from Drive...
+                  </div>
+                )}
+                {!dispositionImageLoading && dispositionCategory && dispositionCategory !== 'other' && !leftLocalImage && !dispositionImageSource && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-amber-600 font-bold">
+                    <AlertTriangle className="w-3 h-3" />
+                    No reference image found for this SKU. Upload one below — it will be saved for future use.
+                  </div>
+                )}
+                {dispositionImageSource === 'auto' && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-emerald-600 font-bold">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Reference image auto-loaded from Drive
+                  </div>
+                )}
+                {dispositionUploadStatus === 'uploading' && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-600 font-bold">
+                    <Clock className="w-3 h-3 animate-spin" />
+                    Saving reference to Drive (you can continue working)...
+                  </div>
+                )}
+                {dispositionUploadStatus === 'done' && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-emerald-600 font-bold">
+                    <Check className="w-3 h-3" />
+                    Reference image saved to Drive for future use
+                  </div>
+                )}
+                {dispositionUploadStatus === 'error' && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px] text-red-600 font-bold">
+                    <AlertTriangle className="w-3 h-3" />
+                    Failed to save to Drive — image is still usable locally
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-6">
 
                 {/* LEFT SLOT: Local file upload */}
                 <div className="flex flex-col gap-2">
                   <div className="text-[9px] font-black uppercase text-slate-500 font-mono flex items-center gap-1.5">
                     <Upload className="w-3 h-3" />
-                    L1 · ORIGINAL SENT CUBE — Local Upload
+                    {dispositionCategory && dispositionCategory !== 'other'
+                      ? 'L1 · REFERENCE IMAGE — Auto / Upload'
+                      : 'L1 · ORIGINAL SENT CUBE — Local Upload'}
                   </div>
                   <div className={cn(
                     'rounded-2xl border-2 border-dashed relative overflow-hidden flex flex-col items-center justify-center shadow-sm transition-all',
@@ -1076,33 +1384,46 @@ export default function ImageGenerationWorkspace({ trackingId, claims, onClose }
                           className="w-full h-full object-contain"
                         />
                         <div className="absolute top-3 left-3 bg-emerald-600 text-white text-[8px] font-black px-2 py-0.5 rounded font-mono uppercase tracking-widest">
-                          ✓ ORIGINAL SENT CUBE
+                          {dispositionImageSource === 'auto' ? '✓ REFERENCE (AUTO)' : dispositionImageSource === 'manual' ? '✓ REFERENCE (NEW)' : '✓ ORIGINAL SENT CUBE'}
                         </div>
                         <label className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/80 hover:bg-slate-900 text-white text-[9px] font-black uppercase px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all">
                           <Upload className="w-3 h-3" />
-                          Replace
-                          <input type="file" accept="image/*" className="hidden" onChange={handleLeftLocalUpload} />
+                          {dispositionCategory ? 'Change Reference Image' : 'Replace'}
+                          <input type="file" accept="image/*" className="hidden" onChange={dispositionCategory ? handleDispositionLeftUpload : handleLeftLocalUpload} />
                         </label>
                       </>
                     ) : (
                       <div className="flex flex-col items-center gap-4 p-6 text-center">
-                        <ImageIcon className="w-10 h-10 text-slate-400" />
-                        <div className="font-mono">
-                          <p className="text-[11px] font-black uppercase text-slate-800 tracking-wide">
-                            SKU: {currentClaimForLpn.sku || sampleClaim.sku || '—'}
-                          </p>
-                          <p className="text-[9px] text-slate-500 font-bold mt-0.5">
-                            FNSKU: {currentClaimForLpn.fnsku || sampleClaim.fnsku || '—'}
-                          </p>
-                        </div>
-                        <p className="text-[9px] text-slate-400 max-w-[180px] leading-relaxed font-medium">
-                          Upload the original cube photo from your local machine.
-                        </p>
-                        <label className="bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase px-5 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-sm">
-                          <Upload className="w-3.5 h-3.5" />
-                          Upload Local Image
-                          <input type="file" accept="image/*" className="hidden" onChange={handleLeftLocalUpload} />
-                        </label>
+                        {dispositionImageLoading ? (
+                          <>
+                            <Clock className="w-10 h-10 text-indigo-400 animate-spin" />
+                            <p className="text-[11px] font-black uppercase text-indigo-600 tracking-wide">
+                              Loading reference...
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <ImageIcon className="w-10 h-10 text-slate-400" />
+                            <div className="font-mono">
+                              <p className="text-[11px] font-black uppercase text-slate-800 tracking-wide">
+                                SKU: {currentClaimForLpn.sku || sampleClaim.sku || '—'}
+                              </p>
+                              <p className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                FNSKU: {currentClaimForLpn.fnsku || sampleClaim.fnsku || '—'}
+                              </p>
+                            </div>
+                            <p className="text-[9px] text-slate-400 max-w-[180px] leading-relaxed font-medium">
+                              {dispositionCategory && dispositionCategory !== 'other'
+                                ? 'No reference image on file. Upload one — it will be saved for future use.'
+                                : 'Upload the original cube photo from your local machine.'}
+                            </p>
+                            <label className="bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black uppercase px-5 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 transition-all shadow-sm">
+                              <Upload className="w-3.5 h-3.5" />
+                              Upload {dispositionCategory ? 'Reference' : 'Local'} Image
+                              <input type="file" accept="image/*" className="hidden" onChange={dispositionCategory ? handleDispositionLeftUpload : handleLeftLocalUpload} />
+                            </label>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

@@ -558,3 +558,36 @@ model PendingUploadSnapshot {
 
   @@map("PendingUploadSnapshot")
 }
+
+// ── Disposition Image Mapping ─────────────────────────────────────────────────
+// Maps SKU + disposition category to a reference image stored in Google Drive.
+// Used by claims specialists in the Image Generation Workspace to auto-load
+// the "original product" comparison image.
+model DispositionImage {
+  id          String   @id @default(uuid())
+  sku         String
+  category    String   // "wrong_fake_damaged_used" or "defective"
+  driveFileId String?
+  driveLink   String?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sku, category])
+  @@map("disposition_images")
+}
+
+// ── Disposition Other Log ─────────────────────────────────────────────────────
+// Audit trail for when a claims specialist selects "Other" disposition.
+// No image is stored; free-text is logged for admin review of patterns.
+model DispositionOtherLog {
+  id              String   @id @default(uuid())
+  sku             String
+  dispositionText String   @map("disposition_text")
+  trackingId      String?  @map("tracking_id")
+  lpn             String?
+  recordedBy      String?  @map("recorded_by")
+  createdAt       DateTime @default(now())
+
+  @@map("disposition_other_logs")
+}

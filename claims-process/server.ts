@@ -258,6 +258,32 @@ async function setupDatabaseSchema(db: pg.Pool) {
     `);
     const countRes = await db.query('SELECT COUNT(*) FROM "sample_recovery"');
 
+    // ── Disposition Image Mapping tables ──────────────────────────────────
+    console.log("Checking and setting up disposition_images and disposition_other_logs tables...");
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "disposition_images" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sku TEXT NOT NULL,
+        category TEXT NOT NULL,
+        "driveFileId" TEXT,
+        "driveLink" TEXT,
+        "uploadedBy" TEXT,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        CONSTRAINT "disposition_images_sku_category_unique" UNIQUE (sku, category)
+      );
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS "disposition_other_logs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sku TEXT NOT NULL,
+        disposition_text TEXT NOT NULL,
+        tracking_id TEXT,
+        lpn TEXT,
+        recorded_by TEXT,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT now()
+      );
+    `);
 
     await syncClaimsAllTable(db);
   } catch (err: any) {
@@ -2475,10 +2501,213 @@ async function startServer() {
     }
   });
 
+  // ── Disposition Image Mapping Routes ─────────────────────────────────────────
+
+  // 4. Lookup reference image for SKU + category
+  app.get("/api/disposition-image", async (req, res, next) => {
+    try {
+      const { sku, category } = req.query;
+      if (!sku || !category) {
+        return res.status(400).json({ error: "Missing sku or category" });
+      }
+
+      const pool = getDbPool();
+      if (!pool) return res.status(500).json({ error: "Database not available" });
+
+      const result = await pool.query(
+        `SELECT "driveFileId", "driveLink" FROM "disposition_images" WHERE sku = $1 AND category = $2`,
+        [sku, category]
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({ found: false, driveFileId: null, driveLink: null });
+      }
+
+      const row = result.rows[0];
+      return res.json({ found: true, driveFileId: row.driveFileId, driveLink: row.driveLink });
+    } catch (err) {
+      console.error("[Disposition Image] Lookup error:", err);
+      next(err);
+    }
+  });
+
+  // 5. Upload reference image to Drive and save mapping
+  app.post("/api/disposition-image/upload", async (req, res, next) => {
+    try {
+      const { sku, category, imageData, uploadedBy } = req.body;
+      if (!sku || !category || !imageData) {
+        return res.status(400).json({ error: "Missing sku, category, or imageData" });
+      }
+      if (category === "other") {
+        return res.status(400).json({ error: "Cannot store images for 'other' category" });
+      }
+
+      const pool = getDbPool();
+      if (!pool) return res.status(500).json({ error: "Database not available" });
+
+      let actualToken = "";
+      try {
+        actualToken = await resolveGoogleToken(req);
+      } catch (authErr: any) {
+        console.error("[Disposition Image] Google OAuth error:", authErr.message);
+        return res.status(401).json({ error: authErr.message });
+      }
+
+      // Resolve the parent folder for disposition references
+      const dispositionParentFolderId = process.env.GOOGLE_DRIVE_DISPOSITION_FOLDER_ID;
+      if (!dispositionParentFolderId) {
+        return res.status(500).json({ error: "GOOGLE_DRIVE_DISPOSITION_FOLDER_ID not configured" });
+      }
+
+      // Find or create SKU subfolder
+      const skuFolderName = sku.replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const findFolderQ = `'${dispositionParentFolderId}' in parents and name = '${skuFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+      const findFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(findFolderQ)}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+
+      const folderSearchRes = await fetch(findFolderUrl, {
+        headers: { "Authorization": `Bearer ${actualToken}` }
+      });
+      const folderSearchData: any = await folderSearchRes.json();
+      let skuFolderId: string;
+
+      if (folderSearchData.files && folderSearchData.files.length > 0) {
+        skuFolderId = folderSearchData.files[0].id;
+      } else {
+        // Create SKU subfolder
+        const createFolderRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${actualToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: skuFolderName,
+            mimeType: "application/vnd.google-apps.folder",
+            parents: [dispositionParentFolderId]
+          })
+        });
+        const createdFolder: any = await createFolderRes.json();
+        if (!createdFolder.id) {
+          return res.status(500).json({ error: "Failed to create SKU folder in Drive" });
+        }
+        skuFolderId = createdFolder.id;
+      }
+
+      // Delete existing file with same name if replacing
+      const filename = `${category}.jpg`;
+      const findFileQ = `'${skuFolderId}' in parents and name = '${filename}' and trashed = false`;
+      const findFileUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(findFileQ)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+
+      const fileSearchRes = await fetch(findFileUrl, {
+        headers: { "Authorization": `Bearer ${actualToken}` }
+      });
+      const fileSearchData: any = await fileSearchRes.json();
+
+      if (fileSearchData.files && fileSearchData.files.length > 0) {
+        for (const existingFile of fileSearchData.files) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${existingFile.id}?supportsAllDrives=true`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${actualToken}` }
+          });
+        }
+      }
+
+      // Upload new file
+      const base64Content = imageData.replace(/^data:image\/\w+;base64,/, "");
+      const metadata = {
+        name: filename,
+        parents: [skuFolderId],
+        mimeType: "image/jpeg"
+      };
+
+      const boundary = "disposition_upload_boundary";
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelimiter = `\r\n--${boundary}--`;
+
+      const requestPayload = Buffer.concat([
+        Buffer.from(delimiter + "Content-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(metadata)),
+        Buffer.from(delimiter + "Content-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n" + base64Content),
+        Buffer.from(closeDelimiter)
+      ]);
+
+      const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${actualToken}`,
+          "Content-Type": `multipart/related; boundary=${boundary}`
+        },
+        body: requestPayload
+      });
+
+      if (!uploadRes.ok) {
+        const errorDetail = await uploadRes.text();
+        console.error(`[Disposition Image] Drive upload error ${uploadRes.status}:`, errorDetail);
+        return res.status(uploadRes.status).json({ error: `Drive upload failed: ${errorDetail}` });
+      }
+
+      const uploadResult: any = await uploadRes.json();
+      const driveFileId = uploadResult.id;
+      const driveLink = `https://drive.google.com/file/d/${driveFileId}/view`;
+
+      // Make file publicly readable
+      await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?supportsAllDrives=true`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${actualToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ role: "reader", type: "anyone" })
+      });
+
+      // Upsert DB row
+      await pool.query(
+        `INSERT INTO "disposition_images" (id, sku, category, "driveFileId", "driveLink", "uploadedBy", "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())
+         ON CONFLICT (sku, category) DO UPDATE SET
+           "driveFileId" = EXCLUDED."driveFileId",
+           "driveLink" = EXCLUDED."driveLink",
+           "uploadedBy" = EXCLUDED."uploadedBy",
+           "updatedAt" = now()`,
+        [sku, category, driveFileId, driveLink, uploadedBy || null]
+      );
+
+      console.log(`[Disposition Image] Upload SUCCESS. SKU: ${sku}, Category: ${category}, FileId: ${driveFileId}`);
+      res.json({ success: true, driveFileId, driveLink });
+    } catch (err) {
+      console.error("[Disposition Image] Upload error:", err);
+      next(err);
+    }
+  });
+
+  // 6. Log "Other" disposition selection
+  app.post("/api/disposition-image/log-other", async (req, res, next) => {
+    try {
+      const { sku, dispositionText, trackingId, lpn, recordedBy } = req.body;
+      if (!sku || !dispositionText) {
+        return res.status(400).json({ error: "Missing sku or dispositionText" });
+      }
+
+      const pool = getDbPool();
+      if (!pool) return res.status(500).json({ error: "Database not available" });
+
+      await pool.query(
+        `INSERT INTO "disposition_other_logs" (id, sku, disposition_text, tracking_id, lpn, recorded_by, "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`,
+        [sku, dispositionText, trackingId || null, lpn || null, recordedBy || null]
+      );
+
+      console.log(`[Disposition Image] Logged 'Other' for SKU: ${sku}, Text: ${dispositionText}`);
+      res.json({ logged: true });
+    } catch (err) {
+      console.error("[Disposition Image] Log-other error:", err);
+      next(err);
+    }
+  });
+
   // API 404 Handler - MUST be before Vite/Static middleware
   // Ensures any /api missing route returns JSON, not HTML
   app.use("/api/*", (req, res) => {
-    res.status(404).json({ 
+    res.status(404).json({
       status: "Error", 
       message: `API Route not found: ${req.originalUrl}` 
     });
