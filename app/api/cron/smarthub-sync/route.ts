@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { prisma } from '@/lib/prisma';
+import { runSmarthubIngestJob } from '@/lib/smarthubIngest';
 
 export const runtime = 'nodejs';
 
@@ -184,9 +185,31 @@ export async function POST(req: Request) {
     const pushSecs = ((Date.now() - pushStart) / 1000).toFixed(1);
 
     await updateJob({
-      status: 'done',
-      message: 'Sync complete! Data pushed to Supabase.',
       logEntry: `✅ Data pushed to Supabase in ${pushSecs}s`,
+    });
+
+    // ── 7. Step 3 — Create Manifest records from B2C tracking IDs ──────────
+    await updateJob({
+      status: 'ingesting',
+      message: 'Creating manifests from B2C returns...',
+      logEntry: '⏳ Running B2C manifest ingest...',
+    });
+
+    let ingestResult = { created: 0, skipped: 0, errors: 0 };
+    try {
+      ingestResult = await runSmarthubIngestJob();
+      await updateJob({
+        logEntry: `✅ Ingest done — created: ${ingestResult.created}, skipped: ${ingestResult.skipped}, errors: ${ingestResult.errors}`,
+      });
+    } catch (ingestErr: any) {
+      await updateJob({
+        logEntry: `⚠️ Ingest failed (non-fatal): ${ingestErr.message}`,
+      });
+    }
+
+    await updateJob({
+      status: 'done',
+      message: `Sync complete! ${ingestResult.created} new manifests created.`,
       finishedAt: new Date().toISOString(),
     });
 
@@ -197,7 +220,11 @@ export async function POST(req: Request) {
       create: { jobKey: 'smarthub_sync', lastRunAt: new Date(), lastSuccessAt: new Date() },
     });
 
-    return NextResponse.json({ success: true, message: 'SmartHub B2C sync completed.' });
+    return NextResponse.json({
+      success: true,
+      message: 'SmartHub B2C sync completed.',
+      ingest: ingestResult,
+    });
   } catch (pushErr: any) {
     await updateJob({
       status: 'error',

@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { orderId, type, filesMetaData } = body;
+    const { orderId, type, filesMetaData, lpnSkuMap } = body;
+    const skuMap: Record<string, string> = lpnSkuMap || {};
 
     if (!orderId || !type || !filesMetaData) {
       return NextResponse.json({ error: 'Missing orderId, type, or filesMetaData' }, { status: 400 });
@@ -100,28 +101,37 @@ export async function POST(req: NextRequest) {
         // If file is associated with a specific LPN, it goes to the LPN subfolder
         if (file.lpn) {
           const lpnFolderKey = file.lpn;
+          const sku = skuMap[lpnFolderKey] || '';
+          const newFolderName = sku ? `${lpnFolderKey}_${sku}` : lpnFolderKey;
+
           if (resolvedLpnFolders[lpnFolderKey]) {
             targetFolderId = resolvedLpnFolders[lpnFolderKey].id;
             lpnFolderLinks[lpnFolderKey] = resolvedLpnFolders[lpnFolderKey].webViewLink;
           } else {
-            // Find or create subfolder for this LPN inside the main order folder
+            // Search for existing folder: try new name (LPN_SKU) first, fall back to old name (LPN only)
+            let existingFolder: { id: string; webViewLink: string } | null = null;
             const subfolderList = await drive.files.list({
-              q: `name = '${lpnFolderKey}' and mimeType = 'application/vnd.google-apps.folder' and '${orderFolderId}' in parents and trashed = false`,
+              q: `mimeType = 'application/vnd.google-apps.folder' and '${orderFolderId}' in parents and trashed = false`,
               fields: 'files(id, name, webViewLink)',
               spaces: 'drive',
               supportsAllDrives: true,
               includeItemsFromAllDrives: true,
             });
+            for (const sf of subfolderList.data.files || []) {
+              if (sf.name === newFolderName || sf.name === lpnFolderKey) {
+                existingFolder = { id: sf.id!, webViewLink: sf.webViewLink! };
+                break;
+              }
+            }
 
-            if (subfolderList.data.files && subfolderList.data.files.length > 0) {
-              targetFolderId = subfolderList.data.files[0].id!;
-              const link = subfolderList.data.files[0].webViewLink!;
-              lpnFolderLinks[lpnFolderKey] = link;
-              resolvedLpnFolders[lpnFolderKey] = { id: targetFolderId, webViewLink: link };
+            if (existingFolder) {
+              targetFolderId = existingFolder.id;
+              lpnFolderLinks[lpnFolderKey] = existingFolder.webViewLink;
+              resolvedLpnFolders[lpnFolderKey] = existingFolder;
             } else {
               const subfolderCreate = await drive.files.create({
                 requestBody: {
-                  name: lpnFolderKey,
+                  name: newFolderName,
                   mimeType: 'application/vnd.google-apps.folder',
                   parents: [orderFolderId],
                 },
@@ -146,7 +156,7 @@ export async function POST(req: NextRequest) {
                   supportsTeamDrives: true,
                 });
               } catch (e) {
-                console.error(`Failed to set permissions for subfolder ${lpnFolderKey}:`, e);
+                console.error(`Failed to set permissions for subfolder ${newFolderName}:`, e);
               }
             }
           }

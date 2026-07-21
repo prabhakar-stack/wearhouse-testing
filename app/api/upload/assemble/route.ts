@@ -102,6 +102,25 @@ export async function POST(req: NextRequest) {
     let fileId = '';
     let webViewLink = '';
 
+    // Delete any existing file with the same name in this folder (dedup on retry)
+    try {
+      const existing = await drive.files.list({
+        q: `name = '${name.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`,
+        fields: 'files(id)',
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      for (const f of existing.data.files || []) {
+        if (f.id) {
+          await drive.files.delete({ fileId: f.id, supportsAllDrives: true });
+          console.log(`[Assemble Dedup] Deleted existing file ${f.id} (name: ${name}) before re-upload`);
+        }
+      }
+    } catch (dedupErr: any) {
+      console.warn(`[Assemble Dedup] Could not check/remove duplicates for "${name}":`, dedupErr.message);
+    }
+
     try {
       const res = await drive.files.create({
         requestBody: {

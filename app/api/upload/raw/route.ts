@@ -46,7 +46,26 @@ export async function PUT(req: NextRequest) {
     oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    // 2. Upload from local staging file to Google Drive.
+    // 2. Delete any existing file with the same name in this folder (dedup on retry)
+    try {
+      const existing = await drive.files.list({
+        q: `name = '${name.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`,
+        fields: 'files(id)',
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      for (const f of existing.data.files || []) {
+        if (f.id) {
+          await drive.files.delete({ fileId: f.id, supportsAllDrives: true });
+          console.log(`[Drive Dedup] Deleted existing file ${f.id} (name: ${name}) before re-upload`);
+        }
+      }
+    } catch (dedupErr: any) {
+      console.warn(`[Drive Dedup] Could not check/remove duplicates for "${name}":`, dedupErr.message);
+    }
+
+    // 3. Upload from local staging file to Google Drive.
     const media = {
       mimeType: mimeType,
       body: fs.createReadStream(localFilePath),

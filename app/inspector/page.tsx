@@ -1736,12 +1736,14 @@ function InspectTab({
   const activeOrderPlatformIdRef = useRef(activeOrderPlatformId);
   const itemsProcessedRef = useRef(itemsProcessed);
   const expectedItemsRef = useRef(expectedItems);
+  const expectedLpnItemsRef = useRef(expectedLpnItems);
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
   useEffect(() => { manifestIdRef.current = manifestId; }, [manifestId]);
   useEffect(() => { activeOrderPlatformIdRef.current = activeOrderPlatformId; }, [activeOrderPlatformId]);
   useEffect(() => { itemsProcessedRef.current = itemsProcessed; }, [itemsProcessed]);
   useEffect(() => { expectedItemsRef.current = expectedItems; }, [expectedItems]);
+  useEffect(() => { expectedLpnItemsRef.current = expectedLpnItems; }, [expectedLpnItems]);
 
   const resetProcess = () => {
     setPhase("START");
@@ -2125,13 +2127,19 @@ function InspectTab({
                   }
                 });
 
+                const lpnItems = expectedLpnItemsRef.current;
+                const lpnSkuMap: Record<string, string> = {};
+                for (const item of lpnItems) {
+                  if (item.lpn && item.sku) lpnSkuMap[item.lpn] = item.sku;
+                }
+
                 const filesMetaData = filesToUpload.map((f) => ({
                   key: f.key, name: f.name, mimeType: f.mimeType, lpn: f.lpn, condition: f.lpn ? lpnConditions[f.lpn] : undefined,
                 }));
 
                 const initRes = await fetch("/api/upload/init", {
                   method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId: activeOrderId, type: "INSPECTION_VIDEO", filesMetaData }),
+                  body: JSON.stringify({ orderId: activeOrderId, type: "INSPECTION_VIDEO", filesMetaData, lpnSkuMap }),
                 });
                 if (!initRes.ok) throw new Error("Failed to initialize Google Drive upload");
                 const { uploadUrls, folderLink, orderFolderId, lpnFolderLinks } = await initRes.json();
