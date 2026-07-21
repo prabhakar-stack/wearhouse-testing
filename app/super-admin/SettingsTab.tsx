@@ -224,7 +224,7 @@ function SmartHubSection() {
 
   const pollRef       = useRef<NodeJS.Timeout | null>(null);
   const fetchStatusRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const CRON_SECRET   = process.env.NEXT_PUBLIC_CRON_SECRET || 'secret-cron-token';
+  // Cron secret is now server-side only — triggered via /api/admin/trigger-cron proxy
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -290,9 +290,10 @@ function SmartHubSection() {
   const triggerSync = async () => {
     setSyncing(true);
     try {
-      await fetch('/api/cron/smarthub-sync', {
+      await fetch('/api/admin/trigger-cron', {
         method: 'POST',
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: '/api/cron/smarthub-sync' }),
       });
       fetchStatus();
     } catch (err: any) {

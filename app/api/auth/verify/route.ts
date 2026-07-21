@@ -7,6 +7,13 @@ const JWT_SECRET =
 const isProduction = process.env.NODE_ENV === "production";
 
 export async function POST(req: Request) {
+  if (isProduction) {
+    return NextResponse.json(
+      { error: "This endpoint is disabled in production." },
+      { status: 403 },
+    );
+  }
+
   try {
     const body = await req.json();
     const { email } = body;
