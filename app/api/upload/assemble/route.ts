@@ -3,8 +3,10 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 
-// Allow up to 5 minutes for assembly + Drive upload of large inspection videos.
-export const maxDuration = 300;
+// Assembly is fast (local disk I/O); Drive upload uses resumable protocol
+// (each chunk is a separate request, no single long request). This timeout
+// covers the full assembly + chunked upload cycle for very large files.
+export const maxDuration = 600;
 
 export async function POST(req: NextRequest) {
   let assembledFilePath = '';
@@ -122,22 +124,99 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const res = await drive.files.create({
-        requestBody: {
-          name: name,
-          parents: [folderId],
-        },
-        media: {
-          mimeType: mimeType,
-          body: fs.createReadStream(assembledFilePath),
-        },
-        fields: 'id, webViewLink',
-        supportsAllDrives: true,
-        supportsTeamDrives: true,
-      });
+      // Get a fresh access token for raw HTTP calls
+      const tokenRes = await oauth2Client.getAccessToken();
+      const accessToken = tokenRes.token;
+      if (!accessToken) throw new Error('Failed to obtain Google access token');
 
-      fileId = res.data.id!;
-      webViewLink = res.data.webViewLink!;
+      const fileSize = assembledStats.size;
+      const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB per chunk to Drive
+
+      // Step 1: Initiate resumable upload session
+      const initRes = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type': mimeType,
+            'X-Upload-Content-Length': String(fileSize),
+          },
+          body: JSON.stringify({ name, parents: [folderId] }),
+        }
+      );
+
+      if (!initRes.ok) {
+        const errText = await initRes.text();
+        throw new Error(`Resumable upload init failed (${initRes.status}): ${errText}`);
+      }
+
+      const sessionUri = initRes.headers.get('location');
+      if (!sessionUri) throw new Error('No session URI returned from Drive resumable init');
+
+      console.log(`[Assemble] Resumable session started for ${name} (${(fileSize / (1024 * 1024)).toFixed(1)} MB)`);
+
+      // Step 2: Upload file in chunks
+      const fd = fs.openSync(assembledFilePath, 'r');
+      let offset = 0;
+
+      try {
+        while (offset < fileSize) {
+          const remaining = fileSize - offset;
+          const currentChunkSize = Math.min(CHUNK_SIZE, remaining);
+          const buffer = Buffer.alloc(currentChunkSize);
+          fs.readSync(fd, buffer, 0, currentChunkSize, offset);
+
+          const rangeEnd = offset + currentChunkSize - 1;
+          const contentRange = `bytes ${offset}-${rangeEnd}/${fileSize}`;
+
+          let chunkRes: Response | null = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            chunkRes = await fetch(sessionUri, {
+              method: 'PUT',
+              headers: {
+                'Content-Length': String(currentChunkSize),
+                'Content-Range': contentRange,
+              },
+              body: buffer,
+            });
+
+            if (chunkRes.status === 200 || chunkRes.status === 201 || chunkRes.status === 308) {
+              break;
+            }
+
+            console.warn(`[Assemble] Chunk upload attempt ${attempt} failed (${chunkRes.status}), retrying...`);
+            if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt));
+          }
+
+          if (!chunkRes || (chunkRes.status !== 200 && chunkRes.status !== 201 && chunkRes.status !== 308)) {
+            const errText = await chunkRes?.text();
+            throw new Error(`Chunk upload failed at offset ${offset}: ${chunkRes?.status} ${errText}`);
+          }
+
+          offset += currentChunkSize;
+
+          // 308 = more chunks needed, 200/201 = upload complete
+          if (chunkRes.status === 200 || chunkRes.status === 201) {
+            const result = await chunkRes.json();
+            fileId = result.id;
+            webViewLink = result.webViewLink || '';
+            console.log(`[Assemble] Resumable upload complete: ${fileId}`);
+          }
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
+
+      // If we finished all chunks but didn't get fileId from final response, fetch it
+      if (!fileId) throw new Error('Upload completed but no file ID received');
+
+      // Fetch webViewLink if not returned
+      if (!webViewLink) {
+        const meta = await drive.files.get({ fileId, fields: 'webViewLink', supportsAllDrives: true });
+        webViewLink = meta.data.webViewLink || '';
+      }
 
       // Make publicly readable
       try {
