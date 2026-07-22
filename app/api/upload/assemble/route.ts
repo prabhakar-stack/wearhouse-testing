@@ -3,10 +3,7 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 
-// Assembly is fast (local disk I/O); Drive upload uses resumable protocol
-// (each chunk is a separate request, no single long request). This timeout
-// covers the full assembly + chunked upload cycle for very large files.
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   let assembledFilePath = '';
